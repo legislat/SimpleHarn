@@ -1,0 +1,14 @@
+# CPU-offload llama row: the model runs on host RAM, not on the card.
+# cpu_offload: true forces -ngl 0 and applies to llama rows only. The row
+# then books host RAM, not VRAM: the declared ram_gb floor is the gate
+# number. Without it the row books the GGUF estimate (file size plus 2).
+# load_timeout: 600 gives a cold host-RAM load room; the llama default is
+# 120 s. The model path below is a PLACEHOLDER: replace it with a real
+# absolute path before you copy this file into ModelConf.
+engine: llama
+model: <models-root>\cpu-model.gguf
+category: AUX
+cpu_offload: true
+ram_gb: 24
+cost: fixed
+load_timeout: 600

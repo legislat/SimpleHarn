@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user]
 source_of_truth_for: [example model row set]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-08
 review_trigger: behavior-change, release
 ---
 
@@ -13,12 +13,15 @@ review_trigger: behavior-change, release
 Model-row templates for SimpleHarn. They are not config. Copy one file
 into the `ModelConf` folder beside the exe, then edit it.
 
-Two groups:
+Three groups:
 
 - `engine-*.yaml` - one row per engine (`llama`, `strata`, `basalt`,
   `maya`, `ninfer`). Each row carries every key that engine requires.
 - `tab-*.yaml` - one row per category (`WORK`, `RP`, `AUX`, `EMB`), with
   the eviction rule of that category in the header comment.
+- Starter rows: `minimal-llama.yaml` (the smallest working row),
+  `embeddings.yaml` (an EMB row), and `cpu-offload.yaml` (a host-RAM
+  row). Edit the placeholder path, then copy the file into `ModelConf`.
 
 The file stem is the model identity. Rename the copy to the model name
 you want, for example `ModelConf\my-coder.yaml`. Do not set a `name`

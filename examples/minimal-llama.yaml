@@ -1,0 +1,10 @@
+# Minimal llama row: the smallest working model row. One GGUF file, one
+# llama-server process. Required key: model. The file stem is the model
+# identity. The model path below is a PLACEHOLDER: replace it with a real
+# absolute path before you copy this file into ModelConf.
+engine: llama
+model: <models-root>\example-model.gguf
+category: WORK
+vram_gb: 8.0
+cost: fixed
+context: 8192

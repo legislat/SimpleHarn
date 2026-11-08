@@ -1,0 +1,11 @@
+# Embeddings row: one embedding model on the EMB listener, port 8711 by
+# default. WORK and RP evict EMB. extra_args: --embedding is on the closed
+# llama allow-list. The key is_embedding_model is an alternative: a truthy
+# value forces category EMB. The model path below is a PLACEHOLDER: replace
+# it with a real absolute path before you copy this file into ModelConf.
+engine: llama
+model: <models-root>\embed-model.gguf
+category: EMB
+vram_gb: 2.0
+cost: fixed
+extra_args: --embedding

@@ -3,7 +3,10 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/legislat/SimpleHarn/ci.yml?branch=main)](https://github.com/legislat/SimpleHarn/actions/workflows/ci.yml)
 
 SimpleHarn is a Windows tray harness for local LLM inference. It runs several inference
-engines on one GPU behind one OpenAI-compatible API. One swap scheduler is the only writer
+engines on one GPU behind one OpenAI-compatible API. That API is an OpenAI subset: the
+model list plus the chat, completion, and embeddings routes. The
+[compatibility matrix](docs/reference/COMPATIBILITY.md) names the covered surface and the
+gaps. One swap scheduler is the only writer
 of scheduler state. It admits every model load against the memory the card itself reports,
 and it refuses to overcommit. The product name is SimpleHarn, and the repository is
 `legislat/SimpleHarn`. The binary is `simpleharn.exe`, the config file is `simpleharn.json`,
@@ -16,6 +19,13 @@ zip holds `simpleharn.exe`, `SimpleHarn.vbs`, `README.md`, `LICENSE`, and
 
 > This is a personal harness, built for my own machine and my own setup. Feel free to try
 > it out, give feedback, and contribute.
+
+Admission is the product. A load that does not fit the card never starts. Every refusal
+names its numbers and its blockers, in the API and on the control page:
+
+```text
+insufficient VRAM: need 24.0 GiB, free 18.3 GiB, reserve 2.0 GiB; blocked by: my-coder (nothing may evict WORK)
+```
 
 ![SimpleHarn control page](docs/assets/control-page.png)
 
@@ -50,8 +60,23 @@ can parse them reliably. The trade is that some pages read terse.
 
 1. Download `SimpleHarn-1.4.0-win-x64.zip` from the Releases page and unzip it.
 2. Put one flat `.yaml` row in `ModelConf` beside the exe. The harness creates that
-   folder on boot if it is missing; it does not create an example row. Ready rows for
-   every engine are in [examples/](examples/README.md).
+   folder on boot if it is missing; it does not create an example row. Start from a
+   minimal llama row. The file stem, for example `example`, is the model identity:
+
+   ```yaml
+   engine: llama
+   model: <models-root>\example-model.gguf
+   category: WORK
+   vram_gb: 8.0
+   cost: fixed
+   context: 8192
+   ```
+
+   Replace the placeholder model path with one real absolute GGUF path. Ready rows
+   for every engine are in [examples/](examples/README.md). The `import` verb emits
+   row keys from a manual Strata profile; see
+   [docs/reference/CLI.md](docs/reference/CLI.md). The full schema is in
+   [docs/reference/MODELS.md](docs/reference/MODELS.md).
 3. Double-click `SimpleHarn.vbs`, open `http://127.0.0.1:8708/`, and load the model.
 
 ### From source
@@ -177,9 +202,27 @@ Windows 10 or 11, one NVIDIA GPU. The `llama` path needs a llama.cpp build
 that runs `llama-server.exe`; first run detects one found on PATH. The
 `strata`, `basalt`, and `maya` paths need their engine install and its Python
 environment. The `ninfer` path needs WSL2 and Docker; it runs a GPU container.
+The `xolotl` path needs a source-built engine and its Python environment.
 GPU memory is read through NVML with an `nvidia-smi` fallback. One GGUF file
 is needed per `llama` model. Minimal per-engine setup is in
 [ENGINE-RECIPES.md](docs/reference/ENGINE-RECIPES.md).
+
+Engine status as of 2026-11-08. "Verified here" means one witnessed load on
+the operator's machine, the setup proof that
+[ENGINE-RECIPES.md](docs/reference/ENGINE-RECIPES.md) and
+[COMPATIBILITY.md](docs/reference/COMPATIBILITY.md) carry. An engine absent
+from that proof is unproven, not broken. The Linux column states what the
+engine upstreams document, from upstream docs read 2026-11-08. The harness
+ships Windows only; see Plans below.
+
+| Engine | Verified here | Linux |
+|---|---|---|
+| `llama` | Yes | Yes: upstream primary platform |
+| `strata` | Yes | Yes: source install |
+| `basalt` | Yes | Yes: source install, Blackwell cards only |
+| `maya` | Yes | Yes |
+| `ninfer` | Yes | Not yet: the harness adapter is WSL2-only |
+| `xolotl` | No | Yes: upstream Linux-primary, source build |
 
 ## Troubleshooting
 
