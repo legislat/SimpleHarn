@@ -428,6 +428,10 @@ const driver = `
         cost_basis: "declared",
         launch_floor_gb: null, measured_gb: null, measured_min_gb: null, context: "262144",
         model_ref: "ninfer://box:8004/served", serve_model: null, cpu_offload: false },
+      { id: "xolotlctx", engine: "xolotl", category: "WORK", vram_gb: 72, cost: "greedy",
+        cost_basis: "declared",
+        launch_floor_gb: null, measured_gb: null, measured_min_gb: null, context: "262144",
+        model_ref: "xolotl://ds41", serve_model: null, cpu_offload: false },
       { id: "mockctx", engine: "mock", category: "WORK", vram_gb: 4, cost: "fixed",
         cost_basis: "declared",
         launch_floor_gb: null, measured_gb: null, measured_min_gb: null, context: null,
@@ -445,8 +449,9 @@ const driver = `
     const ctxOf = (id) => id + "=" + ctxCell(id);
     check("Ctx shows each engine's effective served context",
       ctxCell("llamax") === "32768" && ctxCell("stratactx") === "262144" &&
-        ctxCell("ninferctx") === "262144" && ctxCell("mockctx") === "\u2014",
-      ["llamax", "stratactx", "ninferctx", "mockctx"].map(ctxOf).join(" "));
+        ctxCell("ninferctx") === "262144" && ctxCell("xolotlctx") === "262144" &&
+        ctxCell("mockctx") === "\u2014",
+      ["llamax", "stratactx", "ninferctx", "xolotlctx", "mockctx"].map(ctxOf).join(" "));
     applyState({ ...fixtures["/har/status"], models: fixtures["/har/models"].data });
   }
 
@@ -1234,6 +1239,10 @@ const driver = `
         cost_basis: "declared",
         launch_floor_gb: null, measured_gb: null, measured_min_gb: null, context: "262144",
         model_ref: "ninfer://box:8004/served", serve_model: null, cpu_offload: false },
+      { id: "xolotlone", engine: "xolotl", category: "WORK", vram_gb: 72, cost: "greedy",
+        cost_basis: "declared",
+        launch_floor_gb: null, measured_gb: null, measured_min_gb: null, context: "262144",
+        model_ref: "xolotl://ds41", serve_model: null, cpu_offload: false },
       { id: "mockone", engine: "mock", category: "WORK", vram_gb: 4, cost: "fixed",
         cost_basis: "declared",
         launch_floor_gb: null, measured_gb: null, measured_min_gb: null, context: null,
@@ -1398,6 +1407,7 @@ const driver = `
     JSON.stringify(cpuBoxes));
   check("non-llama rows offer no CPU checkbox (engine-scoped)",
     cpuBoxes["greedyone"] === 0 && cpuBoxes["ninferone"] === 0 && cpuBoxes["mockone"] === 0 &&
+      cpuBoxes["xolotlone"] === 0 && cpuCellText["xolotlone"] === "\u{2014}" &&
       cpuBoxes["measuredone"] === 1 && cpuBoxes["rangeone"] === 1,
     JSON.stringify(cpuBoxes));
   check("llama rows keep their CPU checkbox",

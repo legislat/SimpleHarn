@@ -182,8 +182,9 @@ fn walk_profile(value: &serde_json::Value, key: &str) -> Option<(String, String)
 /// The absolute-path shape this check judges: a Windows drive path (`X:\` or
 /// `X:/`) or a UNC (`\\server\share`), never a relative path (exempt: the engine
 /// resolves those against the profile dir). A trailing `:float` is the llama
-/// control-vector scale and is stripped before the existence check.
-fn profile_path_candidate(text: &str) -> Option<String> {
+/// control-vector scale and is stripped before the existence check. Shared by
+/// the xolotl adapter's same-shape doors (ruling 2026-11-08).
+pub(crate) fn profile_path_candidate(text: &str) -> Option<String> {
     if !is_absolute_shape(text) {
         return None;
     }
@@ -196,7 +197,8 @@ fn profile_path_candidate(text: &str) -> Option<String> {
 }
 
 /// Drive-letter or UNC absolute-path shape (checked bytewise: the grammar is ASCII).
-fn is_absolute_shape(text: &str) -> bool {
+/// Shared by the xolotl adapter's shape floor (ruling 2026-11-08).
+pub(crate) fn is_absolute_shape(text: &str) -> bool {
     let bytes = text.as_bytes();
     (bytes.len() >= 3
         && bytes[0].is_ascii_alphabetic()
@@ -251,8 +253,9 @@ fn knob<'a>(model: &'a ModelEntry, key: &str) -> Option<&'a str> {
 /// entry (bare or whitespace-only between commas) makes the line malformed —
 /// the render refuses it (one token per entry, FINDINGS-10 [3]) and
 /// [`effective_context`] answers `None` for the same line, so a row that
-/// never loads can never display a context (FINDINGS-17).
-fn well_formed_tokens(line: &str) -> Option<Vec<String>> {
+/// never loads can never display a context (FINDINGS-17). The xolotl adapter
+/// shares the rule (same comma-tokenized args dialect, ruling 2026-11-08).
+pub(crate) fn well_formed_tokens(line: &str) -> Option<Vec<String>> {
     let mut tokens = Vec::new();
     for entry in line.split(',') {
         let token = entry.trim();

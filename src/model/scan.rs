@@ -180,6 +180,18 @@ const CONSUMED_KEYS: &[&str] = &[
     "maya_python",
     "maya_cwd",
     "maya_config",
+    "xolotl_python",
+    "xolotl_launcher",
+    "xolotl_cwd",
+    "xolotl_exe",
+    "xolotl_tokenizer",
+    "xolotl_args",
+    "xolotl_env",
+    "xolotl_lib_dirs",
+    "xolotl_gpu",
+    "xolotl_sampling",
+    "xolotl_aliases",
+    "xolotl_reasoning_budget",
     "ninfer_autostart",
     "ninfer_container",
     "ninfer_profile",
@@ -977,6 +989,36 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                             });
                             continue;
                         }
+                    }
+                }
+                // A xolotl row passes through the adapter's single door
+                // (`xolotl::validate_row`, TASK-XOLOTL-ADAPTER), so the scan
+                // refuses at rescan exactly what the adapter would refuse at
+                // spec time — a doomed launch can never evict a resident
+                // first. A path the row names and the disk lacks (engine
+                // exe, launcher, weights, `--engram`/`--rank` entries, a
+                // named DSpark sidecar) travels the `ModelPathMissing` door;
+                // an absent required key or a bad shape is a typed reject;
+                // a rendered claim of a harness-forced field meets the
+                // policy surface.
+                if entry.engine == "xolotl" {
+                    if let Err(problem) = crate::engine::xolotl::validate_row(&entry) {
+                        let kind = match &problem {
+                            crate::engine::xolotl::XolotlRowError::MissingPath { .. } => {
+                                ScanKind::ModelPathMissing
+                            }
+                            crate::engine::xolotl::XolotlRowError::Claim { .. } => {
+                                ScanKind::PolicyRefused
+                            }
+                            crate::engine::xolotl::XolotlRowError::Missing { .. }
+                            | crate::engine::xolotl::XolotlRowError::Bad { .. } => ScanKind::Other,
+                        };
+                        catalog.errors.push(ScanError {
+                            kind,
+                            file: file_name.clone(),
+                            reason: problem.into_engine_error().to_string(),
+                        });
+                        continue;
                     }
                 }
                 // The CPU-resident row shapes (operator ruling 2026-11-05):
@@ -2520,6 +2562,173 @@ mod tests {
         assert_eq!(catalog.models.len(), 1, "{:?}", catalog.errors);
     }
 
+    /// A complete xolotl row (TASK-XOLOTL-ADAPTER): required keys present,
+    /// the timeout at its floor, and a relative `-m` that resolves against
+    /// `xolotl_cwd` — it scans, publishes, and earns no report.
+    #[test]
+    fn an_xolotl_row_scans_and_publishes() {
+        let dir = crate::testutil::temp_dir("scan-xolotl-clean");
+        std::fs::write(dir.join("python.exe"), b"p").expect("python fixture");
+        std::fs::write(dir.join("serve_ds41.py"), b"").expect("launcher fixture");
+        std::fs::write(dir.join("ds41_generate.exe"), b"e").expect("engine fixture");
+        std::fs::write(dir.join("tokenizer.bin"), b"t").expect("tokenizer fixture");
+        std::fs::create_dir_all(dir.join("model")).expect("model dir");
+        std::fs::write(dir.join("model").join("V41.gguf"), b"g").expect("weights fixture");
+        std::fs::write(
+            dir.join("ds41.yaml"),
+            format!(
+                "engine: xolotl\n\
+                 cost: greedy\n\
+                 launch_only_with_at_least_vram_free: whole\n\
+                 load_timeout: 600\n\
+                 serve_model: ds41-flash\n\
+                 xolotl_python: {}\n\
+                 xolotl_launcher: {}\n\
+                 xolotl_cwd: {}\n\
+                 xolotl_exe: {}\n\
+                 xolotl_tokenizer: {}\n\
+                 xolotl_args: --backend cuda, --ctx 262144, --kv-q8, -m model/V41.gguf\n",
+                dir.join("python.exe").display(),
+                dir.join("serve_ds41.py").display(),
+                dir.display(),
+                dir.join("ds41_generate.exe").display(),
+                dir.join("tokenizer.bin").display(),
+            ),
+        )
+        .expect("write");
+        let catalog = scan_dir(&dir);
+        assert_eq!(catalog.models.len(), 1, "{:?}", catalog.errors);
+        assert!(catalog.errors.is_empty(), "{:?}", catalog.errors);
+        assert_eq!(catalog.models[0].cost, crate::model::CostClass::Greedy);
+    }
+
+    /// The whole-posture keys and the row's shape: an unknown `xolotl_*` key
+    /// warns and the row still publishes (a dead key is not a refusal); a
+    /// foreign engine-scoped key (`context`) earns its inert-key hint naming
+    /// its owner.
+    #[test]
+    fn unknown_xolotl_keys_warn_and_foreign_knobs_hint_their_owner() {
+        let dir = crate::testutil::temp_dir("scan-xolotl-unknown");
+        std::fs::write(dir.join("python.exe"), b"p").expect("python fixture");
+        std::fs::write(dir.join("serve_ds41.py"), b"").expect("launcher fixture");
+        std::fs::write(dir.join("ds41_generate.exe"), b"e").expect("engine fixture");
+        std::fs::write(dir.join("tokenizer.bin"), b"t").expect("tokenizer fixture");
+        std::fs::write(
+            dir.join("ds41.yaml"),
+            format!(
+                "engine: xolotl\nload_timeout: 600\nserve_model: ds41-flash\n\
+                 xolotl_python: {}\nxolotl_launcher: {}\nxolotl_cwd: {}\n\
+                 xolotl_exe: {}\nxolotl_tokenizer: {}\n\
+                 xolotl_mode: turbo\ncontext: 4096\n",
+                dir.join("python.exe").display(),
+                dir.join("serve_ds41.py").display(),
+                dir.display(),
+                dir.join("ds41_generate.exe").display(),
+                dir.join("tokenizer.bin").display(),
+            ),
+        )
+        .expect("write");
+        let catalog = scan_dir(&dir);
+        assert_eq!(catalog.models.len(), 1, "{:?}", catalog.errors);
+        assert!(
+            catalog
+                .errors
+                .iter()
+                .any(|e| { e.kind == ScanKind::UnknownKey && e.reason.contains("xolotl_mode") }),
+            "an unknown xolotl_* key must warn: {:?}",
+            catalog.errors
+        );
+        assert!(
+            catalog.errors.iter().any(|e| {
+                e.kind == ScanKind::InertKey
+                    && e.reason.contains("`context`")
+                    && e.reason.contains("llama")
+            }),
+            "the llama-owned key must hint its owner on a xolotl row: {:?}",
+            catalog.errors
+        );
+    }
+
+    /// A relative `-m` that does not resolve against `xolotl_cwd` is the
+    /// `ModelPathMissing` door (refuse before admission can evict a resident
+    /// for the doomed spawn), and the reason names the flag and the resolved
+    /// path. Falsifier: mapping `MissingPath` to `Other` reports the right
+    /// file under the wrong kind.
+    #[test]
+    fn a_xolotl_relative_model_that_misses_is_model_path_missing() {
+        let dir = crate::testutil::temp_dir("scan-xolotl-missing-model");
+        std::fs::write(dir.join("python.exe"), b"p").expect("python fixture");
+        std::fs::write(dir.join("serve_ds41.py"), b"").expect("launcher fixture");
+        std::fs::write(dir.join("ds41_generate.exe"), b"e").expect("engine fixture");
+        std::fs::write(dir.join("tokenizer.bin"), b"t").expect("tokenizer fixture");
+        std::fs::write(
+            dir.join("ds41.yaml"),
+            format!(
+                "engine: xolotl\nload_timeout: 600\nserve_model: ds41-flash\n\
+                 xolotl_python: {}\nxolotl_launcher: {}\nxolotl_cwd: {}\n\
+                 xolotl_exe: {}\nxolotl_tokenizer: {}\n\
+                 xolotl_args: --backend cuda, -m model/gone.gguf\n",
+                dir.join("python.exe").display(),
+                dir.join("serve_ds41.py").display(),
+                dir.display(),
+                dir.join("ds41_generate.exe").display(),
+                dir.join("tokenizer.bin").display(),
+            ),
+        )
+        .expect("write");
+        let catalog = scan_dir(&dir);
+        assert!(catalog.models.is_empty(), "a doomed spawn must not publish");
+        let error = catalog
+            .errors
+            .iter()
+            .find(|e| e.kind == ScanKind::ModelPathMissing)
+            .expect("the missing weights travel the model-path door");
+        assert!(
+            error.reason.contains("-m") && error.reason.contains("gone.gguf"),
+            "the refusal names the flag and the path: {}",
+            error.reason
+        );
+    }
+
+    /// Ruling 6 at the scan door: a DSpark sidecar the row names and the
+    /// disk lacks refuses at rescan by path, not at load after eviction.
+    #[test]
+    fn a_xolotl_row_naming_a_missing_dspark_is_model_path_missing() {
+        let dir = crate::testutil::temp_dir("scan-xolotl-dspark");
+        std::fs::write(dir.join("python.exe"), b"p").expect("python fixture");
+        std::fs::write(dir.join("serve_ds41.py"), b"").expect("launcher fixture");
+        std::fs::write(dir.join("ds41_generate.exe"), b"e").expect("engine fixture");
+        std::fs::write(dir.join("tokenizer.bin"), b"t").expect("tokenizer fixture");
+        std::fs::write(
+            dir.join("ds41.yaml"),
+            format!(
+                "engine: xolotl\nload_timeout: 600\nserve_model: ds41-flash\n\
+                 xolotl_python: {}\nxolotl_launcher: {}\nxolotl_cwd: {}\n\
+                 xolotl_exe: {}\nxolotl_tokenizer: {}\n\
+                 xolotl_env: STRATA_SERVE_DSPARK={}\n",
+                dir.join("python.exe").display(),
+                dir.join("serve_ds41.py").display(),
+                dir.display(),
+                dir.join("ds41_generate.exe").display(),
+                dir.join("tokenizer.bin").display(),
+                dir.join("gone.Q2_K.gguf").display(),
+            ),
+        )
+        .expect("write");
+        let catalog = scan_dir(&dir);
+        assert!(catalog.models.is_empty(), "a doomed spawn must not publish");
+        let error = catalog
+            .errors
+            .iter()
+            .find(|e| e.kind == ScanKind::ModelPathMissing)
+            .expect("the named sidecar travels the model-path door");
+        assert!(
+            error.reason.contains("STRATA_SERVE_DSPARK") && error.reason.contains("gone.Q2_K.gguf"),
+            "the refusal names the variable and the path: {}",
+            error.reason
+        );
+    }
+
     /// FINDINGS-13 [8]: the unknown key is *said*, never swallowed — and never
     /// fatal: the entry still publishes (README: preserved for reference).
     #[test]
@@ -3602,6 +3811,18 @@ mod tests {
              maya_python: D:/Maya/.venv/Scripts/python.exe\n\
              maya_cwd: D:/Maya\n\
              maya_config: D:/Maya/maya-maya-m.json\n\
+             xolotl_python: C:/Xolotl/.venv/Scripts/python.exe\n\
+             xolotl_launcher: C:/Xolotl/tools/v41/serve_ds41.py\n\
+             xolotl_cwd: D:/Models/Xolotl\n\
+             xolotl_exe: C:/Xolotl/build/ds41_generate.exe\n\
+             xolotl_tokenizer: C:/Xolotl/tok/tok.bin\n\
+             xolotl_args: --backend cuda, --ctx 262144\n\
+             xolotl_env: STRATA_PRESTAGE_GIB=8 GGML_NO_BACKTRACE=1\n\
+             xolotl_lib_dirs: C:/Xolotl/lib\n\
+             xolotl_gpu: 0\n\
+             xolotl_sampling: temperature=1.0 top_p=0.95\n\
+             xolotl_aliases: ds41, ds41-flash\n\
+             xolotl_reasoning_budget: 32768\n\
              ninfer_autostart: /opt/a.sh\n\
              ninfer_container: golden-box\n\
              ninfer_profile: b\n\
@@ -3835,6 +4056,18 @@ mod tests {
             "maya_python",
             "maya_cwd",
             "maya_config",
+            "xolotl_python",
+            "xolotl_launcher",
+            "xolotl_cwd",
+            "xolotl_exe",
+            "xolotl_tokenizer",
+            "xolotl_args",
+            "xolotl_env",
+            "xolotl_lib_dirs",
+            "xolotl_gpu",
+            "xolotl_sampling",
+            "xolotl_aliases",
+            "xolotl_reasoning_budget",
             "ninfer_autostart",
             "ninfer_container",
             "ninfer_profile",

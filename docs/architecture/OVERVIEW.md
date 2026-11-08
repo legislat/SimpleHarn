@@ -197,7 +197,7 @@ One harness process, one tokio runtime, plus OS-level children:
   builds the map. `LaunchSpec` must be constructible from data alone.
 - Policy table (`src/engine/policy.rs`, `EnginePolicy::all`): the compiled-in
   single-source table behind L1/L2/L3 - one row per engine, `forced_fields`,
-  forbidden words, and word contracts. One mechanism, six instances.
+  forbidden words, and word contracts. One mechanism, seven instances.
 - `llama` (`src/engine/llama.rs`): native `llama-server.exe` per GGUF. The
   flag map is data, parity-tested against the operator's start script. The
   harness forces `--host 127.0.0.1` (`LLAMA_ENGINE_HOST`) and the assigned

@@ -241,18 +241,17 @@ impl ActorState {
         let status_path = match ctx.engine.as_str() {
             "basalt" => "/metrics",
             "strata" => "/metrics",
+            "xolotl" => "/metrics",
             _ => return None,
         };
         let sample = witness.sample().await.ok()?;
         let status = runtime
             .engine_status_json(ctx.ticket.port, status_path)
             .await;
-        let parsed = status.as_ref().and_then(|body| {
-            if ctx.engine == "basalt" {
-                crate::engine::basalt::measurement_from_metrics(body)
-            } else {
-                crate::engine::strata::measurement_from_metrics(body)
-            }
+        let parsed = status.as_ref().and_then(|body| match ctx.engine.as_str() {
+            "basalt" => crate::engine::basalt::measurement_from_metrics(body),
+            "xolotl" => crate::engine::xolotl::measurement_from_metrics(body),
+            _ => crate::engine::strata::measurement_from_metrics(body),
         });
         let measurement = match parsed {
             Some(measurement) => measurement,
@@ -357,6 +356,7 @@ impl ActorState {
         let status_path = match ctx.engine.as_str() {
             "basalt" => "/metrics",
             "strata" => "/metrics",
+            "xolotl" => "/metrics",
             _ => return,
         };
         let mut tick = tokio::time::interval(every);
@@ -380,12 +380,10 @@ impl ActorState {
             let status = runtime
                 .engine_status_json(ctx.ticket.port, status_path)
                 .await;
-            let parsed = status.as_ref().and_then(|body| {
-                if ctx.engine == "basalt" {
-                    crate::engine::basalt::measurement_from_metrics(body)
-                } else {
-                    crate::engine::strata::measurement_from_metrics(body)
-                }
+            let parsed = status.as_ref().and_then(|body| match ctx.engine.as_str() {
+                "basalt" => crate::engine::basalt::measurement_from_metrics(body),
+                "xolotl" => crate::engine::xolotl::measurement_from_metrics(body),
+                _ => crate::engine::strata::measurement_from_metrics(body),
             });
             let Some(measurement) = parsed else {
                 continue;

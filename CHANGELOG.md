@@ -18,6 +18,21 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
 ## Unreleased
 
+### Added
+
+- New engine `xolotl`: the harness supervises the Xolotl DeepSeek-V4.1-Flash
+  GSQ serve (`ds41_generate.exe` behind the `serve_ds41.py` shim) as one 256K
+  row. It launches `python -I <launcher> --engine strata --host 127.0.0.1
+  --config <staged> --port <slot>`, renders and stages its own serve profile
+  from the `xolotl_*` row knobs under `.simpleharn\xolotl-profiles`, refuses a
+  row that names a path the disk lacks (engine, launcher, weights, `--engram`
+  entries, `--rank`, a DSpark sidecar) at scan and spec by path, reuses the
+  Strata `/health` `loaded` readiness and `/metrics` `engine`-block booking,
+  and admits the row as a whole-card greedy resident with the expert-offload
+  host-RAM drain. The launch rides the custody sidecar like strata. Row keys
+  and the setup recipe are in `docs/reference/MODELS.md` and
+  `docs/reference/ENGINE-RECIPES.md`.
+
 ### Changed
 
 - The harness no longer publishes an unauthenticated control plane. Boot now

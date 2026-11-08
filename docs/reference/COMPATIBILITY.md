@@ -103,6 +103,12 @@ A request with no `model` field:
 
 ## 4. Pass-through
 
+A xolotl row crosses the same doors as a strata row: its shim serves the
+Strata HTTP contract on the slot port - the OpenAI routes, `GET /health`
+with the `loaded` flag for readiness, and `GET /metrics` with the `engine`
+block for the measured figure - so the rules below apply to it verbatim,
+including the self-reported-id rewrite in `model`.
+
 ### Response direction: byte-for-byte
 
 - Upstream status codes cross unchanged. A real upstream status is never

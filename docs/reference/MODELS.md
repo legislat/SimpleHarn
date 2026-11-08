@@ -21,6 +21,7 @@ engine-specific model keys.
 - [Strata engines](#strata-engines)
 - [Basalt engines](#basalt-engines)
 - [Maya engines](#maya-engines)
+- [Xolotl engines](#xolotl-engines)
 - [Ninfer engines](#ninfer-engines)
   - [autostart.sh template](#autostartsh-template)
 
@@ -76,7 +77,7 @@ in `ModelConf` beside the exe, then rescan or restart.
 |---|---|
 | `name` | Optional. The file stem is the model identity. A `name` that mismatches the stem is refused: rename the file or drop the key. |
 | `model` | GGUF path (or the engine's model URI). **Required for llama**. A basalt row requires an absolute `.basalt` pack path. |
-| `engine` | `llama` (default), `strata`, `basalt`, `maya`, or `ninfer`. |
+| `engine` | `llama` (default), `strata`, `basalt`, `maya`, `xolotl`, or `ninfer`. |
 | `category` | `WORK`/`RP`/`AUX`/`EMB`. |
 | `vram_gb` | Declared admission cost in GiB. `fixed` falls back to `file size x 1.15 + 2`. `exact` refuses without it. |
 | `cost` | `fixed` (default): the declared size binds admission. `greedy`: the model offloads to RAM/SSD; the size never refuses, but a launch floor is mandatory. `exact`: an engine-computed number, required and binding. |
@@ -87,8 +88,8 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `serve_model` | The expected engine-reported id. A mismatch records a warning; the harness never trusts it. |
 | `measured_gb` / `measured_gb_min` | The footprint range the harness measured while this model served: `measured_gb` is the high end and `measured_gb_min` the low end. The harness writes them back after a load. When `vram_gb` is absent, admission books `measured_gb`. The `measured_attribution` stamp decides whose number it is, and only these attributions book: `engine_report` (the container's own startup reservation), `engine_status` (a process engine's own status endpoint stated the footprint), and `per_process` (the witness attributed the bytes to the engine's own process tree). A `total_diff` figure (a free-memory delta) displays but never books. An **absent** stamp is grandfathered and books on `fixed` rows. `greedy` never books a measured figure, whatever the provenance, because it is offloaded by design. Ninfer rows also carry `measured_profile`: an `engine_report` figure is voided when the resolved profile identity changes. The identity is the profile name, plus the resolved `kv` for an override line. An edit to the line's `ctx`/`conc`/`kv_dtype` that leaves `kv` alone keeps the figure, because the reservation follows the KV pool. The write-back also records `measured_offload`, the `cpu_offload` state the pair was taken under; a later flip voids the pair. |
 | `is_embedding_model` | A truthy value forces category `EMB`. It conflicts with another explicit category. |
-| `context`, `batch`, `flash_attn`, and other flag keys | The harness maps these keys to the corresponding `llama-server` flags. `context` is **llama only**: on other engines it stays an inert key (the scan says so), and the page and API never display it there. The Ctx figure shown for a strata row is the `--max-context` figure in its `strata_args` (the `--max-context` token or the `--max-context=` spelling, digits only). For a ninfer row it is the max-context of the resolved profile. A `maya` row reports the digits-only `--max-context` figure from its L1 config's `args` (either spelling; the scan captures it), or no figure when the config spells none. |
-| `load_timeout` | Per-model readiness deadline in seconds. The llama default is 120; strata and ninfer cold starts commonly need 600 to 1200. For the basalt 482B class, `load_timeout: 1200` is the recommended starting point. A `maya` row must declare 300 or more: the scan refuses a missing or smaller value rather than let a healthy load meet the 120 s default. |
+| `context`, `batch`, `flash_attn`, and other flag keys | The harness maps these keys to the corresponding `llama-server` flags. `context` is **llama only**: on other engines it stays an inert key (the scan says so), and the page and API never display it there. The Ctx figure shown for a strata row is the `--max-context` figure in its `strata_args` (the `--max-context` token or the `--max-context=` spelling, digits only). For a ninfer row it is the max-context of the resolved profile. A `maya` row reports the digits-only `--max-context` figure from its L1 config's `args` (either spelling; the scan captures it), or no figure when the config spells none. A `xolotl` row reports the digits-only `--ctx` figure in its `xolotl_args` (the `--ctx` token or the `--ctx=` spelling). |
+| `load_timeout` | Per-model readiness deadline in seconds. The llama default is 120; strata and ninfer cold starts commonly need 600 to 1200. For the basalt 482B class, `load_timeout: 1200` is the recommended starting point. A `maya` row must declare 300 or more: the scan refuses a missing or smaller value rather than let a healthy load meet the 120 s default. A `xolotl` row must declare 600 or more, for the same reason (a cold 256K load requants and streams for minutes). |
 | `min_turn` | Minimum seconds of service before a different model's request may evict this model. The harness refuses to evict a model that has served less than `min_turn` seconds for a different model's request. Omitting the key means no guard. An explicit request for the model's own slot is never blocked. Range 1-86400 seconds; scan refuses a value outside it. A measured swap runs 14-45 s, so the knob stops a ping-pong of swaps between two hot models. |
 | `llama_server_exe` | **llama only.** Optional absolute path to an existing `llama-server.exe` that **only this row** uses. It selects a different llama.cpp fork for that model. The working directory follows the executable's parent, so the engine DLLs must sit beside the file. The global `llama_server_exe` config key stays the default for rows that set none (see `CONFIG.md`). See "Llama engines" below. |
 | `strata_exe` | **Required for strata** (template mode): the absolute path of the engine binary that the harness-rendered profile names. Its presence selects template mode. `serve_model` is also required, and it becomes the profile's served model name. |
@@ -112,6 +113,18 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `maya_python` | **Required for maya**: the interpreter `.exe`. It must be an absolute path to an existing file, and it is the program the harness launches. |
 | `maya_cwd` | **Required for maya**: the Project Maya root directory. It must be an absolute path to an existing directory. The `-m serve.server` module resolves from this working directory. |
 | `maya_config` | **Required for maya**: the operator's Maya JSON config. It must be an absolute path to an existing file. The harness reads it at every load, validates every path it names, and launches only its own scrubbed, staged copy. `serve_model` must equal the config's `model_name`, and `load_timeout` is required with a floor of 300 seconds. See "Maya engines" below. |
+| `xolotl_python` | **Required for xolotl**: the interpreter `.exe` the launch starts (`argv[0]`, run with `-I`). It must be an absolute path to an existing `.exe` file. |
+| `xolotl_launcher` | **Required for xolotl**: the absolute path to the existing `serve_ds41.py` shim the interpreter runs. |
+| `xolotl_cwd` | **Required for xolotl**: the engine tree root directory. It must be an absolute path to an existing directory. A relative `-m` in `xolotl_args` resolves against it (the weights-cache workaround), and a relative miss is refused naming the resolved path. |
+| `xolotl_exe` | **Required for xolotl**: the engine binary. It must be an absolute path to an existing file, and the rendered profile names it as `exe`. |
+| `xolotl_tokenizer` | **Required for xolotl**: the absolute tokenizer path that the rendered profile names. It must exist. |
+| `xolotl_args` | Comma-separated engine argv rendered into the profile's `args`; each entry is a whitespace-separated group of engine words (`--backend cuda`), and the render emits the engine's one-word-per-element array. The harness forces `--host` and `--port` and refuses them in this list. A relative `-m` must resolve against `xolotl_cwd`; `--engram` entries (split on `;`) and `--rank` must exist, each refusal naming the flag and the path. The Ctx figure is the digits-only `--ctx` figure here. |
+| `xolotl_env` | Whitespace-separated `NAME=VALUE` tokens rendered as the profile's `env`. Only uppercase `STRATA_`-prefixed engine settings and the curated `GGML_NO_BACKTRACE` pass; values are plain words or paths (no whitespace). `STRATA_SERVE_DSPARK` and `STRATA_DSPARK_KEEP` are existence-checked by path (the keep value's `:64`-style suffix is stripped first); absence means no DSpark. |
+| `xolotl_lib_dirs` | Comma-separated absolute directories rendered as the profile's `lib_dirs`. |
+| `xolotl_gpu` | Non-negative integer rendered as the profile's `gpu`. |
+| `xolotl_sampling` | Whitespace-separated `key=value` sampling defaults (number or bool) rendered as the profile's `sampling` dict. |
+| `xolotl_aliases` | Comma-separated served alias names rendered as the profile's `aliases` list. |
+| `xolotl_reasoning_budget` | Non-negative integer rendered as the profile's `reasoning_budget_tokens`. |
 | `extra_args` | **Closed allow-list, not a denial list.** The harness splits the value on whitespace and appends a word to the argv only when it is a reviewed option: `--embedding`, `--embeddings`, `--pooling <mode>`, `--temp`, `--top-k`, `--top-p`, `--min-p`, `--repeat-penalty`, `--seed`, `--warmup`, `--no-warmup`. The value words a reviewed option consumes are appended too. A value may not be option-shaped, so it cannot smuggle another flag. **Anything else is refused with the launch**, and the message names the word. The model, host, port, gpu-layers, jinja, api-key, lora, and rpc options and every other option are not on the list, so their absence refuses them and there is nothing to dodge. The harness appends its forced `--host 127.0.0.1`, `--port`, and `cpu_offload` `-ngl 0` after these args, and they win. |
 | `ninfer_image` | **Required for ninfer**: selects **template mode, the only mode**. The harness renders the canonical autostart script from your yaml, stages it into the distro, verifies it by distro-side checksum, and launches exactly **that** script. Its required companions are `ninfer_model_name` (the directory that holds the artifact), `ninfer_artifact` (the file inside it), and `ninfer_model_roots` (comma-separated absolute WSL directories, searched in order). Each must be a plain word, and the harness refuses a bad value and names the key. `ninfer_internal_port` (the port the container binds inside its own namespace) is optional and defaults to the harness internal number **8808**. That is the harness's 87xx family plus 100: clear of the manual 80xx world, the 87xx listeners, and the 181xx engine plan. It may not name a `protected_ports`, public-listener, or harness engine port. The manual/harness separation covers container-internal numbers too, so the harness refuses a row that borrows one at load, and the rescan names it. |
 | `ninfer_serve_cmd` | The server command inside the container (default `ninfer-serve`). |
@@ -150,6 +163,14 @@ and stay. The harness never renders a sidecar. A sidecar still held open by a
 live server can survive the best-effort delete on Windows. See "Maya engines"
 below.
 
+The harness renders xolotl rows the strata way: the row owns the fields and
+the harness writes the full serve profile at every load into
+`.simpleharn\xolotl-profiles` beside the exe (content-addressed
+`<model>-<hash>.json`, atomic write, keep-N prune) and rewrites `--config` to
+exactly that staged copy. The operator's own JSON is a value source for the
+row, never a launch input. `host`, `port`, and key fields are absent from the
+render by construction. See "Xolotl engines" below.
+
 The harness keeps unknown keys for reference and reports them as
 `unknown_key` warnings. The model still loads. `host` and `port` keys belong
 to the harness and are inert: the bind is forced to loopback, and the port
@@ -185,8 +206,8 @@ row to the other ladder at once. A `ram_gb` never moves a VRAM figure, and
 `vram_gb` never moves a RAM figure.
 
 **A greedy admit on an expert-offload engine frees host RAM first** (operator
-ruling 2026-11-06). The engines strata, basalt, and maya keep expert layers
-in host RAM. When the harness admits a `cost: greedy` row on one of these
+ruling 2026-11-06). The engines strata, basalt, maya, and xolotl keep expert
+layers in host RAM. When the harness admits a `cost: greedy` row on one of these
 engines and the gate has said yes, it first drains every CPU-resident row
 whose booked host RAM is greater than `expert_offload_evict_cpu_above_gb`,
 largest first, through the same confirmed release the VRAM planner uses. The
@@ -458,6 +479,74 @@ maya_config: <maya-dir>\maya-<row>.json
 ```
 
 A Maya engine starts only when you load it; booting the harness starts
+nothing.
+
+### Xolotl engines
+
+Xolotl models (`engine: xolotl`) run the `ds41_generate.exe` engine behind the
+`serve_ds41.py` shim. The harness launches
+`<xolotl_python> -I <xolotl_launcher> --engine strata --host 127.0.0.1 --config <staged> --port <assigned>`
+and waits in `load_timeout`. The shim reads the same serve-profile dialect the
+strata server does, so the HTTP contract is strata's: readiness is `GET
+/health` with status 200 **and** `loaded: true`, and the measured footprint
+books from the `engine` block of `GET /metrics` on the strata path. The `-I`
+switch keeps the interpreter out of environment-import noise; the shim changes
+its own working directory to the tree root and absolutizes `--config`.
+
+The row renders the profile (operator ruling 2026-11-08): the harness builds
+the serve JSON from the `xolotl_*` knobs, existence-checks every path the row
+names, stages it content-addressed under `.simpleharn\xolotl-profiles`, and
+rewrites `--config` to exactly that file. `serve_model` is required and
+becomes the profile's served name; `load_timeout` is required with a floor of
+600 seconds. The scan runs the same door as the adapter, so a row that names a
+path the disk lacks is refused at rescan, before any load gesture can evict a
+resident: the engine `exe`, the launcher, the tokenizer, a relative `-m` that
+does not resolve against `xolotl_cwd`, an `--engram` entry (the value splits
+on `;`), the `--rank` sidecar, or a named DSpark sidecar
+(`STRATA_SERVE_DSPARK`, `STRATA_DSPARK_KEEP`). A DSpark value may carry a
+`:float` keep-suffix; the path check strips it. Absence of the DSpark keys
+means no DSpark. The env allow-list is uppercase `STRATA_*` names plus the
+single curated `GGML_NO_BACKTRACE`; `--host` and `--port` in `xolotl_args` are
+refused as harness-forced argv.
+
+The memory posture is a whole-card greedy resident (ruling 3b):
+`cost: greedy` with `launch_only_with_at_least_vram_free: whole`. The load
+starts only when the rest of the card is free; the harness evicts nothing for
+it, and a request for the row's own slot replaces that occupant. The row
+carries the `expert_offload` cell: before the spawn the harness drains large
+CPU residents as it does for strata, basalt, and maya. Hybrid VRAM+RAM
+booking is deferred (the seam is recorded in `DECISIONS.md`); no host-RAM
+figure books the card today. One 256K row only (`--ctx 262144` with
+`--kv-q8`): the 32K serve and the manual instance on the operator's own port
+stay operator-side, and the two never coexist with a harness load (ruling 7).
+Harness loads bind only the 181xx engine plan.
+
+Like strata, the launch rides the custody sidecar: a crashed run's orphan
+tree is provably the harness's to reap at the next boot. The measured stamp
+appears on the page as a lower bound from the `engine` block components, and
+a greedy row never books a measured figure.
+
+Example row (placeholders, not machine facts):
+
+```yaml
+engine: xolotl
+category: WORK
+serve_model: <served-id>
+cost: greedy
+launch_only_with_at_least_vram_free: whole
+load_timeout: 900
+xolotl_python: <xolotl-dir>\.venv\Scripts\python.exe
+xolotl_launcher: <tools-dir>\serve_ds41.py
+xolotl_cwd: <model-root>
+xolotl_exe: <build-dir>\ds41_generate.exe
+xolotl_tokenizer: <model-root>\tokenizer
+xolotl_args: --backend cuda, --experts gpu, --ctx 262144, --kv-q8, -m model\<weights>.gguf
+xolotl_env: GGML_NO_BACKTRACE=1 STRATA_PRESTAGE_GIB=1.5
+xolotl_gpu: 0
+xolotl_reasoning_budget: 32768
+```
+
+A Xolotl engine starts only when you load it; booting the harness starts
 nothing.
 
 ### Ninfer engines

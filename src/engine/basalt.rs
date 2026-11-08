@@ -430,7 +430,7 @@ impl EngineAdapter for BasaltAdapter {
                 text,
             }),
             // Stage 1 rides the job object alone; the custody slice claims this
-            // launch next (custody_record_writes_are_the_strata_launches_alone
+            // launch next (custody_record_writes_are_the_custodied_launches_alone
             // pins that no other row may claim it before then).
             custody: None,
         })

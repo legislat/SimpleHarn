@@ -175,6 +175,45 @@ The harness runs `serve.server` directly, not `maya.py`. Keep the config
 `model_name` equal to `serve_model`; the harness ignores `host`, `port`,
 `api_key`, `cors_origins` and `idle_unload_s`.
 
+## Xolotl
+
+Upstream: a source install (no public release). The engine is
+`ds41_generate.exe`; the harness drives it through the `serve_ds41.py` shim,
+which speaks the Strata serve-profile dialect. Build the engine per its
+`WINDOWS.md`, and place the tokenizer, the weights and the sidecars under one
+model root.
+
+**Already installed.** Use the build that holds `ds41_generate.exe`, the
+directory that holds `serve_ds41.py` with its Python environment, and the
+model root. The relative `-m` cache workaround needs the model root as
+`xolotl_cwd`.
+
+```yaml
+name: my-xolotl
+engine: xolotl
+xolotl_python: <xolotl-dir>\.venv\Scripts\python.exe
+xolotl_launcher: <tools-dir>\serve_ds41.py
+xolotl_cwd: <model-root>
+xolotl_exe: <build-dir>\ds41_generate.exe
+xolotl_tokenizer: <model-root>\tokenizer
+serve_model: <served-id>
+xolotl_args: --backend cuda, --experts gpu, --ctx 262144, --kv-q8, -m model\<weights>.gguf
+xolotl_env: GGML_NO_BACKTRACE=1 STRATA_PRESTAGE_GIB=1.5
+xolotl_gpu: 0
+xolotl_reasoning_budget: 32768
+category: WORK
+cost: greedy
+launch_only_with_at_least_vram_free: whole
+load_timeout: 900
+```
+
+The harness renders its own serve profile from these knobs and stages it; the
+operator JSON a manual launch uses is a value source, never a launch input.
+`load_timeout` needs 600 seconds or more. A DSpark sidecar named in
+`xolotl_env` must exist on disk, or the scan refuses the row by path. A
+harness load and a manual instance on the operator's own port never coexist:
+stop the manual serve before loading the row.
+
 ## NInfer (ninfer)
 
 Upstream (container path): [Neroued/ninfer](https://github.com/Neroued/ninfer)

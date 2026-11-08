@@ -416,7 +416,7 @@ impl ActorState {
                 // witness loop below, so the stand-in readings keep flowing
                 // and a refused landing never consumes them (review
                 // 2026-10-31 M1).
-                if matches!(ctx.engine.as_str(), "basalt" | "strata") {
+                if matches!(ctx.engine.as_str(), "basalt" | "strata" | "xolotl") {
                     if let Some(booked) =
                         Self::report_measurement(&runtime, &tx, &ctx, &witness).await
                     {

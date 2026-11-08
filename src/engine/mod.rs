@@ -13,6 +13,7 @@ pub mod mock;
 pub mod ninfer;
 pub mod policy;
 pub mod strata;
+pub mod xolotl;
 
 use crate::model::ModelEntry;
 use crate::ownership::SpawnTicket;
@@ -195,7 +196,9 @@ pub enum Probe {
 /// ([`ninfer::effective_context`]); maya answers the digits-only figure the
 /// scan captured once from its L1 config's `--max-context` token, carried on
 /// the entry as the scan-derived `maya_max_context` raw key
-/// ([`maya::MayaAdapter`]; the display never re-reads the config file). Every
+/// ([`maya::MayaAdapter`]; the display never re-reads the config file). xolotl
+/// answers the figure riding its `xolotl_args` argv — the token after `--ctx`
+/// or the `--ctx=` suffix, digits only ([`xolotl::effective_context`]). Every
 /// other engine (mock, basalt) has no context statement the harness reads and
 /// answers `None`. A `None` ships as null: a stale `context:`
 /// line on a row whose engine never reads it is the dead key the scan reports,
@@ -216,6 +219,7 @@ pub fn effective_context(entry: &ModelEntry) -> Option<String> {
         "strata" => strata::effective_context(&entry.raw),
         crate::ownership::NINFER_ENGINE => ninfer::effective_context(&entry.raw),
         "maya" => entry.raw.get(maya::MAYA_MAX_CONTEXT_KEY).cloned(),
+        "xolotl" => xolotl::effective_context(&entry.raw),
         _ => None,
     }
 }
@@ -572,7 +576,8 @@ pub trait EngineRuntime: Send + Sync {
 }
 
 /// Production boot's adapter map (FINDINGS-10 \[3]): llama + strata + basalt +
-/// maya + ninfer always, the test-facing `mock` adapter only on the config's explicit
+/// maya + xolotl + ninfer always, the test-facing `mock` adapter only on the
+/// config's explicit
 /// `allow_mock_engine` grant (its argv is the bare name `mock-engine`, which
 /// `CreateProcessW` resolves through the harness's own directories). A stray
 /// `engine: mock` yaml without the grant therefore meets an adapter-lookup
@@ -610,6 +615,7 @@ pub fn default_adapters(
     );
     adapters.insert("basalt".to_string(), Arc::new(basalt::BasaltAdapter));
     adapters.insert("maya".to_string(), Arc::new(maya::MayaAdapter));
+    adapters.insert("xolotl".to_string(), Arc::new(xolotl::XolotlAdapter));
     adapters.insert(
         "ninfer".to_string(),
         Arc::new(
@@ -914,6 +920,25 @@ mod tests {
             None,
             "the carry is maya's alone: a foreign row never displays it"
         );
+        // The xolotl figure rides the engine's own argv in both spellings;
+        // the dead `context` row key is llama's and never a xolotl fallback.
+        assert_eq!(
+            effective_context(&entry(
+                "xolotl",
+                &[("xolotl_args", "--backend cuda, --ctx, 262144")]
+            ))
+            .as_deref(),
+            Some("262144")
+        );
+        assert_eq!(
+            effective_context(&entry("xolotl", &[("xolotl_args", "--ctx=262144")])).as_deref(),
+            Some("262144")
+        );
+        assert_eq!(
+            effective_context(&entry("xolotl", &[("context", "4096")])),
+            None,
+            "a xolotl row without the argv token displays nothing"
+        );
     }
 
     #[test]
@@ -922,14 +947,14 @@ mod tests {
         let ids: Vec<String> = default_adapters(&config).into_keys().collect();
         assert_eq!(
             ids,
-            ["basalt", "llama", "maya", "ninfer", "strata"],
+            ["basalt", "llama", "maya", "ninfer", "strata", "xolotl"],
             "default boot has no mock"
         );
         config.allow_mock_engine = true;
         let ids: Vec<String> = default_adapters(&config).into_keys().collect();
         assert_eq!(
             ids,
-            ["basalt", "llama", "maya", "mock", "ninfer", "strata"],
+            ["basalt", "llama", "maya", "mock", "ninfer", "strata", "xolotl"],
             "the grant adds mock"
         );
     }

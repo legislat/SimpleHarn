@@ -2,8 +2,9 @@
 //!
 //! Doctrine: *"external engines obey only harness-owned configuration"*. This is
 //! the single-source, compiled-in data table behind the L1/L2/L3 layering — one
-//! row per engine (`mock`, `llama`, `strata`, `basalt`, `maya`, `ninfer`), "one
-//! mechanism, six instances". Built as L3's **render+scrub contract**, not a validator: the
+//! row per engine (`mock`, `llama`, `strata`, `basalt`, `maya`, `xolotl`,
+//! `ninfer`), "one mechanism, seven instances". Built as L3's
+//! **render+scrub contract**, not a validator: the
 //! row says what the harness always writes (`forced_fields`) and what may never
 //! be admitted from L1 (`forbidden_words`); the per-engine renderers read the
 //! row instead of hiding the same facts in code. The validator falls out as the
@@ -62,6 +63,13 @@ pub(crate) const BASALT_RENDERED_PROFILES_ROOT: &str = ".simpleharn/basalt-profi
 /// off, and stages the scrubbed bytes here, and the
 /// spawn rewrites `--config` to exactly that file.
 pub(crate) const MAYA_RENDERED_PROFILES_ROOT: &str = ".simpleharn/maya-profiles";
+
+/// The Windows directory harness-rendered xolotl serve profiles stage into,
+/// as the tail of `TASK-XOLOTL-ADAPTER` (operator ruling 2026-11-08): the
+/// xolotl launch can never stage into strata's or basalt's pool and the
+/// reverse, and the spawn rewrites `--config` to exactly that file
+/// (`process::rendered_profiles_dir` resolves it).
+pub(crate) const XOLOTL_RENDERED_PROFILES_ROOT: &str = ".simpleharn/xolotl-profiles";
 
 /// The CLOSED allow-list of `extra_args` option words an operator may pass
 /// through to llama-server (FINDINGS2-0910 [1]): the inversion of the old
@@ -629,6 +637,25 @@ const BASALT_KNOBS: &[&str] = &[
 
 const MAYA_KNOBS: &[&str] = &["maya_python", "maya_cwd", "maya_config"];
 
+/// The xolotl row's knob surface (ruling 2026-11-08): the strata shape
+/// mirrored onto the `serve_ds41.py` shim's dialect — required launch paths,
+/// the open args/env knobs, and the two profile keys strata does not spell
+/// today (`aliases`, `reasoning_budget_tokens`).
+const XOLOTL_KNOBS: &[&str] = &[
+    "xolotl_python",
+    "xolotl_launcher",
+    "xolotl_cwd",
+    "xolotl_exe",
+    "xolotl_tokenizer",
+    "xolotl_args",
+    "xolotl_env",
+    "xolotl_lib_dirs",
+    "xolotl_gpu",
+    "xolotl_sampling",
+    "xolotl_aliases",
+    "xolotl_reasoning_budget",
+];
+
 const NINFER_KNOBS: &[&str] = &[
     "ninfer_autostart",
     "ninfer_container",
@@ -1102,12 +1129,65 @@ static MAYA_ROW: EnginePolicy = EnginePolicy {
     expert_offload: true,
 };
 
+static XOLOTL_ROW: EnginePolicy = EnginePolicy {
+    id: "xolotl",
+    forced_fields: &[
+        ForcedField {
+            flag: "--engine",
+            // The shim's serve dialect: it serves the strata HTTP contract,
+            // and the tag selects that mode inside `serve_ds41.py`.
+            value: ForcedValue::Literal("strata"),
+        },
+        ForcedField {
+            flag: "--host",
+            // The same loopback literal every process-engine row forces: the
+            // rendered profile carries no `host`, and the bind is harness
+            // argv (22[1] clean by construction, the strata row 19 posture).
+            value: ForcedValue::Literal(super::llama::LLAMA_ENGINE_HOST),
+        },
+        ForcedField {
+            flag: "--config",
+            value: ForcedValue::OperatorData,
+        },
+        ForcedField {
+            flag: "--port",
+            value: ForcedValue::SlotPort,
+        },
+    ],
+    // No operator word reaches the xolotl argv (template mode renders the
+    // whole profile from validated yaml values — the strata row 19 posture),
+    // so there is nothing to scrub by name; the cells below govern the
+    // locations.
+    forbidden_words: &[],
+    allow_words: &[],
+    extra_words: None,
+    knobs: XOLOTL_KNOBS,
+    path_markers: &["--config"],
+    custody_exec_roots: &[],
+    // The data cell is load-bearing from the first stage: the engine's serve
+    // profile is the harness-rendered file under
+    // [`XOLOTL_RENDERED_PROFILES_ROOT`], and the spawn rewrites `--config` to
+    // exactly that path — an operator JSON is a value source, never a launch
+    // input (ruling 2).
+    custody_data_roots: &[XOLOTL_RENDERED_PROFILES_ROOT],
+    serve_template: None,
+    // No harness-config defaults exist for xolotl (the row names every path
+    // explicitly, ruling 5); the config-parity test alarms if that changes.
+    config_knobs: &[],
+    supports_fit: false,
+    // The GSQ serve keeps only a CPU expert tier resident above the GPU
+    // hold (the strata-family posture, ruling 3b): a greedy admit on this
+    // engine may reclaim host RAM from large CPU residents before spawn.
+    expert_offload: true,
+};
+
 static POLICIES: &[&EnginePolicy] = &[
     &MOCK_ROW,
     &LLAMA_ROW,
     &STRATA_ROW,
     &BASALT_ROW,
     &MAYA_ROW,
+    &XOLOTL_ROW,
     &NINFER_ROW,
 ];
 
@@ -1366,6 +1446,9 @@ mod tests {
             "maya" => crate::engine::maya::MayaAdapter
                 .spec(entry, 18109)
                 .expect("maya renders"),
+            "xolotl" => crate::engine::xolotl::XolotlAdapter
+                .spec(entry, 18109)
+                .expect("xolotl renders"),
             "ninfer" => crate::engine::ninfer::NinferAdapter::new("Ubuntu", "ops")
                 .spec(entry, 18109)
                 .expect("ninfer renders"),
@@ -1463,6 +1546,40 @@ mod tests {
                 );
                 model.serve_model = Some("maya-policy".to_string());
                 model.load_timeout_s = Some(900);
+                model
+            }
+            "xolotl" => {
+                let dir = crate::testutil::temp_dir("policy-xolotl");
+                std::fs::write(dir.join("python.exe"), b"p").expect("python fixture");
+                std::fs::write(dir.join("serve_ds41.py"), b"").expect("launcher fixture");
+                std::fs::write(dir.join("ds41_generate.exe"), b"e").expect("engine fixture");
+                std::fs::write(dir.join("tokenizer.bin"), b"t").expect("tokenizer fixture");
+                let mut model = entry(
+                    "xolotl",
+                    &[
+                        (
+                            "xolotl_python",
+                            dir.join("python.exe").to_str().expect("utf-8"),
+                        ),
+                        (
+                            "xolotl_launcher",
+                            dir.join("serve_ds41.py").to_str().expect("utf-8"),
+                        ),
+                        ("xolotl_cwd", dir.to_str().expect("utf-8")),
+                        (
+                            "xolotl_exe",
+                            dir.join("ds41_generate.exe").to_str().expect("utf-8"),
+                        ),
+                        (
+                            "xolotl_tokenizer",
+                            dir.join("tokenizer.bin").to_str().expect("utf-8"),
+                        ),
+                        ("xolotl_args", "--backend cuda, --ctx 262144"),
+                        ("load_timeout", "600"),
+                    ],
+                );
+                model.serve_model = Some("xolotl-policy".to_string());
+                model.load_timeout_s = Some(600);
                 model
             }
             "ninfer" => entry(
@@ -1839,23 +1956,26 @@ mod tests {
         }
     }
 
-    /// Custody (slice 10b): only the strata row's launches ride the harness
+    /// Custody (slice 10b): the strata and xolotl launches ride the harness
     /// custody sidecar — the runtime records exactly what the spec declares.
-    /// Ninfer's evidence is the container claim ledger; llama and mock ride
-    /// the job object's crash guarantee alone. A row growing `custody`
-    /// without the sweep knowing its engine id would fail here first.
+    /// (Basalt and maya stage 1 rode the job object alone; their custody
+    /// claims land in their own slices.) Ninfer's evidence is the container
+    /// claim ledger; llama and mock ride the job object's crash guarantee
+    /// alone. A row growing `custody` without the sweep knowing its engine id
+    /// would fail here first.
     #[test]
-    fn custody_record_writes_are_the_strata_launches_alone() {
+    fn custody_record_writes_are_the_custodied_launches_alone() {
         for row in all() {
             let spec = render(&fixture(row.id));
-            if row.id == "strata" {
+            if matches!(row.id, "strata" | "xolotl") {
                 assert_eq!(
                     spec.custody.as_deref(),
-                    Some("strata"),
-                    "the strata launch must be custody-tracked"
+                    Some(row.id),
+                    "the `{}` launch must be custody-tracked",
+                    row.id
                 );
                 assert!(
-                    engine_policy("strata").is_some(),
+                    engine_policy(row.id).is_some(),
                     "a custody engine must answer to a compiled-in row"
                 );
             } else {
@@ -1870,14 +1990,14 @@ mod tests {
 
     /// TASK-RAM-RECLAIM (operator ruling 2026-11-06): the `expert_offload`
     /// cell is the single answer for "offloads experts to host RAM" —
-    /// strata, basalt and maya carry it; llama, ninfer and mock never do,
-    /// so the victim planner never has to match an engine name. An unknown
-    /// id answers `false` (no row, no fact).
+    /// strata, basalt, maya and xolotl carry it; llama, ninfer and mock
+    /// never do, so the victim planner never has to match an engine name. An
+    /// unknown id answers `false` (no row, no fact).
     /// Falsifier: flip any row's cell in the table and its leg fails here.
     #[test]
     fn expert_offload_answers_from_the_cell_not_an_engine_name() {
         for row in all() {
-            let expected = matches!(row.id, "strata" | "basalt" | "maya");
+            let expected = matches!(row.id, "strata" | "basalt" | "maya" | "xolotl");
             assert_eq!(
                 row.expert_offload, expected,
                 "engine `{}` carries the wrong `expert_offload` cell",
@@ -1896,7 +2016,7 @@ mod tests {
         );
     }
 
-    /// "One mechanism, six instances": the table and the adapter registry
+    /// "One mechanism, seven instances": the table and the adapter registry
     /// must know the same engine ids — a new adapter without a row, or a row
     /// without an adapter, is exactly the fork this chunk exists to close.
     #[test]
@@ -1990,7 +2110,7 @@ mod tests {
             let text = error.to_string();
             assert!(text.contains(id), "refusal names the engine: {text}");
         }
-        for id in ["mock", "strata"] {
+        for id in ["mock", "strata", "xolotl"] {
             assert!(
                 engine_policy(id).expect("row").extra_words.is_none(),
                 "`{id}` admits no operator word and must carry no contract"
