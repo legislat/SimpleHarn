@@ -130,6 +130,11 @@ A release is a task with acceptance criteria. Run the steps in this order:
 6. Create the annotated tag.
 7. Run `scripts/release-check.ps1` without `-Prepare` and require PASS. It confirms the
    tag equals the version.
+7b. Feature release (`x.y.0`) only: run the release card suite in a freed window
+    (`release-card/run.ps1 -Version <tag>` from the private handoff repository) and
+    require every leg to PASS or be named BLOCKED with its reason. Patch releases are
+    exempt. The suite never substitutes for the cardless gate; it proves hardware
+    behavior that CI cannot.
 8. Push the commits and the tag. Each push needs operator approval.
 9. Build the artifact, record its hash, stage the operator copy per "Build and release
    directories" below, deploy it, and verify the boot.

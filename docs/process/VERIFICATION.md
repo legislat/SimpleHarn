@@ -74,6 +74,16 @@ no port bind.
 | Tag facts | `v*` tag push, release published | release facts agree and a published release carries an artifact |
 | Card gate | operator-freed window only | card behavior |
 
+## The release card gate
+
+A feature release (`x.y.0`) runs the agent-driven card suite from the private handoff
+repository (`release-card/run.ps1 -Version <tag>`) in an operator-freed window. It proves
+hardware behavior: artifact identity, a tiny-model end-to-end leg, swap, timeout, crash
+classification, restart custody, the measured stamp, and an unreachable-floor refusal.
+Every leg reports PASS, FAIL, or BLOCKED with its reason; a release is blocked unless a leg
+is PASS or BLOCKED. Patch releases are exempt. It is neither the cardless gate nor a
+substitute for a card verdict, and no leg may report PASS without running.
+
 ## Scheduled checks
 
 These checks are not part of the cardless gate. Run them on the named schedule:
