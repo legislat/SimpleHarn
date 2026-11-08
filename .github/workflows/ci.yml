@@ -61,6 +61,46 @@ jobs:
           RUSTUP_TOOLCHAIN: "1.88.0"
         run: cargo +1.88.0 check --locked --all-targets
 
+  # Linux port (P1): headless build, unit/contract suite, lint, format. No GPU,
+  # no engines, no models; card legs stay BLOCKED until a Linux GPU exists.
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check
+        run: cargo check --locked --all-targets
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Format
+        run: cargo fmt --check
+
+  # The Linux leg of the MSRV gate: the crate must build on 1.88 here too.
+  msrv-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check on MSRV
+        env:
+          RUSTUP_TOOLCHAIN: "1.88.0"
+        run: cargo +1.88.0 check --locked --all-targets
+
   # Dependency policy: advisories, licenses, bans, and sources (deny.toml).
   deny:
     runs-on: ubuntu-latest

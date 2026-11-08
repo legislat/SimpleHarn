@@ -81,17 +81,20 @@ can parse them reliably. The trade is that some pages read terse.
 
 ### From source
 
-You need Rust on Windows. `rust-toolchain.toml` pins the build toolchain to
-Rust 1.98.1. rustup installs the pinned toolchain on the first build. The
-minimum supported Rust version (MSRV) is 1.88. CI checks the crate on the
-MSRV.
+You need Rust. `rust-toolchain.toml` pins the build toolchain to Rust 1.98.1.
+rustup installs the pinned toolchain on the first build. The minimum supported
+Rust version (MSRV) is 1.88. CI checks the crate on the MSRV on Windows and
+Linux.
 
 ```powershell
 cargo build --release --features tray
 ```
 
 The tray is an optional feature. Omit it for a headless build; the harness then
-runs without the icon and logs one warning if `tray_enabled` is set.
+runs without the icon and logs one warning if `tray_enabled` is set. On Linux
+the headless build is the only supported form today: the port is in progress
+(build, unit and contract tests, and CI checks run green; the engine adapters
+and the release artifact follow, llama and strata first).
 
 1. Put one flat `.yaml` file per model in `ModelConf` beside the built exe. The harness
    creates the folder on boot if it is missing. Start from a ready row in
@@ -216,7 +219,8 @@ the operator's machine, the setup proof that
 [COMPATIBILITY.md](docs/reference/COMPATIBILITY.md) carry. An engine absent
 from that proof is unproven, not broken. The Linux column states what the
 engine upstreams document, from upstream docs read 2026-11-08. The harness
-ships Windows only; see Plans below.
+ships Windows only today; the Linux port is in progress (headless build and CI
+checks; no Linux artifact yet).
 
 | Engine | Verified here | Linux |
 |---|---|---|
@@ -265,7 +269,7 @@ Found a problem or have an idea? Open an issue. Contributions are welcome; start
 ## Plans
 
 - Multiple GPU support
-- Possible Linux fork
+- Linux support (in progress: headless build, CI checks, llama and strata first)
 - More engines
 - UI and user experience enhancements
 

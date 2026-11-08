@@ -272,6 +272,10 @@ the renamed wire values.
 | Minimal | Windows | one NVIDIA GPU that fits the model plus the reserve | llama.cpp only | pre-v1.3.1 working tree (pre-rename) | 2026-11-05 | The `README.md` quick start; cardless llama adapter tests in `src/engine/llama.rs`. No isolated live leg on record |
 | CPU-only llama | Windows | one NVIDIA GPU, 72 GiB; loads booked host RAM, not the card | llama.cpp only, CPU rows | v1.3.0 (run on pre-tag `9e7ddb7`) | 2026-11-05 | `docs/evidence/v1.3.0-card-run.md` |
 
+Linux has no isolated live leg on record. The port builds headless and runs the
+unit and contract suites in CI; engine adapters land in phases (llama and strata
+first), and card legs stay BLOCKED until a Linux GPU machine exists.
+
 ## 9. Glossary
 
 - Admission: the gate's decision to admit or refuse one load against live

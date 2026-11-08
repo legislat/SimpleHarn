@@ -15,12 +15,14 @@ diagnosis. The operator recovery sequences for these cases live in
 [RUNBOOK.md](RUNBOOK.md). Log retention counts live in the Log retention
 section of `docs/reference/OPERATIONS.md`.
 
-- **A port will not bind.** The status line and the log name the port. If a
-  Hyper-V/WSL2 dynamic reservation covers the port, the harness already
-  reports `port N lies in the reserved range`. The command
+- **A port will not bind.** The status line and the log name the port. On
+  Windows, if a Hyper-V/WSL2 dynamic reservation covers the port, the harness
+  already reports `port N lies in the reserved range`. The command
   `netsh interface ipv4 show excludedportrange protocol=tcp` shows all such
   ranges. Reserve your port permanently with
   `netsh int ipv4 add excludedportrange protocol=tcp startport=N numberofports=1`.
+  Linux has no `netsh` reservation; a bind failure there names the port, and
+  `ss -ltnp` shows the listener that holds it.
 - **A model file is missing at boot.** The scan drops a `llama` row whose
   GGUF is gone and reports `! <file>.yaml: model file not found: <path>`. A
   row that publishes but cannot load leads its log line with `!`. Either
