@@ -1,0 +1,71 @@
+# Release-facts CI. Cardless: no card tests, no model loads, no engine start,
+# and no port bind in either job; the card gate stays operator-only per
+# docs/process/VERIFICATION.md.
+#
+# Trigger A (tag push, v*): re-runs the release facts on the pushed tag, the
+# same way step 7 of the release section in docs/process/GIT_WORKFLOW.md
+# requires, so a tag that disagrees with Cargo.toml, the changelog, the README
+# claim, or the doc facts cannot pass unseen.
+#
+# Trigger B (release published): a published GitHub release must carry an
+# artifact; a release with zero assets fails with a named defect. No
+# third-party actions run in this job; gh ships on the runner.
+name: Release facts
+
+on:
+  push:
+    tags: ['v*']
+  release:
+    types: [published]
+
+jobs:
+  # Trigger A. fetch-depth: 0 makes every tag visible, so release-check.ps1
+  # can resolve the latest tag on the detached tag checkout.
+  tag-facts:
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@1.98.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Doc facts
+        shell: pwsh
+        run: node scripts/check-doc-facts.mjs
+
+      # Without -Prepare: the pushed tag must already equal v<Cargo version>.
+      - name: Release check (tag mode)
+        shell: pwsh
+        run: ./scripts/release-check.ps1
+
+  # Trigger B. GITHUB_REF_NAME is the release tag name on a release event.
+  # An API or token failure exits with its own message, so a zero-asset
+  # verdict and an unreadable release are never conflated.
+  release-artifact:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Published release carries an artifact
+        shell: bash
+        run: |
+          status=0
+          assets=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length') || status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::error::gh release view for $GITHUB_REF_NAME failed with exit $status; the asset list is unreadable, which is an API or token defect, not a zero-asset release."
+            exit 1
+          fi
+          if [ "$assets" -eq 0 ]; then
+            echo "::error::published release $GITHUB_REF_NAME carries zero assets; a published release must attach the release zip artifact."
+            exit 1
+          fi
+          echo "PASS: published release $GITHUB_REF_NAME carries $assets asset(s)."

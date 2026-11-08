@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [agent, reviewer, release-operator]
 source_of_truth_for: [gate, evidence]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-08
 review_trigger: behavior-change, release
 ---
 
@@ -52,6 +52,27 @@ Manual test builds go to the one test-build directory named in
 build when its test concludes, so no test build outlives its evidence. The sweep of the
 other build and version directories runs after each build or release. That file owns the
 full rule.
+
+## The tag facts run
+
+A `v*` tag push and a published release trigger `.github/workflows/release-facts.yml`.
+This run is neither the cardless gate nor the card gate. It is a release-automated
+facts check, and it is cardless: no card tests, no model loads, no engine start, and
+no port bind.
+
+- Tag push: the job runs `node scripts/check-doc-facts.mjs` and
+  `scripts/release-check.ps1` without `-Prepare`, so the pushed tag must already
+  agree with the release facts.
+- Release published: a guard fails a release that carries zero assets. A published
+  release must carry an artifact.
+- The workflow log is the record. The run needs no `handoff/evidence/` directory, and
+  it never substitutes for a card gate verdict.
+
+| Run | Trigger | What it proves |
+|---|---|---|
+| Cardless gate | every push, pull request, and local run | code and docs pass the cardless commands above |
+| Tag facts | `v*` tag push, release published | release facts agree and a published release carries an artifact |
+| Card gate | operator-freed window only | card behavior |
 
 ## Scheduled checks
 

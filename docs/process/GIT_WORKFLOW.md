@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [agent, reviewer, release-operator]
 source_of_truth_for: [git, release]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-08
 review_trigger: behavior-change, release
 ---
 
@@ -149,6 +149,13 @@ Rules:
   `docs/**`, including the decision ledger). Documented engine defaults stay allowed.
 - The README release and asset facts are checked by `node scripts/check-doc-facts.mjs`.
   CI runs it as a step, and `scripts/release-check.ps1` runs it in the release check.
+- A `v*` tag push triggers `.github/workflows/release-facts.yml`. That job runs
+  `node scripts/check-doc-facts.mjs` and `scripts/release-check.ps1` without `-Prepare`
+  on the pushed tag, so a tag that disagrees with the release facts cannot pass unseen.
+  The run is cardless.
+- A published GitHub release triggers the artifact guard in the same workflow. A
+  published release with zero assets fails: a published release must carry the release
+  zip artifact. The guard is cardless.
 
 ### Build and release directories
 
