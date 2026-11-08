@@ -555,9 +555,10 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<XolotlRow, XolotlRowErr
         path: path.to_string(),
     };
     // The interpreter is `argv[0]`: the one yaml string that chooses which
-    // program CreateProcessW starts, so it must be an absolute, existing
-    // `.exe` FILE (the strata shape floor — a batch shim renamed to `.exe`
-    // still meets the launch; the floor refuses typos, not malice).
+    // program the host starts, so it must be an absolute, existing FILE
+    // (`.exe`-named on Windows — the strata shape floor; a batch shim renamed
+    // to `.exe` still meets the launch there, and the floor refuses typos,
+    // not malice).
     let Some(python) = knob(model, "xolotl_python") else {
         return Err(missing("xolotl_python"));
     };
@@ -578,6 +579,7 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<XolotlRow, XolotlRowErr
         }
         Ok(_) => {}
     }
+    #[cfg(windows)]
     if !python_path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -1007,6 +1009,23 @@ mod tests {
         path.to_str().expect("utf-8 fixture path")
     }
 
+    /// A host-absolute path the disk cannot hold, so the absolute-shape floor
+    /// passes and the existence door refuses the same way on every host (the
+    /// Windows spelling keeps the original `C:\xolotl\...` fixture shape).
+    fn absent_path(parts: &[&str]) -> String {
+        let (root, sep) = if cfg!(windows) {
+            (r"C:\xolotl", '\\')
+        } else {
+            ("/xolotl-absent", '/')
+        };
+        let mut out = root.to_string();
+        for part in parts {
+            out.push(sep);
+            out.push_str(part);
+        }
+        out
+    }
+
     /// The minimal valid row: an existing interpreter, launcher, engine and
     /// tokenizer inside one temp tree root, and a relative `-m` that
     /// resolves against that root (the tested cache-workaround shape).
@@ -1219,7 +1238,10 @@ mod tests {
 
     #[test]
     fn paths_that_are_not_files_refuse_naming_key_and_path() {
-        let err = spec_err_of(&[("xolotl_exe", "C:\\xolotl\\ghost\\ds41_generate.exe")]);
+        let err = spec_err_of(&[(
+            "xolotl_exe",
+            absent_path(&["ghost", "ds41_generate.exe"]).as_str(),
+        )]);
         let EngineError::Rejected { reason, .. } = err else {
             panic!("a missing engine exe is Rejected, got {err:?}");
         };
@@ -1227,7 +1249,7 @@ mod tests {
             reason.contains("xolotl_exe") && reason.contains("ds41_generate.exe"),
             "{reason}"
         );
-        let err = spec_err_of(&[("xolotl_python", "C:\\xolotl\\nope\\python.exe")]);
+        let err = spec_err_of(&[("xolotl_python", &absent_path(&["nope", "python.exe"]))]);
         let EngineError::Rejected { reason, .. } = err else {
             panic!("a missing interpreter is Rejected, got {err:?}");
         };
@@ -1238,18 +1260,24 @@ mod tests {
             panic!("a directory interpreter is Rejected, got {err:?}");
         };
         assert!(reason.contains("xolotl_python"), "{reason}");
-        let dir = crate::testutil::temp_dir("xolotl-bat-as-python");
-        let shim = dir.join("shim.bat");
-        std::fs::write(&shim, b"@echo off").expect("bat fixture");
-        let err = spec_err_of(&[("xolotl_python", path_text(&shim))]);
-        let EngineError::Rejected { reason, .. } = err else {
-            panic!("a non-.exe interpreter is Rejected, got {err:?}");
-        };
-        assert!(
-            reason.contains(".exe") && reason.contains("xolotl_python"),
-            "{reason}"
-        );
-        let err = spec_err_of(&[("xolotl_cwd", "C:\\xolotl\\no-such-root")]);
+        // The `.exe` name rule is the Windows floor: on a unix host any
+        // existing regular file is an acceptable interpreter, so there is
+        // no non-.exe shim leg to refuse here.
+        #[cfg(windows)]
+        {
+            let dir = crate::testutil::temp_dir("xolotl-bat-as-python");
+            let shim = dir.join("shim.bat");
+            std::fs::write(&shim, b"@echo off").expect("bat fixture");
+            let err = spec_err_of(&[("xolotl_python", path_text(&shim))]);
+            let EngineError::Rejected { reason, .. } = err else {
+                panic!("a non-.exe interpreter is Rejected, got {err:?}");
+            };
+            assert!(
+                reason.contains(".exe") && reason.contains("xolotl_python"),
+                "{reason}"
+            );
+        }
+        let err = spec_err_of(&[("xolotl_cwd", &absent_path(&["no-such-root"]))]);
         let EngineError::Rejected { reason, .. } = err else {
             panic!("a missing cwd is Rejected, got {err:?}");
         };
@@ -1315,7 +1343,10 @@ mod tests {
             reason.contains("--engram") && reason.contains("engram-layers.14"),
             "{reason}"
         );
-        let err = spec_err_of(&[("xolotl_args", "--rank C:\\xolotl\\model\\rank.bin")]);
+        let err = spec_err_of(&[(
+            "xolotl_args",
+            &format!("--rank {}", absent_path(&["model", "rank.bin"])),
+        )]);
         let EngineError::Rejected { reason, .. } = err else {
             panic!("a missing rank sidecar is Rejected, got {err:?}");
         };
@@ -1361,7 +1392,10 @@ mod tests {
     fn a_named_dspark_the_disk_lacks_refuses_by_path() {
         let err = spec_err_of(&[(
             "xolotl_env",
-            "STRATA_SERVE_DSPARK=D:\\xolotl\\dspark\\gone.Q2_K.gguf",
+            &format!(
+                "STRATA_SERVE_DSPARK={}",
+                absent_path(&["dspark", "gone.Q2_K.gguf"])
+            ),
         )]);
         let EngineError::Rejected { reason, .. } = err else {
             panic!("a missing DSpark sidecar is Rejected, got {err:?}");
@@ -1378,7 +1412,8 @@ mod tests {
         let err = spec_err_of(&[(
             "xolotl_env",
             &format!(
-                "STRATA_SERVE_DSPARK=D:\\xolotl\\gone.gguf STRATA_DSPARK_KEEP={}:64",
+                "STRATA_SERVE_DSPARK={} STRATA_DSPARK_KEEP={}:64",
+                absent_path(&["gone.gguf"]),
                 path_text(&keep)
             ),
         )]);

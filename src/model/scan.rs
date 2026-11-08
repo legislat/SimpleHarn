@@ -2468,10 +2468,16 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("temp dir");
         std::fs::write(dir.join("strata.exe"), b"x").expect("write exe");
         std::fs::write(dir.join("tokenizer.bin"), b"t").expect("write tokenizer");
+        // The walk only judges this host's absolute shapes, so the doomed
+        // path must be spelled in the host grammar to reach the stat.
+        #[cfg(windows)]
+        let doomed = r"Z:\nope\doomed.gguf";
+        #[cfg(not(windows))]
+        let doomed = "/nope/scan-doomed.gguf";
         let yaml = format!(
             "engine: strata\nvram_gb: 8\nserve_model: m\nstrata_exe: {}\n\
              strata_tokenizer: {}\nstrata_cwd: {}\n\
-             strata_args: --native, Z:\\nope\\doomed.gguf\n",
+             strata_args: --native, {doomed}\n",
             dir.join("strata.exe").display(),
             dir.join("tokenizer.bin").display(),
             dir.display(),
@@ -2949,9 +2955,15 @@ mod tests {
             "engine: llama\nmodel: m.gguf\nllama_server_exe: \"   \"\n",
         )
         .expect("write blank");
+        // The gate checks this host's absolute-path shape, so the absolute
+        // leg must be spelled in the host grammar to exercise the pass door.
+        #[cfg(windows)]
+        let abs_override = "D:/llama/llama-server.exe";
+        #[cfg(not(windows))]
+        let abs_override = "/opt/llama/llama-server";
         std::fs::write(
             dir.join("absolute.yaml"),
-            "engine: llama\nmodel: m.gguf\nllama_server_exe: D:/llama/llama-server.exe\n",
+            format!("engine: llama\nmodel: m.gguf\nllama_server_exe: {abs_override}\n"),
         )
         .expect("write absolute");
         std::fs::write(
@@ -3627,13 +3639,15 @@ mod tests {
         let dir = crate::testutil::temp_dir("scan-maya-missing-config");
         std::fs::create_dir_all(&dir).expect("temp dir");
         let config = maya_install(&dir);
+        // Maya's door judges this host's absolute shape, so the absent config
+        // must be spelled in the host grammar to reach the existence check.
+        #[cfg(windows)]
+        let absent = "Z:/absent-maya.json";
+        #[cfg(not(windows))]
+        let absent = "/nope/absent-maya.json";
         std::fs::write(
             dir.join("row.yaml"),
-            maya_yaml(
-                &dir,
-                &config,
-                &[("maya_config", Some("Z:/absent-maya.json"))],
-            ),
+            maya_yaml(&dir, &config, &[("maya_config", Some(absent))]),
         )
         .expect("write");
         let catalog = scan_dir(&dir);
@@ -4169,7 +4183,10 @@ mod tests {
     /// line, so the rows no longer carry it. Every entry is pinned by file and
     /// kind: a live file growing any other report, or an unplanned new file,
     /// fails here, and the ledger shrinks as each cleanup gesture lands.
-    /// Skipped when the dir is absent.
+    /// Windows-only: the live dir is this machine's Windows ModelConf — its
+    /// `F:\` paths cannot validate as absolute on another host. Skipped when
+    /// the dir is absent.
+    #[cfg(windows)]
     #[test]
     fn the_live_modelconf_directory_scans_fully_clean() {
         let dir = Path::new("ModelConf");

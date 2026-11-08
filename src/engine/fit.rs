@@ -639,11 +639,16 @@ mod tests {
 
     #[test]
     fn the_tool_is_the_config_sibling() {
-        let exe = Path::new(r"D:\llama\llama-server.exe");
-        assert_eq!(
-            resolve_tool(exe),
-            PathBuf::from(r"D:\llama\llama-fit-params.exe")
-        );
+        // The sibling rule is pure path derivation, so the pin needs only a
+        // directory this host parses; the server exe carries this host's
+        // exe-suffix shape and the tool keeps the compiled-in name.
+        let dir = Path::new(if cfg!(windows) {
+            r"D:\llama"
+        } else {
+            "/opt/llama"
+        });
+        let exe = dir.join(format!("llama-server{}", std::env::consts::EXE_SUFFIX));
+        assert_eq!(resolve_tool(&exe), dir.join(FIT_TOOL_NAME));
     }
 
     #[test]

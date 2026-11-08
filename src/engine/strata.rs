@@ -27,8 +27,9 @@
 //! loads the model by name.
 //!
 //! What the adapter validates (FINDINGS2-0910 \[5] floor, 2026-10-29):
-//! `strata_python` must be an existing `.exe` **file** (it is the launched
-//! program) and `strata_cwd` an existing directory. The rendered profile's
+//! `strata_python` must be an existing program **file** (`.exe`-named on
+//! Windows; it is the launched program) and `strata_cwd` an existing
+//! directory. The rendered profile's
 //! contents are checked too — `validate_profile_text` runs at scan and again
 //! at spec, so a value that references a path the disk lacks is refused before
 //! the child starts, never launched on.
@@ -178,11 +179,12 @@ fn walk_profile(value: &serde_json::Value, key: &str) -> Option<(String, String)
     }
 }
 
-/// The absolute-path shape this check judges: a Windows drive path (`X:\` or
-/// `X:/`) or a UNC (`\\server\share`), never a relative path (exempt: the engine
-/// resolves those against the profile dir). A trailing `:float` is the llama
-/// control-vector scale and is stripped before the existence check. Shared by
-/// the xolotl adapter's same-shape doors.
+/// The absolute-path shape this check judges on this host: on Windows a drive
+/// path (`X:\` or `X:/`) or a UNC (`\\server\share`), on unix a host-absolute
+/// path — never a relative path (exempt: the engine resolves those against the
+/// profile dir). A trailing `:float` is the llama control-vector scale and is
+/// stripped before the existence check. Shared by the xolotl adapter's
+/// same-shape doors.
 pub(crate) fn profile_path_candidate(text: &str) -> Option<String> {
     if !is_absolute_shape(text) {
         return None;
@@ -195,15 +197,24 @@ pub(crate) fn profile_path_candidate(text: &str) -> Option<String> {
     Some(text.to_string())
 }
 
-/// Drive-letter or UNC absolute-path shape (checked bytewise: the grammar is ASCII).
-/// Shared by the xolotl adapter's shape floor.
+/// The absolute-path shape of this host: on Windows the drive-letter or UNC
+/// grammar (checked bytewise: the grammar is ASCII), on unix the host
+/// [`std::path::Path::is_absolute`] rule. Shared by the xolotl adapter's shape
+/// floor.
 pub(crate) fn is_absolute_shape(text: &str) -> bool {
-    let bytes = text.as_bytes();
-    (bytes.len() >= 3
-        && bytes[0].is_ascii_alphabetic()
-        && bytes[1] == b':'
-        && (bytes[2] == b'\\' || bytes[2] == b'/'))
-        || text.starts_with("\\\\")
+    #[cfg(windows)]
+    {
+        let bytes = text.as_bytes();
+        (bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes[2] == b'\\' || bytes[2] == b'/'))
+            || text.starts_with("\\\\")
+    }
+    #[cfg(not(windows))]
+    {
+        std::path::Path::new(text).is_absolute()
+    }
 }
 
 /// The migration sentence for a row that still declares `strata_config`
@@ -806,15 +817,16 @@ impl EngineAdapter for StrataAdapter {
             });
         }
         // The interpreter is `argv[0]`, so it is the one yaml string that chooses
-        // which program CreateProcessW starts. Refuse garbage early rather than
-        // start whatever path happens to exist: an existing FILE whose name ends in
-        // `.exe`, matching how the llama adapter refuses a missing binary.
+        // which program the host starts. Refuse garbage early rather than
+        // start whatever path happens to exist: an existing FILE (on Windows its
+        // name must end in `.exe`), matching how the llama adapter refuses a
+        // missing binary.
         // Location custody (the row's executed-path roots, §20-9 Fork C) rides on
         // top of this shape floor in the `admit_custody_path` call below: while
         // the cells are open it admits everything (ruling 5), and it will enforce
         // unchanged once a later copy-in slice populates them. The shape rule
-        // stays load-bearing — a batch shim renamed to `.exe` is refused here,
-        // which is why this is called a floor and not a control.
+        // stays load-bearing — on Windows a batch shim renamed to `.exe` is
+        // refused here, which is why this is called a floor and not a control.
         let python = model
             .raw
             .get("strata_python")
@@ -841,6 +853,7 @@ impl EngineAdapter for StrataAdapter {
                  {python}"
             )));
         }
+        #[cfg(windows)]
         if !python_path
             .extension()
             .and_then(|ext| ext.to_str())
@@ -1384,20 +1397,24 @@ mod tests {
     #[test]
     fn a_referenced_path_the_disk_lacks_refuses_the_launch() {
         let base = fixture_pairs();
+        // The walk only judges this host's absolute shapes, so the doomed path
+        // must be spelled in the host grammar for the leg to reach the walk.
+        #[cfg(windows)]
+        let doomed = r"Z:\nope\weights.gguf";
+        #[cfg(not(windows))]
+        let doomed = "/nope/sh-weights.gguf";
+        let line = format!("--native, {doomed}");
         let spec_err = StrataAdapter::new(
             std::env::current_exe().expect("real .exe"),
             std::env::temp_dir(),
         )
         .spec(
             &entry(
-                &(base
+                &base
                     .iter()
                     .map(|(k, v)| (k.as_str(), v.as_str()))
-                    .chain(std::iter::once((
-                        "strata_args",
-                        "--native, Z:\\nope\\weights.gguf",
-                    )))
-                    .collect::<Vec<_>>()),
+                    .chain(std::iter::once(("strata_args", line.as_str())))
+                    .collect::<Vec<_>>(),
             ),
             18109,
         )
@@ -1405,7 +1422,7 @@ mod tests {
         assert!(
             matches!(&spec_err, EngineError::Rejected { reason, .. }
                 if reason.contains("references missing path")
-                    && reason.contains("Z:\\nope\\weights.gguf")),
+                    && reason.contains(doomed)),
             "{spec_err}"
         );
     }
@@ -1440,17 +1457,24 @@ mod tests {
     }
 
     /// FINDINGS2-0910 [5]'s interpreter floor survives the template: `argv[0]`
-    /// is still the program CreateProcessW starts — a batch shim and a
-    /// directory are both refused naming `strata_python`.
+    /// is still the program the host starts — a directory is refused on every
+    /// host, and on Windows so is a batch shim, both naming `strata_python`.
     #[test]
     fn the_interpreter_floor_still_refuses_a_shim_and_a_directory() {
         let base = fixture_pairs();
-        let shim = real_file_with_extension("cmd-python", "cmd");
         let dir = crate::testutil::temp_dir("strata-python-dir");
-        for (value, expect) in [
+        // The `.exe` name rule is the Windows floor: a unix interpreter is any
+        // existing regular file, so the batch-shim leg exists on Windows only.
+        #[cfg(windows)]
+        let shim = real_file_with_extension("cmd-python", "cmd");
+        #[cfg(windows)]
+        let cases = [
             (path_text(&shim), "must be an existing .exe file"),
             (path_text(&dir), "not a file"),
-        ] {
+        ];
+        #[cfg(not(windows))]
+        let cases = [(path_text(&dir), "not a file")];
+        for (value, expect) in cases {
             let mut pairs: Vec<(&str, &str)> =
                 base.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
             pairs.push(("strata_python", value));

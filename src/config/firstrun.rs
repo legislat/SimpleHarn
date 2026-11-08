@@ -302,12 +302,19 @@ mod tests {
 
     #[test]
     fn path_entries_rejects_relative_and_empty() {
-        let raw = std::env::join_paths(["C:\\real", "D:\\also", "relative", ""])
+        // Host-grammar absolute entries: `join_paths` refuses an entry that
+        // carries this host's delimiter, and only this host's grammar reads
+        // as absolute, so the raw PATH is built from what this host parses.
+        #[cfg(windows)]
+        let absolutes = [r"C:\real", r"D:\also"];
+        #[cfg(not(windows))]
+        let absolutes = ["/opt/real/bin", "/usr/local/llama/bin"];
+        let raw = std::env::join_paths([absolutes[0], absolutes[1], "relative", ""])
             .expect("join PATH entries");
         let kept = path_entries(Some(raw));
         assert_eq!(
             kept,
-            vec![PathBuf::from(r"C:\real"), PathBuf::from(r"D:\also")],
+            vec![PathBuf::from(absolutes[0]), PathBuf::from(absolutes[1])],
             "absolute entries survive; relative and empty do not"
         );
         assert!(

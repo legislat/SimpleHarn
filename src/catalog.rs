@@ -252,18 +252,16 @@ mod tests {
     #[test]
     fn colliding_gguf_file_names_in_different_dirs_are_ambiguous() {
         // Reviewer's example: distinct harness names, one shared gguf file name, so the
-        // alias tier alone is claimed twice.
+        // alias tier alone is claimed twice. The alias tier reads the file
+        // name, so the refs must be spelled with the host separator for
+        // `Path::file_name` to yield it (on Windows these bytes are the
+        // original backslash spellings).
+        let sep = std::path::MAIN_SEPARATOR_STR;
+        let mid_ref = format!("F:{sep}MODELS_MID{sep}Qwen3-0.6B-Q8_0.gguf");
+        let big_ref = format!("F:{sep}MODELS_BIG{sep}Qwen3-0.6B-Q8_0.gguf");
         let models = vec![
-            entry(
-                "qwen3-mid",
-                "F:\\MODELS_MID\\Qwen3-0.6B-Q8_0.gguf",
-                Some("mid.yaml"),
-            ),
-            entry(
-                "qwen3-big",
-                "F:\\MODELS_BIG\\Qwen3-0.6B-Q8_0.gguf",
-                Some("big.yaml"),
-            ),
+            entry("qwen3-mid", &mid_ref, Some("mid.yaml")),
+            entry("qwen3-big", &big_ref, Some("big.yaml")),
         ];
         for query in ["Qwen3-0.6B-Q8_0.gguf", "Qwen3-0.6B-Q8_0"] {
             match resolve(query, &models) {
