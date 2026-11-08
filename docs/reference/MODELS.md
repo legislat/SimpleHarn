@@ -203,7 +203,11 @@ floor, else the GGUF estimate `size x 1.0 + 2`, and the trusted measured
 working set above both. The same ladder words the surface: `/har/models`
 `cost_basis` names the booked RAM rung, and a `cpu_offload` flip moves the
 row to the other ladder at once. A `ram_gb` never moves a VRAM figure, and
-`vram_gb` never moves a RAM figure.
+`vram_gb` never moves a RAM figure. The observed figure is
+`total - available`: Windows takes availability from `GlobalMemoryStatusEx`,
+Linux from `MemAvailable`, which counts reclaimable page cache as available
+(`MemFree` is the fallback on kernels without `MemAvailable`). A zero total
+answers `None`, and the gate refuses rather than guess.
 
 **A greedy admit on an expert-offload engine frees host RAM first** (operator
 ruling 2026-11-06). The engines strata, basalt, maya, and xolotl keep expert

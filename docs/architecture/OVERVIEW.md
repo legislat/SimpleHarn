@@ -103,6 +103,13 @@ One harness process, one tokio runtime, plus OS-level children:
   errors and the caller refuses - never a stale guess. Only
   `budget::LedgerOnlyWitness` (no-GPU mode) budgets from the ledger; a dead
   witness on real hardware fails closed.
+- Host RAM witness (`src/witness.rs`, `GlobalRamWitness`; trait
+  `witness::RamWitness`): Windows reads `GlobalMemoryStatusEx`; Linux reads
+  `/proc/meminfo`. Both report `used` as `total - available`. On Linux
+  `available` is the kernel's `MemAvailable` estimate, which counts reclaimable
+  page cache as available, so a page cache does not refuse a load; `MemFree`
+  is only the fallback for kernels without `MemAvailable`. A zero total
+  answers `None`, and the gate then refuses rather than guess.
 - Budget arithmetic (`src/budget.rs`): admission computes free space as
   `total - reserve - observed_used`, credits the same-slot victim, and
   debits in-flight bookings (`SwapState::reserves_vram`). `need_gb` costs a
