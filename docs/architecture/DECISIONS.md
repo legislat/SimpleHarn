@@ -827,3 +827,14 @@ recorded here so dated references to ARCHIVED still resolve:
   beyond the boundary phase, the tray posture, the first-release engine set, and
   the artifact source remain open decisions.
   | 2026-11-08 | `this task`
+
+- **Xolotl rows use a numeric floor on a GUI host** (operator ruling 2026-11-08):
+  `launch_only_with_at_least_vram_free: whole` is exclusive by definition: it
+  requires the whole budget free and names every other resident as a blocker, so
+  a three-monitor workstation that always holds 1-3 GiB of desktop VRAM can never
+  satisfy it. The 256K xolotl row therefore uses a numeric floor sized to the
+  machine (66 GiB in the tested window). The free witness already excludes
+  foreign VRAM, so the floor accounts for the GUI without weakening the gate for
+  harness residents. Whole remains the posture for dedicated cards. First load:
+  chat 200, unload 200; the engine held 71.4 GiB with 1.1 GiB free.
+  | 2026-11-08 | `this task`
