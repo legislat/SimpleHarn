@@ -6,7 +6,7 @@
 //! - wrong-category and unknown-model requests `404` **before** any ensure (G5);
 //! - a no-`model` body on a category listener means "use this category": the loaded
 //!   occupant (MRU among AUX x N), else the category's `default_model` loaded as a
-//!   normal job, else `400` (operator rule 2026-10-24, resolves F-2);
+//!   normal job, else `400` — the listener never guesses a model;
 //! - `/har/unload` bodies are strict: unparseable is `400`, both scopes at once is
 //!   `400`, never an implicit unload-all (v3.3 CRITICAL fix); the reply reports what
 //!   the actor actually did, never a blanket `unloading` (FINDINGS-07 \[5]/\[6]);
@@ -173,7 +173,7 @@ pub enum ApiError {
     NotImplemented { reason: String },
     /// The path exists but the HTTP method does not — `405`. The router raises
     /// this class for every wrong-method request; the envelope middleware carries
-    /// it in the same JSON shape as every other class (R2-05-03).
+    /// it in the same JSON shape as every other class.
     #[error("method not allowed: {reason}")]
     MethodNotAllowed { reason: String },
     /// Harness-side failure — `500`.
@@ -369,7 +369,7 @@ impl From<SchedulerError> for ApiError {
                             wait_hint: Some(wait_hint),
                         }
                     }
-                    // The RAM refusal (operator ruling 2026-11-05) is the same
+                    // The RAM refusal is the same
                     // wait posture as plain over-commit on its own resource:
                     // the client retries, the hint rides, and every number
                     // stays in the message.
@@ -379,7 +379,7 @@ impl From<SchedulerError> for ApiError {
                             wait_hint: Some(wait_hint),
                         }
                     }
-                    // The whole-machine refusal (ruling 2026-11-04) is the same wait
+                    // The whole-machine refusal is the same wait
                     // posture as plain over-commit: the client retries, and the B2
                     // hint rides it. `below_launch_floor` would quote a `min_free`
                     // figure the `whole` value never had.
@@ -588,8 +588,9 @@ const GUARD_TRACKED_PATHS_PER_CLASS: usize = 8;
 /// How much of an attacker-chosen path the evidence keeps, in chars. The path is
 /// attacker-chosen, so the stored key and the logged field are capped together: a flood
 /// of kilobyte-long paths must not become an allocation channel, and a key must agree
-/// with the line printed for it. The logged refusal `method` and `reason` share this cap (R2-05-02):
-/// its text is built from the attacker's own path, `Host` or `Origin`, and one line may
+/// with the line printed for it. The logged refusal `method` and `reason` share
+/// this cap: its text is built from the attacker's own path, `Host` or `Origin`,
+/// and one line may
 /// not become attacker-sized (hyper's head bound alone is ~408 KiB per request).
 const GUARD_TRACKED_PATH_CHARS: usize = 96;
 
@@ -602,7 +603,7 @@ fn tracked_path(path: &str) -> String {
     format!("{kept}...")
 }
 
-/// The `reason` as the guard evidence prints it (R2-05-02): capped exactly like
+/// The `reason` as the guard evidence prints it: capped exactly like
 /// [`tracked_path`], because the message embeds the attacker-chosen path, `Host` or
 /// `Origin` — the 500-line ring and the log file must not become an attacker-sized
 /// allocation channel. The client wire body keeps the full text on purpose: it is the
@@ -773,16 +774,16 @@ impl ApiState {
     /// * **repeats** of one `(class, path)` cost no further line — the counter rides the
     ///   recovery line;
     /// * **distinct paths** past [`GUARD_TRACKED_PATHS_PER_CLASS`] cost no further line
-    ///   either, only the class's single fold line (FINDINGS-BATCH-2026-10-28M [2]).
+    ///   either, only the class's single fold line.
     ///
     /// The window re-arms on the next successful *command* — a 2xx that is not one of
-    /// [`ROUTINE_POLL_PATHS`] and not a [`PUBLIC_PATHS`] page or asset (R2-05-01),
+    /// [`ROUTINE_POLL_PATHS`] and not a [`PUBLIC_PATHS`] page or asset,
     /// because the page's 2 s polls would otherwise re-arm a flood into a line every
     /// tick and a free public-page 200 would otherwise re-arm it at request rate — and
     /// Extended Logging (the switch whose doc promises "the full request ring") reports
     /// every refusal outright and keeps no state at all.
-    /// Never logged: the token, in any form (15[9] posture); the non-extended
-    /// `reason` field is capped to [`GUARD_TRACKED_PATH_CHARS`] (R2-05-02).
+    /// Never logged: the token, in any form; the non-extended
+    /// `reason` field is capped to [`GUARD_TRACKED_PATH_CHARS`].
     fn note_guard_refusal(
         &self,
         reason: &ApiError,
@@ -1312,7 +1313,7 @@ fn state_event(doc: &Value) -> Event {
 const PROXY_PASSTHROUGH_PATHS: [&str; 3] =
     ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"];
 
-/// Rewrites the router's own refusals to the typed JSON envelope (R2-05-03).
+/// Rewrites the router's own refusals to the typed JSON envelope.
 ///
 /// An unknown route answers `404` from the router fallback, and a wrong method
 /// answers `405` from the method router. Both are plain-text answers, and a
@@ -1374,7 +1375,7 @@ async fn envelope_router_errors(
 /// `GET /har/log?limit=N` — the last N harness log events from the in-memory
 /// ring (Step 16): why did the last load fail, without opening files.
 ///
-/// Two refusal arms, one envelope (R2-05-03, FR-05):
+/// Two refusal arms, one envelope:
 /// * A query the extractor itself rejects answers `400 bad_request` in the
 ///   project envelope, never axum's plain-text rejection. The branch stays
 ///   defensive: the 0.8 form decoder is lossy and the map type accepts every
@@ -1420,7 +1421,7 @@ async fn har_rescan(State(state): State<Arc<ApiState>>) -> Result<Json<Value>, A
     })))
 }
 
-/// `GET /har/jobs` — the ledger this timekeeping always pretended to be (F-5 fix).
+/// `GET /har/jobs` — the ledger this timekeeping always pretended to be.
 async fn har_jobs(State(state): State<Arc<ApiState>>) -> Result<Json<Value>, ApiError> {
     let scheduler = state.scheduler.status().await.map_err(ApiError::from)?;
     Ok(Json(json!({ "jobs": scheduler.jobs })))
@@ -1491,7 +1492,7 @@ pub fn control_router(api: Arc<ApiState>) -> Router {
         ))
         // Outermost, over the merged surface: the merged fallback and every
         // sub-router's own 404/405 answer the project envelope here, request id
-        // and `Allow` headers included (R2-05-03). The category surface already
+        // and `Allow` headers included. The category surface already
         // normalizes inside `category_router`; this is what catches the `/har/*`
         // method refusals and the page fallback.
         .layer(axum::middleware::from_fn(envelope_router_errors))

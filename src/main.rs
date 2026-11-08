@@ -22,10 +22,11 @@ use std::time::Duration;
 /// or any validation failure is fatal and every problem is logged (never silently
 /// defaulted — defect D1). `env_config_path` is the effective value of
 /// `SIMPLEHARN_CONFIG` (passed in, not read here, so tests never mutate process
-/// env): naming a path that is not an existing file is fatal (FINDINGS-14 [3]).
+/// env): naming a path that is not an existing file is fatal — an explicit
+/// env path is an instruction, not an absence.
 /// With no env name the harness reads exactly one file — the beside-the-exe
 /// `simpleharn.json`. There is no discovery of any earlier config name and no
-/// migration copy (TASK-NAMING-CLEANUP, operator ruling 2026-11-05): a file
+/// migration copy: a file
 /// carrying an older spelling is ignored, and only an explicit env path — an
 /// operator instruction — selects a file by location alone.
 fn boot_config(env_config_path: Option<String>) -> Result<AppConfig, Vec<ConfigError>> {
@@ -48,7 +49,7 @@ fn boot_config(env_config_path: Option<String>) -> Result<AppConfig, Vec<ConfigE
     }
     let mut config = match &path {
         Some(path) if path.exists() => {
-            // R2-14-01: the fatal line must name the file this boot actually read.
+            // The fatal line must name the file this boot actually read.
             // `AppConfig::parse` names the schema root (`CONFIG_FILE`) because a bare
             // parse call knows no file; here the path is known, so re-stamp the field
             // with it — an operator typo in a `SIMPLEHARN_CONFIG` file must not send a
@@ -79,8 +80,8 @@ fn boot_config(env_config_path: Option<String>) -> Result<AppConfig, Vec<ConfigE
     if errors.is_empty() {
         Ok(config)
     } else {
-        // REV6-04: field carries the file this boot read, the dotted key moves into
-        // the reason — same re-stamp shape as the R2-14-01 parse arm. Built-in
+        // Field carries the file this boot read, the dotted key moves into
+        // the reason — same re-stamp shape as the parse arm above. Built-in
         // defaults (no file read) keep the bare keys.
         let errors = match &loaded_file {
             Some(path) => errors
@@ -100,9 +101,9 @@ fn boot_config(env_config_path: Option<String>) -> Result<AppConfig, Vec<ConfigE
 }
 
 /// The command-line verbs the binary answers instead of booting. Today one:
-/// `import strata <profile.json>` (ruling 2026-11-02 row 19c) — the yaml lands
+/// `import strata <profile.json>` — the yaml lands
 /// on stdout (pipeable bytes, no log decoration), refusals on the tracing
-/// stream. `--apply <row.yaml>` (ruling 2026-11-03) merges the block into the
+/// stream. `--apply <row.yaml>` merges the block into the
 /// live row instead of printing it; the merge refuses loudly and writes
 /// nothing. `None` means "not a command line, boot the harness".
 fn run_cli(mut words: impl Iterator<Item = String>) -> Option<ExitCode> {
@@ -161,8 +162,8 @@ fn run_cli(mut words: impl Iterator<Item = String>) -> Option<ExitCode> {
 async fn main() -> ExitCode {
     let boot_started = std::time::Instant::now();
     observability::init();
-    // `simpleharn import strata <profile.json>` (operator ruling 2026-11-02
-    // row 19c): the one-shot migration tool — read a manual strata profile,
+    // `simpleharn import strata <profile.json>`:
+    // the one-shot migration tool — read a manual strata profile,
     // print the row yaml, delete nothing. It is a command, not a serve: no
     // guard, no config, no listener, and the only sanctioned reader of a
     // `C:\Strata` profile.
@@ -225,11 +226,11 @@ async fn main() -> ExitCode {
     );
     let witness = simpleharn::witness::NvmlWitness::new();
     let witness = Arc::new(witness);
-    // First-start materialization (operator ruling 2026-10-29): with no config file,
+    // First-start materialization: with no config file,
     // derive values from the real system and create the file beside the exe — the
     // documented defaults (notably `vram_total_gb` = 72.0, THIS box's card) must not
     // silently ship as everyone's ceiling. Fires only for the beside-the-exe path;
-    // a missing SIMPLEHARN_CONFIG file already failed boot as an instruction (14 [3]).
+    // a missing SIMPLEHARN_CONFIG file already failed boot as an instruction.
     let first_run = first_run_target(&config);
     let mut observed_total: Option<f64> = None;
     if let Some(path) = first_run {
@@ -724,7 +725,7 @@ async fn supervise_listener(
                 if let Err(error) = axum::serve(listener, router.clone()).await {
                     tracing::error!(%addr, category = %category.id, error = %error,
                         "listener stopped; attempting rebind");
-                    // R2-14-02: publish the outage BEFORE the retry sleep, exactly as
+                    // Publish the outage BEFORE the retry sleep, exactly as
                     // the bind-failure arm does — the port is dead now, and the
                     // registry must not stay stale-Serving (tray green over a dead
                     // port, G11; doctrine 17) for the whole retry window.
@@ -1116,7 +1117,7 @@ mod tests {
             .join("\n")
     }
 
-    /// The CLI door of TASK-IMPORT-APPLY: only `import` is answered (anything
+    /// The CLI door: only `import` is answered (anything
     /// else boots the harness), `--apply` takes exactly one row path, and every
     /// malformed shape is refused with a usage error instead of a boot.
     #[test]
@@ -1357,7 +1358,7 @@ mod tests {
         }
     }
 
-    /// TASK-NAMING-CLEANUP pin (a): a config directory that holds both the
+    /// A config directory that holds both the
     /// primary name and files under older spellings boots on `simpleharn.json`
     /// — bytes and stamp alike. The older files sit in the same directory with
     /// distinct sentinel values; boot must never look at them.
@@ -1424,7 +1425,7 @@ mod tests {
 
     #[test]
     fn invalid_env_named_config_names_the_file_that_failed() {
-        // R2-14-01: a fatal invalid-config boot exits before the `boot configuration
+        // A fatal invalid-config boot exits before the `boot configuration
         // config=<path>` line ever runs, so the fatal error is the only failure output
         // — it must name the file this boot loaded, not `simpleharn.json` it never
         // read. Falsifier: revert the `boot_config` path re-stamp and both asserts fail.

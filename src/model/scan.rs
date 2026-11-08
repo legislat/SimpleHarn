@@ -301,8 +301,7 @@ pub fn parse_flat_yaml(text: &str) -> (BTreeMap<String, String>, Vec<String>) {
 
 /// Splits a raw `key:` value text into (parsed value, verbatim inline comment).
 ///
-/// This is THE boundary rule **and the only normalizer of value text** (operator
-/// ruling 2026-10-28, FINDINGS-13 [8] Fork B; FINDINGS-BATCH-2026-10-28B [1]):
+/// This is THE boundary rule **and the only normalizer of value text**:
 /// scan parses through here and the write-back compares a line's value text
 /// through here, so no caller can hand the rule a differently-normalized text and
 /// the reader and the writer cannot disagree about where the value ends. The
@@ -528,7 +527,7 @@ fn is_accepted_config(file_type: &std::fs::FileType, path: &Path) -> bool {
             .is_some_and(|e| e.eq_ignore_ascii_case("yaml"))
 }
 
-/// The existence-trace file-type predicate (R2-13-01): the traces accept
+/// The existence-trace file-type predicate: the traces accept
 /// **regular files** only. `fs::metadata` succeeds
 /// for a directory, so without this filter an operator typo
 /// (`model: F:/models/Qwen-GGUF` — the folder, filename forgotten) publishes,
@@ -755,7 +754,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                 // refuse a llama entry launched against nothing, before admission
                 // can evict a resident for the doomed spawn. `scheme://` sentinels
                 // and every other engine are exempt (their checks live elsewhere).
-                // A trace passes only on a regular file (R2-13-01): a directory
+                // A trace passes only on a regular file: a directory
                 // neither passes the trace nor books its byte size as the model's.
                 let local = entry
                     .model_ref
@@ -785,7 +784,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                         continue;
                     }
                 }
-                // R2-13-02 (scan half): a declared `mmproj:` is the second
+                // A declared `mmproj:` is the second
                 // weights file (policy.rs names it so) — llama-server dies
                 // without it, after victims are gone. Existence-trace it like
                 // `model:`: same yaml-dir join, same regular-file predicate,
@@ -811,7 +810,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                 // A basalt `.basalt` pack is not a GGUF: its bytes must never
                 // feed the size×1.15+2 estimate. The booking source of a basalt
                 // row is the declared `vram_gb` with `cost: fixed`, or the room
-                // at admit with `cost: greedy` (TASK-BASALT, TASK-BASALT-GREEDY),
+                // at admit with `cost: greedy`,
                 // so a pack stat stays display-blind here.
                 if entry.engine != "basalt" {
                     entry.gguf_size_gb = stat.map(|meta| meta.len() as f64 / (1024.0_f64).powi(3));
@@ -908,7 +907,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                 // mapping: an absent or blank required key (`model`,
                 // `serve_model`, `basalt_python`, `basalt_cwd`, `basalt_exe`,
                 // and `vram_gb` on a `cost: fixed` row - a greedy row may
-                // legally omit the nominal, operator ruling 2026-11-04) names
+                // legally omit the nominal) names
                 // its field as a typed reject; a `.basalt`
                 // weights file the disk lacks travels the same
                 // `ModelPathMissing` door as llama's `model:`; a server-owned
@@ -992,7 +991,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                     }
                 }
                 // A xolotl row passes through the adapter's single door
-                // (`xolotl::validate_row`, TASK-XOLOTL-ADAPTER), so the scan
+                // (`xolotl::validate_row`), so the scan
                 // refuses at rescan exactly what the adapter would refuse at
                 // spec time — a doomed launch can never evict a resident
                 // first. A path the row names and the disk lacks (engine
@@ -1021,7 +1020,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                         continue;
                     }
                 }
-                // The CPU-resident row shapes (operator ruling 2026-11-05):
+                // The CPU-resident row shapes:
                 // a `cpu_offload`-truthy row books host RAM, so the VRAM
                 // gate keys describe a resource it does not hold. `whole` is
                 // a contradiction that would refuse the row at every load
@@ -1580,7 +1579,7 @@ mod tests {
         );
     }
 
-    /// Operator ruling 2026-10-28 (`bak:`): the reserved forensic key publishes
+    /// The reserved forensic key `bak:` publishes
     /// with ZERO reports — no UnknownKey, no Other, nothing naming `bak` — while
     /// a genuinely unknown key in the same file still reaches `raw` and still
     /// earns its warn (silence is surgical, not a blanket mute). The value
@@ -2169,7 +2168,7 @@ mod tests {
         assert!(error.file.contains("gone.yaml"));
     }
 
-    /// R2-13-01: the existence trace accepts regular files only — a
+    /// The existence trace accepts regular files only — a
     /// directory-valued `model:` is `ModelPathMissing` before admission (the
     /// operator typo class: folder named, file forgotten), and the directory's
     /// byte size is never booked as `gguf_size_gb` for any engine (the same
@@ -2221,7 +2220,7 @@ mod tests {
         );
     }
 
-    /// R2-13-02 (scan half): a declared `mmproj:` is existence-traced like
+    /// A declared `mmproj:` is existence-traced like
     /// `model:` — a llama row whose vision file is gone must not publish and
     /// evict for the same doomed spawn; same kind, the refusal names the file.
     #[test]
@@ -2253,7 +2252,7 @@ mod tests {
         assert!(error.file.contains("vision.yaml"));
     }
 
-    /// R2-13-02: the join base for a relative `mmproj:` is the yaml dir (the
+    /// The join base for a relative `mmproj:` is the yaml dir (the
     /// `model:` base), and the trace never resolves or rewrites the raw map —
     /// the published value stays the operator's word; resolution is launch-side.
     #[test]
@@ -2397,11 +2396,11 @@ mod tests {
         assert_eq!(catalog.models.len(), 1, "{:?}", catalog.errors);
     }
 
-    /// A row that still declares `strata_config` is the SUPERSEDED mode
-    /// (ruling 2026-11-02 row 19): refused outright with the migration
+    /// A row that still declares `strata_config` is the SUPERSEDED mode:
+    /// refused outright with the migration
     /// sentence, whatever the profile file itself holds — unless the row also
     /// carries `strata_exe`, which means the import already happened and the
-    /// accurate sentence is the mutual-exclusion one (review 25 [7]).
+    /// accurate sentence is the mutual-exclusion one.
     #[test]
     fn a_strata_config_row_is_refused_naming_the_import_command() {
         let dir = crate::testutil::temp_dir("scan-strata-superseded");
@@ -2562,7 +2561,7 @@ mod tests {
         assert_eq!(catalog.models.len(), 1, "{:?}", catalog.errors);
     }
 
-    /// A complete xolotl row (TASK-XOLOTL-ADAPTER): required keys present,
+    /// A complete xolotl row: required keys present,
     /// the timeout at its floor, and a relative `-m` that resolves against
     /// `xolotl_cwd` — it scans, publishes, and earns no report.
     #[test]
@@ -3264,11 +3263,11 @@ mod tests {
         }
     }
 
-    /// Operator ruling 2026-11-04 (`TASK-BASALT-GREEDY`): a greedy basalt row
+    /// A greedy basalt row
     /// is the catalog citizen the operator's truth needs - Basalt offloads to
     /// RAM, so the row may carry no declared `vram_gb` at all (booking takes
     /// the room at admit, the launch floor gates). The row must publish at
-    /// scan, not vanish behind a catalog error (the live 2026-11-04 failure).
+    /// scan, not vanish behind a catalog error (a failure seen live).
     /// The `cost: fixed` refusal without `vram_gb` stays pinned by the
     /// key-missing loop above. Falsifier: an adapter guard refusing Greedy
     /// drops the row again.
@@ -3706,7 +3705,7 @@ mod tests {
     /// The `whole` keyword of the VRAM-gate key must ride the real scan with
     /// zero reports (the key is consumed, so never `UnknownKey`), keep its
     /// raw line verbatim for write-back, and land typed as the whole-machine
-    /// gate (operator ruling 2026-11-04). The golden fixture stays numeric on
+    /// gate. The golden fixture stays numeric on
     /// purpose: this pin owns the keyword shape.
     /// Falsifier: a parse that rejects the keyword at scan time surfaces an
     /// error or drops the entry, and this pin goes red.
@@ -3899,7 +3898,7 @@ mod tests {
         }
     }
 
-    /// The CPU-resident row shapes (operator ruling 2026-11-05): a truthy
+    /// The CPU-resident row shapes: a truthy
     /// `cpu_offload` on an engine that reads the knob gates on RAM, so the
     /// `whole` machine gate is a permanent contradiction — the scan refuses
     /// the row with the named problem rather than publishing a row that can

@@ -35,11 +35,10 @@ pub enum ConfigError {
     },
 }
 
-/// A page-visible configuration warning (FR-15, operator ruling 2026-11-06):
-/// not a boot error — the harness starts and serves — but a posture the
-/// operator must see on `/har/status` (`config_warnings`) instead of only in
-/// the boot log. `code` is the stable machine vocabulary (snake_case);
-/// `message` is the full human sentence.
+/// A page-visible configuration warning: not a boot error — the harness
+/// starts and serves — but a posture the operator must see on `/har/status`
+/// (`config_warnings`) instead of only in the boot log. `code` is the stable
+/// machine vocabulary (snake_case); `message` is the full human sentence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConfigWarning {
     /// Stable machine code (`lan_open_without_token`, `llama_server_exe_unset`).
@@ -117,9 +116,8 @@ fn default_vram_reserve() -> f64 {
     2.0
 }
 
-/// Host RAM kept unreachable by admission for a CPU-resident load
-/// (operator ruling 2026-11-05): the OS and the desktop need real headroom,
-/// and a refused load costs one retry.
+/// Host RAM kept unreachable by admission for a CPU-resident load: the OS
+/// and the desktop need real headroom, and a refused load costs one retry.
 fn default_ram_reserve() -> f64 {
     8.0
 }
@@ -149,9 +147,9 @@ fn default_greedy_min_free() -> f64 {
 }
 
 /// Host GiB a CPU-resident row must exceed before a greedy expert-offload
-/// load evicts it (operator ruling 2026-11-06): strata, basalt and maya
-/// offload experts to host RAM, and freeing a large CPU resident first beats
-/// letting the expert tier spill to SSD. `0` disables the rule.
+/// load evicts it: strata, basalt and maya offload experts to host RAM, and
+/// freeing a large CPU resident first beats letting the expert tier spill to
+/// SSD. `0` disables the rule.
 fn default_expert_offload_evict_cpu_above() -> f64 {
     4.0
 }
@@ -257,13 +255,13 @@ pub(crate) const MAX_TIMEOUT_S: u64 = ONE_DAY_SECS;
 pub struct CategoryConfig {
     /// Category identity; also the key referenced by `evictable_by` entries.
     pub id: CategoryId,
-    /// Display name for the page and `/har/status` (operator ruling 2026-11-05:
-    /// the four shipped names are defaults, not fixed). Absent or blank (after
-    /// trim) falls back to the id — [`CategoryConfig::effective_label`]. Trimmed
-    /// at parse like the WSL coordinates. The id stays the wire vocabulary
-    /// everywhere: this value never replaces it in a request, a yaml `category:`
-    /// value, an `evictable_by` list, or the engine-port plan. Unset serializes
-    /// nothing, so existing config files keep their exact shape (the
+    /// Display name for the page and `/har/status`: the four shipped names
+    /// are defaults, not fixed. Absent or blank (after trim) falls back to the
+    /// id — [`CategoryConfig::effective_label`]. Trimmed at parse like the WSL
+    /// coordinates. The id stays the wire vocabulary everywhere: this value
+    /// never replaces it in a request, a yaml `category:` value, an
+    /// `evictable_by` list, or the engine-port plan. Unset serializes nothing,
+    /// so existing config files keep their exact shape (the
     /// GOTCHAS serialization discipline); a blank `""` round-trips as `""`.
     #[serde(
         default,
@@ -284,7 +282,7 @@ pub struct CategoryConfig {
     /// An omitted key and an explicit `[]` are the same posture here: nobody may
     /// evict this category. The schema cannot tell the two spellings apart, so a
     /// non-WORK entry that lands on the empty list is named by a boot warning
-    /// ([`AppConfig::evictable_by_warnings`], R2-11-01); the behavior is unchanged.
+    /// ([`AppConfig::evictable_by_warnings`]); the behavior is unchanged.
     #[serde(default)]
     pub evictable_by: Vec<CategoryId>,
     /// Idle auto-unload threshold in seconds; 0 disables (Step 5: WORK defaults
@@ -300,10 +298,10 @@ pub struct CategoryConfig {
     pub control: bool,
     /// This category's internal engine ports for its slots (loopback only). An
     /// empty list keeps the automatic plan: ports assigned sequentially from
-    /// 18109 in canonical category order (HANDOFF §3 port plan: WORK 18109,
-    /// RP 18110, AUX 18111.., EMB next). A non-empty list must name exactly
+    /// 18109 in canonical category order (the port plan: WORK 18109, RP 18110,
+    /// AUX 18111.., EMB next). A non-empty list must name exactly
     /// `max_models` ports, one per slot; another length is refused by
-    /// [`AppConfig::validate`] (R2-11-02), so a hand-written plan is never
+    /// [`AppConfig::validate`], so a hand-written plan is never
     /// silently discarded for a length typo.
     #[serde(default)]
     pub engine_ports: Vec<u16>,
@@ -365,8 +363,8 @@ impl CategoryConfig {
     }
 
     /// The name the page and `/har/status` show: the trimmed `label` when one is
-    /// configured, else the id (operator ruling 2026-11-05: display-only
-    /// naming, the id stays the wire vocabulary). Re-trims here rather than
+    /// configured, else the id. Naming is display-only: the id stays the wire
+    /// vocabulary. Re-trims here rather than
     /// trusting the parse, so a hand-built entry (a test, a future API patch)
     /// cannot put stray whitespace on the page.
     #[must_use]
@@ -390,13 +388,11 @@ fn default_categories() -> Vec<CategoryConfig> {
 /// The file the harness boots by default, beside the executable. Deliberately *not*
 /// v3.3's name: the harness re-serializes the whole struct on every persist, and
 /// sharing a file means our write can strand the old exe — v3.3 reads
-/// `protected_ports` and exits when it clashes with its port bases (deploy review,
-/// 2026-10-26). Since the 2026-11-04 product rename this is the one and only
-/// config name: `simpleharn.json`. There is no auto-discovery of any earlier
-/// spelling and no migration copy (TASK-NAMING-CLEANUP, operator ruling
-/// 2026-11-05): a file that carries an older spelling is ignored by discovery,
-/// and only an explicit `SIMPLEHARN_CONFIG` path — an operator instruction — can
-/// select any file at all.
+/// `protected_ports` and exits when it clashes with its port bases. This is the
+/// one and only config name: `simpleharn.json`. There is no auto-discovery of
+/// any earlier spelling and no migration copy: a file that carries an older
+/// spelling is ignored by discovery, and only an explicit `SIMPLEHARN_CONFIG`
+/// path — an operator instruction — can select any file at all.
 pub const CONFIG_FILE: &str = "simpleharn.json";
 
 /// Where [`CONFIG_FILE`] lives when nothing points elsewhere: beside the executable.
@@ -414,10 +410,9 @@ pub fn default_config_path() -> Option<std::path::PathBuf> {
 }
 
 // The environment names the harness reads are `SIMPLEHARN_TOKEN`,
-// `SIMPLEHARN_CONFIG` and `SIMPLEHARN_LOG` — and nothing else
-// (TASK-NAMING-CLEANUP, operator ruling 2026-11-05). No other spelling is a
-// fallback: a variable named any older way is inert — it changes nothing,
-// warns nothing, and grants nothing.
+// `SIMPLEHARN_CONFIG` and `SIMPLEHARN_LOG` — and nothing else.
+// No other spelling is a fallback: a variable named any older way is inert —
+// it changes nothing, warns nothing, and grants nothing.
 
 /// The control token from the process environment: `SIMPLEHARN_TOKEN`.
 #[must_use]
@@ -538,9 +533,8 @@ pub struct AppConfig {
     /// GiB kept unreachable by admission (Step 4 rule 2).
     #[serde(default = "default_vram_reserve")]
     pub vram_reserve_gb: f64,
-    /// Host GiB kept unreachable by admission for CPU-resident rows
-    /// (operator ruling 2026-11-05: the RAM ladder's reserve, the twin of
-    /// `vram_reserve_gb` on its own resource).
+    /// Host GiB kept unreachable by admission for CPU-resident rows: the RAM
+    /// ladder's reserve, the twin of `vram_reserve_gb` on its own resource.
     #[serde(default = "default_ram_reserve")]
     pub ram_reserve_gb: f64,
     /// Total VRAM of the card in GiB; the ceiling the budget is measured against
@@ -578,9 +572,9 @@ pub struct AppConfig {
     pub tray_enabled: bool,
     /// Global `llama-server.exe` default (A.7: the operator's script is the
     /// source of truth for flags; the binary path is config). Absent by
-    /// default (FR-13, operator ruling 2026-11-06): the harness ships no
-    /// author-machine install default. A llama row then either carries its
-    /// own `llama_server_exe` key or its load is refused.
+    /// default: the harness ships no author-machine install default. A llama
+    /// row then either carries its own `llama_server_exe` key or its load is
+    /// refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llama_server_exe: Option<std::path::PathBuf>,
     /// Directory of per-model flat yaml files (Step 9); missing dir = empty catalog.
@@ -598,8 +592,8 @@ pub struct AppConfig {
     /// (operator design note, 2026-10-26).
     #[serde(default = "default_greedy_min_free")]
     pub greedy_launch_min_free_gb: f64,
-    /// Host-RAM reclaim threshold for expert-offload engines (operator
-    /// ruling 2026-11-06). When a `cost: greedy` load is admitted on an
+    /// Host-RAM reclaim threshold for expert-offload engines. When a
+    /// `cost: greedy` load is admitted on an
     /// engine whose `EnginePolicy` row carries the `expert_offload` cell,
     /// the victim planner also evicts every CPU-resident row (a `cpu_offload`
     /// resident with a host-RAM booking) whose booked footprint is strictly
@@ -695,8 +689,8 @@ impl fmt::Debug for AppConfig {
     /// `REDACTED(present)` / `REDACTED(absent)` — the posture the status surface
     /// already takes: report *whether* auth is enforced, never the secret.
     ///
-    /// `secrecy` was rejected (operator ruling 2026-10-28, FINDINGS-15 \[9]): the fix
-    /// for the class belongs at the owning type plus the guard below, and
+    /// A `secrecy`-style wrapper was rejected: the fix for the class belongs
+    /// at the owning type plus the guard below, and
     /// `expose_secret()` ceremony at each reader would buy no behavior change for a
     /// new dependency AGENTS.md itself polices.
     ///
@@ -831,7 +825,7 @@ impl AppConfig {
     ///
     /// Boot's file-read path (`main.rs::boot_config`). The only boot-time signal a
     /// hand-written `categories` entry gets for a silently empty `evictable_by` is
-    /// [`AppConfig::evictable_by_warnings`], logged here per entry (R2-11-01): the
+    /// [`AppConfig::evictable_by_warnings`], logged here per entry: the
     /// boot honours the posture, it does not hide it.
     ///
     /// # Errors
@@ -844,8 +838,8 @@ impl AppConfig {
             reason: format!("cannot read {}: {e}", path.display()),
         })?;
         let config = AppConfig::parse(&text)?;
-        // R2-11-01: an invulnerable category may boot — the operator's file is
-        // king — but never silently: name it before the first refusal it causes.
+        // An invulnerable category may boot — the operator's file is king —
+        // but never silently: name it before the first refusal it causes.
         for warning in config.evictable_by_warnings() {
             tracing::warn!("{warning}");
         }
@@ -865,11 +859,11 @@ impl AppConfig {
     /// Resolves the internal engine port per slot (Step 8/11 port plan).
     ///
     /// Walks [`CategoryId::all`] in canonical order, never the file order of
-    /// `categories` (R2-11-03): WORK holds 18109 whatever order the hand-written
+    /// `categories`: WORK holds 18109 whatever order the hand-written
     /// array uses, and a category absent from the file is skipped (`validate`
     /// reports missing categories separately). A category with a non-empty
-    /// `engine_ports` keeps them — `validate` refuses every other length
-    /// (R2-11-02) — and the rest are allocated sequentially from
+    /// `engine_ports` keeps them — `validate` refuses every other length —
+    /// and the rest are allocated sequentially from
     /// `ENGINE_PORT_BASE`. Each present category advances the cursor by
     /// `max_models`, explicit or not. Validation checks the resolved plan for
     /// collisions.
@@ -1040,8 +1034,8 @@ impl AppConfig {
                 }
             }
         }
-        // R2-11-06 (FR-13 reworded): the same present-but-blank doctrine for the
-        // engine binary. A blank exe booted clean and failed every llama load
+        // The same present-but-blank doctrine for the engine binary.
+        // A blank exe booted clean and failed every llama load
         // later at spawn with an OS error naming `""`, where boot could have
         // named the key. Absent is now the documented neutral state (no global
         // default exists), not a fallback path.
@@ -1118,7 +1112,7 @@ impl AppConfig {
                     });
                 }
             }
-            // R2-11-02: a non-empty explicit plan must name one port per slot.
+            // A non-empty explicit plan must name one port per slot.
             // A length typo used to discard the whole hand-picked plan at boot
             // and fail at spawn with a bind conflict; now it fails at boot.
             if !cat.engine_ports.is_empty() && cat.engine_ports.len() != cat.max_models {
@@ -1132,7 +1126,7 @@ impl AppConfig {
                     ),
                 });
             }
-            // Display label (operator ruling 2026-11-05): absent or blank is the
+            // Display label: absent or blank is the
             // documented fallback to the id, so only a non-blank label is judged.
             // The cap bounds the tab strip; the printability rule keeps control
             // characters (a terminal escape, a stray \0) out of the page and the
@@ -1255,7 +1249,7 @@ impl AppConfig {
                     .to_string(),
             });
         }
-        // Expert-offload RAM reclaim (operator ruling 2026-11-06): the same GiB
+        // Expert-offload RAM reclaim: the same GiB
         // discipline as the reserves — finite and non-negative. `0` is a
         // deliberate disable, not a typo; a NaN comparison is false and would
         // read as "nothing exceeds the threshold" by accident instead of by
@@ -1416,7 +1410,7 @@ impl AppConfig {
         errors
     }
 
-    /// Boot warnings for eviction privileges a written entry left empty (R2-11-01).
+    /// Boot warnings for eviction privileges a written entry left empty.
     ///
     /// The categories carry the whole safety policy and the file is hand-edited
     /// (module doc, D1), but `#[serde(default)]` yields the same `Vec` for an
@@ -2131,7 +2125,7 @@ mod tests {
         );
     }
 
-    /// TASK-RAM-RECLAIM (operator ruling 2026-11-06): the reclaim threshold
+    /// The reclaim threshold
     /// defaults to 4.0 GiB, `0` is the deliberate disable, and a nonsense
     /// figure fails boot naming the key — the same GiB discipline as the
     /// reserve keys (finite and non-negative; serde_json refuses the `1e999`
@@ -2430,7 +2424,7 @@ mod tests {
         );
     }
 
-    /// R2-11-06: a present-but-blank engine binary is the same mistake the other
+    /// A present-but-blank engine binary is the same mistake the other
     /// path fields refuse at boot — absent means the documented default, blank
     /// is a typo that would fail every llama load later at spawn with an OS
     /// error naming `""`.
@@ -2649,7 +2643,7 @@ mod tests {
         assert!(exact.validate().is_empty(), "{:?}", exact.validate());
     }
 
-    /// R2-11-01 pin: the omission route of the D1 posture. `#[serde(default)]` gives
+    /// The omission route of the D1 posture: `#[serde(default)]` gives
     /// the same `Vec` for an omitted `evictable_by` key and for an explicit `[]`, so
     /// the schema cannot tell the two spellings apart — the boot decision therefore
     /// fires on the effective empty list and the text names both spellings, the
@@ -2718,7 +2712,7 @@ mod tests {
         assert!(warnings[0].contains("AUX"), "{warnings:?}");
     }
 
-    /// Operator ruling 2026-11-05: the display name is a config option. A set
+    /// The display name is a config option: a set
     /// label is trimmed at parse (the WSL-coordinate discipline), an absent or
     /// blank label falls back to the id without a refusal, and an unset label
     /// serializes nothing — existing config files keep their exact shape (the
@@ -2772,10 +2766,10 @@ mod tests {
         );
     }
 
-    /// The cap is 24 characters, inclusive (ruling 2026-11-05), and the refusal
+    /// The cap is 24 characters, inclusive, and the refusal
     /// names the category id and the rule. The digits are spelled out here, not
-    /// read from the constant, so the pin is the ruling and not a mirror of the
-    /// code.
+    /// read from the constant, so the pin is the agreed cap and not a mirror
+    /// of the code.
     /// Falsifier: raise the accepted length to 25 and the over-cap leg boots
     /// clean, turning this pin red.
     #[test]
@@ -3015,7 +3009,7 @@ mod tests {
         assert!(legal.validate().is_empty(), "1 s is legal, however tight");
     }
 
-    /// R2-11-05: the `load_timeout_s` ceiling rationale (one mistyped digit parks
+    /// The `load_timeout_s` ceiling rationale (one mistyped digit parks
     /// the job forever) applies verbatim to both dispose deadlines, and the
     /// scheduler uses the raw value.
     /// Falsifier: revert either bound to `== 0` and the 86_401 leg goes green.
@@ -3175,7 +3169,7 @@ mod tests {
         );
     }
 
-    /// R2-11-02: a non-empty explicit plan whose length differs from `max_models`
+    /// A non-empty explicit plan whose length differs from `max_models`
     /// used to be discarded whole at boot — the operator's hand-picked ports gone,
     /// every slot back on the auto range, failure only at spawn. Now the boot
     /// names the field and both counts; an empty list still keeps the plan.
@@ -3223,7 +3217,7 @@ mod tests {
         assert!(exact.validate().is_empty(), "{:?}", exact.validate());
     }
 
-    /// R2-11-03: the plan is a per-category contract (WORK 18109, RP 18110,
+    /// The plan is a per-category contract (WORK 18109, RP 18110,
     /// AUX 18111, EMB 18112), so it must follow the canonical category order,
     /// not the order of the hand-written `categories` array.
     /// Falsifier: iterate `self.categories` and the reversed file hands WORK
@@ -3247,7 +3241,7 @@ mod tests {
         serde_json::to_string_pretty(&root).expect("invariant: JSON serializes")
     }
 
-    /// TASK-NAMING-CLEANUP: `default_config_path` is the single discovery point
+    /// `default_config_path` is the single discovery point
     /// and it names only [`CONFIG_FILE`] — no sibling-name lookup, no fallback
     /// probe. Falsifier: reintroduce an older-name probe (a `with_file_name` or
     /// `exists` walk) here and this pin goes red.
@@ -3296,7 +3290,7 @@ mod tests {
     }
 
     /// RAII: injects one env name and removes it again on drop. Safe to inject
-    /// old spellings here: after TASK-NAMING-CLEANUP no reader in this crate
+    /// old spellings here: no reader in this crate
     /// names them, so no other test in this binary can observe the injection.
     struct LegacyEnvInjected(&'static str);
 
@@ -3313,7 +3307,7 @@ mod tests {
         }
     }
 
-    /// TASK-NAMING-CLEANUP pin (b, reader half): the old env names are inert.
+    /// The old env names are inert, reader half:
     /// With every primary name cleared and every old name set, all three
     /// readers answer `None` — no value, no warning machinery left to fire.
     /// Falsifier: restore a fallback arm in any reader and its `None` assert
@@ -3344,7 +3338,7 @@ mod tests {
         );
     }
 
-    /// TASK-NAMING-CLEANUP pin (d, rewritten): each reader names exactly one
+    /// Each reader names exactly one
     /// env variable, and it is the `SIMPLEHARN_*` spelling — the old
     /// primary/deprecated pairing machinery is gone. Falsifier: reintroduce a
     /// fallback `std::env::var` in a reader and the one-call count goes red;

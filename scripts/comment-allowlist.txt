@@ -1,0 +1,3 @@
+# Allowlist for scripts/check-comments.mjs. One exception per line, in the
+# form "<relative-path> <substring>"; a '#' line explains why the exception is
+# deliberate. Keep this file short: each entry is a decision, not a workaround.

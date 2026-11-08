@@ -8,12 +8,11 @@
 //! against the caller's word — the line's value text goes through scan's one
 //! `split_value_comment`, and the incoming word is taken as it arrived), and a real
 //! change
-//! drops the line's own inline comment (a stale note beside a new value is a lie;
-//! operator ruling 2026-10-28, FINDINGS-13 \[8] Fork B; FINDINGS-BATCH-2026-10-28B
-//! \[1]/\[4]). A real change also writes the new value in a form the reader confirms
+//! drops the line's own inline comment (a stale note beside a new value is a
+//! lie). A real change also writes the new value in a form the reader confirms
 //! — `emit_form`'s three steps: as-is if faithful, one `"` pair if that is what
-//! makes it faithful, refusal if neither would read back (operator ruling
-//! 2026-10-28, closing the change-side non-round-trip seam).
+//! makes it faithful, refusal if neither would read back, so a changed value
+//! can never land on a line that rescans to something else.
 //! An edit whose result equals the input never reaches the disk at all —
 //! no temp, no rename, no mtime churn on a file nobody changed (\[6]). The file is
 //! replaced atomically (temp + rename, every publish write flushed with
@@ -228,23 +227,24 @@ pub(crate) fn next_temp_seq() -> u64 {
     SEQ.fetch_add(1, Ordering::Relaxed)
 }
 
-/// The form a value is written in (operator ruling 2026-10-28: **auto-quote on
-/// change + refuse-unquotable**, closing the change-side seam
-/// FINDINGS-BATCH-2026-10-28B left as open triage). Used by the change and append
-/// arms of [`set_key_in_text`]; the keep branch never calls it, so 13[8] Fork B's
-/// byte-verbatim pass-through is untouched.
+/// The form a value is written in: **auto-quote on
+/// change + refuse-unquotable**, closing the change-side non-round-trip seam.
+/// Used by the change and append
+/// arms of [`set_key_in_text`]; the keep branch never calls it, so the
+/// byte-verbatim pass-through of an unchanged value is untouched.
 ///
 /// The **reader is the definition, taken literally**: each candidate line body is
 /// handed to [`split_value_comment`] and kept only if the value half comes back
 /// byte-equal to `want`. Not a canonical-equality shortcut — the peel can expose
 /// edge whitespace a bare emit would lose (`"a b "` publishes `a b `, and only
-/// `k: "a b "` reads back as it), which is what FINDINGS2-13 [1] found. No second
+/// `k: "a b "` reads back as it), which is the miss a canonical check makes.
+/// No second
 /// parser, no hardcoded ` #` rules. Three steps:
 ///
 /// 1. **as-is if faithful**: the word alone, placed after `key: `, reads back
 ///    byte-exactly, so every plain value (`WORK`, `true`, `4.2`, `F:/m.gguf`) and
 ///    every word the reader publishes that needs no protection is emitted
-///    byte-identically to before this ruling (`4096#c`, `#lead`, `# tail` all live
+///    byte-identically (`4096#c`, `#lead`, `# tail` all live
 ///    here — a `#` at position 0 is never a comment under the locked boundary rule);
 /// 2. **quote if that fixes it**: otherwise one `"` pair around it, iff THAT reads
 ///    back byte-exactly — the one-pair peel [`split_value_comment`]'s `unquote`
@@ -268,7 +268,7 @@ pub(crate) fn next_temp_seq() -> u64 {
 ///
 /// * `key` - the yaml key the value is being written under, named in the refusal.
 /// * `want` - the caller's word, exactly as it arrived: no trimming, no peeling
-///   (FINDINGS2-13 [1]) — this function's job is to find a line form the reader
+///   — this function's job is to find a line form the reader
 ///   hands back unchanged, so it must see the bytes the caller asked for.
 ///
 /// # Returns
@@ -299,34 +299,30 @@ fn emit_form(key: &str, want: &str) -> Result<String, WritebackError> {
 ///   identical-value write passes the line through
 ///   **byte-verbatim** — BOM, indentation, raw quoted value, inline comment and
 ///   trailing `\r` all stay exactly as authored, and the whole document comes back
-///   byte-identical (operator ruling 2026-10-28, FINDINGS-13 \[8] Fork B: nothing
-///   changes when the value does not change). A real change
+///   byte-identical (nothing changes when the value does not change). A real change
 ///   harness-formats the line and drops the old inline comment (a stale note
 ///   beside a new value is a lie), and every later rewrite of the new value is
 ///   then stable — the fixed point is the same one step further on. Deliberately
 ///   NOT an "equal after trim-and-peel" test: the peel exposes edge whitespace and
 ///   residual quote pairs (`"a b "` publishes `a b `), so canonical-equality called
 ///   a republish of the reader's own value a change and rewrote
-///   `k: "a b " # tail` as `k: a b` — comment gone, value mutated
-///   (FINDINGS2-13 \[1]);
-/// - `value` is never normalized: no trim, no peel, at entry or in the comparison
-///   (FINDINGS2-13 \[1], superseding the entry-trim that
-///   FINDINGS-BATCH-2026-10-28B \[4] introduced — its compare/emit symmetry was
-///   bought by destroying information the reader publishes, and the asymmetry it
-///   fixed is now fixed the other way, by emitting exactly what was asked). The
+///   `k: "a b " # tail` as `k: a b` — comment gone, value mutated;
+/// - `value` is never normalized: no trim, no peel, at entry or in the comparison:
+///   an entry-trim buys compare/emit symmetry by destroying information the
+///   reader publishes, and the asymmetry it fixed is fixed the other way, by
+///   emitting exactly what was asked. The
 ///   harness's own vocabulary needs none of it: an enum name, `true`/`false` and a
 ///   `{:.1}` float are byte-faithful as-is, pinned by
 ///   `the_live_value_vocabulary_never_reaches_the_quote_or_refuse_branch`, so every
 ///   current caller is unaffected;
 /// - the change and append arms write the word through `emit_form`, which asks
-///   the **reader** whether it survives (operator ruling 2026-10-28, closing the
-///   open triage item FINDINGS-BATCH-2026-10-28B left): as-is when that is
+///   the **reader** whether it survives: as-is when that is
 ///   faithful, one `"` pair when that is what makes it faithful, and a refusal
 ///   naming the key and the value when neither would read back. So a value
 ///   containing ` #` can no longer land a line that rescans to its pre-`#` prefix,
 ///   a word with edge whitespace lands quoted rather than trimmed, and a value
 ///   containing `\n` is refused rather than injecting lines. The keep
-///   branch is not involved: 13\[8] Fork B's byte-verbatim pass-through stands, and a
+///   branch is not involved: the byte-verbatim pass-through stands, and a
 ///   write of the value the reader publishes never reaches `emit_form` at all — it is
 ///   identical under the byte-exact test above.
 /// - a matching key inside a *commented block* is never touched (v3.3 clobbered
@@ -511,11 +507,11 @@ pub fn set_flags_on_file(
 
 /// Publishes `updated` over `path` only if it still parses; on post-write
 /// validation failure restores `original` atomically and writes the single-slot
-/// `.yaml.bak` incident copy first (FINDINGS-13 [5] Fork B), the error naming
+/// `.yaml.bak` incident copy first, the error naming
 /// both files truthfully — and only claiming a location its own read-back
-/// confirmed (FINDINGS-BATCH-2026-10-28 [1]/[3]). Called with [`write_gate`]
-/// already held. `pub(crate)` so the import merge (ruling 2026-11-03,
-/// `simpleharn import strata --apply`) publishes through this same temp +
+/// confirmed. Called with [`write_gate`]
+/// already held. `pub(crate)` so the import merge
+/// (`simpleharn import strata --apply`) publishes through this same temp +
 /// rename + revalidate machine instead of duplicating it — it validates its own
 /// merged text but owns no second write path.
 pub(crate) fn commit_verified(
@@ -546,7 +542,7 @@ pub(crate) fn commit_verified(
     #[cfg(test)]
     let written = fail_temp_write_if_armed(path, written);
     if let Err(error) = written {
-        // R2-13-04: a refused write lands exactly after `create` succeeded, so
+        // A refused write lands exactly after `create` succeeded, so
         // the half-written temp is this arm's litter to remove — the
         // RenameFailed arm below has always done the same; neither path may
         // leave a `.sh.tmp` beside the target forever.
@@ -565,8 +561,8 @@ pub(crate) fn commit_verified(
     }
     // Post-write revalidation: if the renamed file does not parse (fs hiccup),
     // or reads back as the zero-key shape this very function refuses to
-    // pre-write (R2-13-03), restore the original bytes and fail loudly (D4's
-    // silent-200 fix).
+    // pre-write, restore the original bytes and fail loudly — a write that
+    // does not read back must never be reported as success.
     let read_back = std::fs::read_to_string(path);
     #[cfg(test)]
     let read_back = corrupt_if_armed(path, read_back);
@@ -1045,7 +1041,7 @@ fn corrupt_target_if_armed(
     read_back
 }
 
-/// One-shot clean-empty read-back arms (R2-13-03), keyed by the target path:
+/// One-shot clean-empty read-back arms, keyed by the target path:
 /// the next post-write re-read of **that** file is replaced in memory with a
 /// zero-key document that parses without a single problem line — the shape the
 /// corrupt seam (junk lines) cannot drive. The on-disk bytes stay honest, the
@@ -1056,7 +1052,7 @@ fn post_write_empties() -> &'static Mutex<Vec<PathBuf>> {
     ARMS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-/// Arms the R2-13-03 seam: the next post-write validation of exactly `path`
+/// Arms the clean-empty read-back seam: the next post-write validation of exactly `path`
 /// reads back clean but empty.
 #[cfg(test)]
 pub(crate) fn arm_post_write_clean_empty_readback(path: &Path) {
@@ -1077,7 +1073,7 @@ fn empty_read_back_if_armed(
     read_back
 }
 
-/// One-shot temp-write-failure arms (R2-13-04), keyed by the target path: the
+/// One-shot temp-write-failure arms, keyed by the target path: the
 /// next `commit_verified` of **that** file has its temp write refused after
 /// the temp is on disk (a simulated full volume — `write_synced` itself is
 /// untouched), so the `WriteFailed` arm's own temp cleanup is falsifiable in
@@ -1089,7 +1085,7 @@ fn temp_write_failures() -> &'static Mutex<Vec<PathBuf>> {
     ARMS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-/// Arms the R2-13-04 seam: the next temp write of exactly `path` fails.
+/// Arms the temp-write-failure seam: the next temp write of exactly `path` fails.
 #[cfg(test)]
 pub(crate) fn arm_temp_write_failure(path: &Path) {
     temp_write_failures()
@@ -1362,11 +1358,11 @@ mod tests {
         assert_eq!(updated, "\u{feff}category: WORK\nname: emb1\n");
     }
 
-    /// Operator ruling 2026-10-28 (FINDINGS-13 [8] Fork B), drop direction: a
+    /// Drop direction: a
     /// value-changing write must not leave the old note lying beside the new
     /// value. Passes at HEAD too — this is a policy pin, declared as such: it
-    /// stops any future "improvement" from silently restoring the stale-comment
-    /// side of the ruling.
+    /// stops any future "improvement" from silently restoring the
+    /// stale-comment behavior.
     #[test]
     fn a_changed_value_drops_the_edited_keys_inline_comment() {
         let updated = set_key_in_text(
@@ -2107,8 +2103,8 @@ mod tests {
     /// must SUCCEED, leave the bytes and the directory alone (no temp, no `.bak`),
     /// while a real edit on that very same locked target must still be refused in
     /// the rename. Removing the short-circuit turns the first assert red. The
-    /// refused rename doubles as FINDINGS-13 [11]'s residue case: since
-    /// R2-13-04 both refused arms (temp write and rename) remove their temp,
+    /// refused rename doubles as the residue case: both refused arms (temp
+    /// write and rename) remove their temp,
     /// so no write path leaves a `*.sh.tmp` behind and only a killed process
     /// can; the directory is checked for `*.sh.tmp` afterwards — deleting the
     /// rename's cleanup line turns exactly that assert red, and deleting the
@@ -2168,10 +2164,10 @@ mod tests {
             .expect("read back")
             .contains("cpu_offload"));
 
-        // FINDINGS-13 [11]: a completed write never leaves its temp behind. This is
+        // A completed write never leaves its temp behind. This is
         // the success-path half; the refused-rename half is pinned in
         // `a_true_no_op_edit_never_reaches_the_disk` and the refused-temp-write
-        // half (R2-13-04 closed the gap: no refused arm leaves a temp now) in
+        // half (no refused arm leaves a temp now) in
         // `a_refused_temp_write_removes_its_temp_and_keeps_the_target`, which
         // together with this assert also caught a direct `fs::write(path)`
         // before it existed.
@@ -2550,7 +2546,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// R2-13-03: a read-back that parses clean but holds zero keys is not a
+    /// A read-back that parses clean but holds zero keys is not a
     /// publishable file — it is the exact shape `commit_verified` refuses to
     /// write (`EmptyFile`) and the scan refuses (`InvalidYaml`) — so the
     /// post-write gate must reject it and run the same restore/forensic path,
@@ -2584,7 +2580,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// R2-13-04: a refused temp write (disk full / write refused right after
+    /// A refused temp write (disk full / write refused right after
     /// `create` succeeded) must not leave its `.sh.tmp` beside the target —
     /// the arm the RenameFailed cleanup has always mirrored. The seam leaves
     /// the temp on disk and refuses the write; removing the arm's
