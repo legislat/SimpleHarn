@@ -136,8 +136,12 @@ A release is a task with acceptance criteria. Run the steps in this order:
     exempt. The suite never substitutes for the cardless gate; it proves hardware
     behavior that CI cannot.
 8. Push the commits and the tag. Each push needs operator approval.
-9. Build the artifact, record its hash, stage the operator copy per "Build and release
-   directories" below, deploy it, and verify the boot.
+9. Build the Windows artifact, record its hash, stage the operator copy per "Build and
+   release directories" below, deploy it, and verify the boot. The Linux artifact is
+   built from the same tag in CI (`release-facts.yml`, job `linux-artifact`): download
+   `SimpleHarn-<ver>-linux-x64.tar.gz` and its `.sha256`, record both, and attach both
+   to the GitHub release. A Linux card verdict stays BLOCKED: the CI build proves the
+   binary compiles and packages, never that an engine loads on a Linux GPU.
 10. Keep and name the rollback artifact: the previous release stays in the fallback
     directory named below.
 
@@ -158,6 +162,8 @@ Rules:
   `node scripts/check-doc-facts.mjs` and `scripts/release-check.ps1` without `-Prepare`
   on the pushed tag, so a tag that disagrees with the release facts cannot pass unseen.
   The run is cardless.
+- The Linux artifact is built headless from the tag in CI. Never build it from a dirty
+  worktree, and never attach an artifact whose `.sha256` file does not match it.
 - A published GitHub release triggers the artifact guard in the same workflow. A
   published release with zero assets fails: a published release must carry the release
   zip artifact. The guard is cardless.

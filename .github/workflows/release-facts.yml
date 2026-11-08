@@ -69,3 +69,37 @@ jobs:
             exit 1
           fi
           echo "PASS: published release $GITHUB_REF_NAME carries $assets asset(s)."
+  # Trigger A, Linux port (D4): build the headless Linux artifact from the tag
+  # in CI and publish its hash beside it. The Linux card verdict stays BLOCKED:
+  # a build here proves the binary compiles and packages, never that an engine
+  # loads on a Linux GPU.
+  linux-artifact:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@1.98.1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build headless Linux binary
+        run: cargo build --release --locked
+
+      - name: Package the Linux artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#v}"
+          root="SimpleHarn-${ver}-linux-x64"
+          mkdir -p "dist/${root}"
+          cp target/release/simpleharn "dist/${root}/"
+          cp README.md LICENSE "dist/${root}/"
+          tar -C dist -czf "dist/${root}.tar.gz" "${root}"
+          sha256sum "dist/${root}.tar.gz" | sed 's#dist/##' > "dist/${root}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simpleharn-linux-x64
+          path: dist/SimpleHarn-*.tar.gz*
+          if-no-files-found: error
