@@ -850,3 +850,19 @@ recorded here so dated references to ARCHIVED still resolve:
   the measured need (66 GiB tested, 67 GiB recommended for margin). The 256K row
   uses the floor; `whole` stays the posture for dedicated cards.
   | 2026-11-08 | `this task`
+
+- **Linux port committed; whole posture clarified** (operator 2026-11-08): the
+  port proceeds in phases, P0 boundary first, then unix implementations, then
+  the engine set, then a release. Linux boots headless by default; the tray is an
+  optional, non-default feature. The first Linux release covers llama and strata.
+  Artifacts are built by CI. WSL2 on this machine is the Linux playground for
+  builds and tests, and card legs run there where GPU passthrough allows;
+  otherwise they stay BLOCKED. Separately, `whole` and `vram_reserve_gb` are
+  documented as the exclusive posture with a foreign-residency allowance: the
+  card counts as free when the witness reaches `total - reserve`, so a desktop
+  that holds more than the reserve keeps a `whole` row refused forever. The
+  levers are a higher reserve (covers the GUI baseline for every row) or a
+  numeric floor sized to the measured footprint plus margin (robust to GUI
+  variance). A floor below the real need admits and lets the engine abort, so it
+  is an operator promise, not a measurement.
+  | 2026-11-08 | `this task`
