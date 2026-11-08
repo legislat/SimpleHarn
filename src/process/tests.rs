@@ -916,6 +916,7 @@ fn a_prefix_sharing_model_never_prunes_the_longer_names_pool() {
 /// capture landed as `qwen 7b-<epoch>.log`, the prune of that model matched
 /// only raw-named files, and the nine seeded `qwen_7b-` captures survived
 /// the prune untouched — every count assert below goes red.
+#[cfg(windows)]
 #[tokio::test]
 async fn captures_and_snapshots_of_one_model_share_one_sanitized_pool() {
     let dir = harness_logs_dir();
@@ -1413,6 +1414,9 @@ fn client_spec(program: &str, args: &[&str], log_name: &str) -> LaunchSpec {
     }
 }
 
+/// Every consumer of this ticket shape spawns a Windows-shaped stand-in
+/// client, so the helper is Windows-only.
+#[cfg(windows)]
 fn child_ticket(port: u16) -> SpawnTicket {
     SpawnTicket {
         generation: 1,
@@ -1424,7 +1428,9 @@ fn child_ticket(port: u16) -> SpawnTicket {
 
 /// [`client_spec`] marked for custody recording — exactly what the strata
 /// adapter puts on every launch (slice 10b): the engine id says record,
-/// the instance name is the model, `log_name` rides through.
+/// the instance name is the model, `log_name` rides through. Every consumer
+/// spawns a Windows-shaped stand-in client, so the helper is Windows-only.
+#[cfg(windows)]
 fn custodied_spec(program: &str, args: &[&str], log_name: &str) -> LaunchSpec {
     LaunchSpec {
         custody: Some("strata".to_string()),
@@ -1478,6 +1484,7 @@ async fn a_failed_container_spawn_leaves_no_claim() {
 /// — the redirect file — appeared even though the spawn was reported failed.
 /// The absence poll below goes red on that code; here it proves the seal
 /// froze the child before any first act and the kill reaped it frozen.
+#[cfg(windows)]
 #[tokio::test]
 async fn a_post_spawn_failure_leaves_no_claim() {
     let dir = crate::testutil::temp_dir("claims-retract");
@@ -1524,6 +1531,7 @@ async fn a_post_spawn_failure_leaves_no_claim() {
 /// The control that keeps the two pins above from being satisfied by a claim
 /// path that never works at all: a client that really started mints the claim
 /// every reap depends on, in memory and on disk.
+#[cfg(windows)]
 #[tokio::test]
 async fn a_started_client_mints_the_claim_the_reaps_depend_on() {
     let dir = crate::testutil::temp_dir("claims-mint");
@@ -1557,6 +1565,7 @@ async fn a_started_client_mints_the_claim_the_reaps_depend_on() {
 /// absolute, so no other variable is needed. Falsifier: keep the
 /// `CREATE_SUSPENDED` flag and drop the resume arm of the seal, and the
 /// child is frozen forever — the first-act poll times out red.
+#[cfg(windows)]
 #[tokio::test]
 async fn a_spawned_engine_resumes_and_runs() {
     let dir = crate::testutil::temp_dir("spawn-resume");
@@ -1612,6 +1621,7 @@ async fn a_spawned_engine_resumes_and_runs() {
 /// the moment the client really started (and the sidecar file sees it),
 /// and a confirmed release clears the entry. `cmd.exe /c ping` stands in
 /// for the strata router so the child is still live at kill time.
+#[cfg(windows)]
 #[tokio::test]
 async fn a_custodied_launch_records_then_a_release_clears_the_sidecar() {
     let dir = crate::testutil::temp_dir("custody-spawn");
@@ -1640,6 +1650,7 @@ async fn a_custodied_launch_records_then_a_release_clears_the_sidecar() {
             instance: "se-custody".to_string(),
             engine: "strata".to_string(),
             claimed_at_ms: recorded[0].claimed_at_ms,
+            boot_id: recorded[0].boot_id.clone(),
         },
         "pid, port, instance and engine id all ride the entry, with a real start token"
     );
@@ -1687,6 +1698,7 @@ async fn a_custodied_launch_records_then_a_release_clears_the_sidecar() {
 /// never reaches the write at all — the job seal precedes
 /// every custody write — so a launch the harness calls failed never
 /// leaves a record the boot sweep could act on.
+#[cfg(windows)]
 #[tokio::test]
 async fn a_failed_custodied_spawn_leaves_no_sidecar_entry() {
     let dir = crate::testutil::temp_dir("custody-failed");
@@ -1749,6 +1761,7 @@ async fn a_failed_custodied_spawn_leaves_no_sidecar_entry() {
 /// interleaving is ordered by the gate, never by wall-clock luck. The seam
 /// adds no production await (the field does not exist outside `cfg(test)`).
 /// On the unguarded removal every ownership assertion below is red.
+#[cfg(windows)]
 #[tokio::test]
 async fn a_blocked_release_poller_may_not_remove_the_successor_that_took_its_port() {
     let dir = crate::testutil::temp_dir("release-race");
@@ -1863,6 +1876,7 @@ async fn a_blocked_release_poller_may_not_remove_the_successor_that_took_its_por
 /// and `a_kill_with_a_confirmed_reap_releases_the_container_slot` now drive
 /// `kill` writing that verdict itself (REV7-03), so this direct write is a
 /// belt, not the only coverage of the true side.)
+#[cfg(windows)]
 #[tokio::test]
 async fn an_unconfirmed_container_reap_holds_the_release_of_its_port() {
     let dir = crate::testutil::temp_dir("release-reap-held");
@@ -1939,7 +1953,9 @@ async fn an_unconfirmed_container_reap_holds_the_release_of_its_port() {
 /// What the reap seam answered so far (REV7 pins): one name per scripted,
 /// `kill`-carried reap. A passive `release_confirmed` poll must never
 /// extend this list, and a duty the rule retired must not consume a
-/// scripted verdict either.
+/// scripted verdict either. The reap pins that read it drive Windows-shaped
+/// stand-ins, so the reader is Windows-only.
+#[cfg(windows)]
 fn reap_asked(seam: &ReapSeam) -> Vec<String> {
     seam.asked.lock().expect("reap verdict seam lock").clone()
 }
@@ -1953,6 +1969,7 @@ fn reap_asked(seam: &ReapSeam) -> Vec<String> {
 /// that never retry, re-arm, retirement on confirmation, release with the
 /// claim ended -- runs against the production duty, claim, and generation
 /// logic without ever invoking WSL.
+#[cfg(windows)]
 #[tokio::test]
 async fn an_explicit_rekill_rearms_only_an_unconfirmed_container_reap() {
     let dir = crate::testutil::temp_dir("release-rearm");
@@ -2040,6 +2057,7 @@ async fn an_explicit_rekill_rearms_only_an_unconfirmed_container_reap() {
 /// docker-confirmed reap (still without WSL), and the very next passive
 /// poll releases, ends the claim, and clears the table -- the proof that
 /// the true side rides on `kill`, not on a test poking the field.
+#[cfg(windows)]
 #[tokio::test]
 async fn a_kill_with_a_confirmed_reap_releases_the_container_slot() {
     let dir = crate::testutil::temp_dir("release-confirmed");
@@ -2093,6 +2111,7 @@ async fn a_kill_with_a_confirmed_reap_releases_the_container_slot() {
 /// `docker rm`, and nothing is written to an unheld name. Recovery for the
 /// rare self-inflicted missing claim is the R5 stranded report naming it
 /// -- report-only by ruling.
+#[cfg(windows)]
 #[tokio::test]
 async fn an_unclaimed_container_slot_releases_on_plain_port_evidence() {
     let dir = crate::testutil::temp_dir("release-noclaim");
@@ -2229,6 +2248,9 @@ fn secret_bearing_source() -> Vec<(String, String)> {
     ])
 }
 
+// The child-env stand-in cluster: `cmd.exe /c set` dumps are Windows-shaped
+// stand-ins, not product behavior, so the whole cluster is Windows-only.
+#[cfg(windows)]
 fn count_child_var(dump: &str, key: &str) -> usize {
     let prefix = format!("{}=", key.to_uppercase());
     dump.lines()
@@ -2236,6 +2258,7 @@ fn count_child_var(dump: &str, key: &str) -> usize {
         .count()
 }
 
+#[cfg(windows)]
 fn has_child_var(dump: &str, key: &str) -> bool {
     count_child_var(dump, key) > 0
 }
@@ -2268,6 +2291,7 @@ fn baseline_keeps_only_the_os_names_and_drops_every_secret() {
     }
 }
 
+#[cfg(windows)]
 #[test]
 fn baseline_falls_back_for_path_temp_tmp_and_omits_the_rest() {
     let env = child_env_baseline_from(pairs(&[("COMSPEC", "C:\\Windows\\System32\\cmd.exe")]));
@@ -2294,6 +2318,36 @@ fn baseline_falls_back_for_path_temp_tmp_and_omits_the_rest() {
     }
 }
 
+/// The unix twin: the baseline is `PATH` + `TMPDIR`, both always present
+/// through the fallbacks, and nothing else is invented — the operator's
+/// `HOME` in particular never rides to an engine child.
+#[cfg(unix)]
+#[test]
+fn baseline_falls_back_for_path_and_tmpdir_and_invents_nothing_else() {
+    let env = child_env_baseline_from(pairs(&[("HOME", "/home/ops"), ("LANG", "C.UTF-8")]));
+    let exe_dir = std::env::current_exe()
+        .expect("exe path")
+        .parent()
+        .expect("exe directory")
+        .to_string_lossy()
+        .into_owned();
+    let temp = std::env::temp_dir().to_string_lossy().into_owned();
+    let got: BTreeMap<String, String> = env
+        .into_iter()
+        .map(|(k, v)| (k.to_uppercase(), v))
+        .collect();
+    assert_eq!(
+        got.len(),
+        OS_ENV_BASELINE.len(),
+        "the unix baseline is exactly PATH and TMPDIR: {got:?}"
+    );
+    assert_eq!(got.get("PATH").expect("PATH always present"), &exe_dir);
+    assert_eq!(got.get("TMPDIR").expect("TMPDIR always present"), &temp);
+    for absent in ["HOME", "LANG", "PYTHONPATH", "USER", "SHELL"] {
+        assert!(!got.contains_key(absent), "{absent} must never be invented");
+    }
+}
+
 #[test]
 fn baseline_collapses_case_duplicate_names_to_one_entry() {
     let env = child_env_baseline_from(pairs(&[
@@ -2308,7 +2362,11 @@ fn baseline_collapses_case_duplicate_names_to_one_entry() {
         .iter()
         .find(|(k, _)| k.to_uppercase() == "PATH")
         .expect("Path present");
-    assert_eq!(path.0, "Path", "baseline emits its canonical spelling");
+    let canonical = OS_ENV_BASELINE
+        .iter()
+        .find(|name| name.to_uppercase() == "PATH")
+        .expect("the OS baseline always carries PATH");
+    assert_eq!(path.0, *canonical, "baseline emits its canonical spelling");
     assert_eq!(path.1, "C:\\first", "first occurrence wins");
 }
 
@@ -2367,6 +2425,7 @@ fn engine_child_env_keeps_baseline_and_spec_and_drops_everything_else() {
     assert_eq!(keys.len(), assembled.len(), "no case-duplicates: {keys:?}");
 }
 
+#[cfg(windows)]
 #[test]
 fn assembled_env_reaches_a_real_child_without_inherited_secrets() {
     use std::os::windows::process::CommandExt as _;
@@ -2430,8 +2489,10 @@ fn assembled_env_reaches_a_real_child_without_inherited_secrets() {
 /// `PYTHONPATH`/`VIRTUAL_ENV`, and integration suites are separate processes.
 /// `std::env::set_var` is a safe call in edition 2021 — an `unsafe` block here
 /// would deny the build with `unused_unsafe` under `-D warnings`.
+#[cfg(windows)]
 struct HarnessEnvGuard(Vec<String>);
 
+#[cfg(windows)]
 impl HarnessEnvGuard {
     fn set(list: &[(&str, &str)]) -> Self {
         let mut keys = Vec::with_capacity(list.len());
@@ -2443,6 +2504,7 @@ impl HarnessEnvGuard {
     }
 }
 
+#[cfg(windows)]
 impl Drop for HarnessEnvGuard {
     fn drop(&mut self) {
         for key in &self.0 {
@@ -2453,6 +2515,7 @@ impl Drop for HarnessEnvGuard {
 
 /// Polls until the child's redirected `set` output exists and stops changing
 /// (the file is created at redirect time, written when cmd flushes).
+#[cfg(windows)]
 async fn wait_for_child_env_dump(path: &std::path::Path) -> String {
     let deadline = std::time::Instant::now() + Duration::from_secs(15);
     let mut previous = String::new();
@@ -2471,6 +2534,7 @@ async fn wait_for_child_env_dump(path: &std::path::Path) -> String {
     }
 }
 
+#[cfg(windows)]
 #[tokio::test]
 async fn engine_spawn_serves_only_the_declared_environment() {
     // The production path end to end: `ProcessRuntime::spawn` (the single
@@ -2587,6 +2651,7 @@ fn control_child_env_is_the_baseline_and_nothing_else() {
 /// is something no other test does (unlike `SIMPLEHARN_TOKEN`, which the api layer
 /// reads). Falsifier: drop the `env_clear()` here and the toolchain assertions
 /// below fail.
+#[cfg(windows)]
 #[tokio::test]
 async fn a_control_command_child_carries_no_harness_environment() {
     let dir = crate::testutil::temp_dir("controlenv");
@@ -2639,6 +2704,7 @@ async fn a_control_command_child_carries_no_harness_environment() {
 /// spawn failure, never a fabricated projection), and a real child's stdout
 /// travels verbatim toward the strict parser. `cmd.exe` is a harmless
 /// stand-in: the fit tool itself is never exec'd by tests.
+#[cfg(windows)]
 #[tokio::test]
 async fn the_fit_probe_answers_stdout_when_the_tool_answers_and_none_when_it_cannot() {
     let runtime = ProcessRuntime::new();
@@ -2722,6 +2788,7 @@ async fn engine_status_json_answers_the_body_or_silence_never_a_guess() {
 /// engine execs here, the same stand-in class as the control-command pin
 /// — and asks the live table where it hangs; an absent pid answers empty,
 /// never a guess.
+#[cfg(windows)]
 #[tokio::test]
 async fn descendant_pids_includes_the_direct_children_of_the_asked_pid() {
     use std::os::windows::process::CommandExt;
@@ -2762,6 +2829,7 @@ async fn descendant_pids_includes_the_direct_children_of_the_asked_pid() {
 /// direct-children-only walk and the pair never appears — the set is
 /// just the inner cmd.exe, whose own child is missing from it — so the
 /// deadline expires and the depth assertion fails red.
+#[cfg(windows)]
 #[tokio::test]
 async fn descendant_pids_reaches_the_grandchildren_of_the_asked_pid() {
     use std::os::windows::process::CommandExt;

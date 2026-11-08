@@ -1,7 +1,7 @@
 //! Process-runtime integration tests: a real hidden child process under a Job
 //! Object, real HTTP readiness, real G12 release evidence. The child is a tiny
-//! Python HTTP server (`python` is present on this box); the test skips with a note
-//! when it is not.
+//! Python HTTP server (`python` on Windows, `python3` elsewhere); the test
+//! skips with a note when it is not.
 
 use simpleharn::engine::{EngineRuntime, LaunchSpec, Probe, ReadinessSpec, SpawnError, Spawned};
 use simpleharn::ownership::{ResourceKind, SpawnTicket};
@@ -18,6 +18,9 @@ use std::time::Duration;
 /// children may never be given one port. `18_195` stays reserved for the lib binary's
 /// own engine-child test.
 const TEST_PORT: u16 = 18_190;
+
+/// The interpreter this host runs the stand-in server with.
+const PYTHON: &str = if cfg!(windows) { "python" } else { "python3" };
 
 /// Log namespace owned by the capture test. It may delete any file starting with this
 /// prefix because nothing else writes it (FINDINGS-20 [1]: a name left over from an
@@ -49,7 +52,7 @@ fn spec(port: u16, log_name: &str) -> LaunchSpec {
         .replace("PORT", &port.to_string())
         .replace("MARKER", LOG_MARKER);
     LaunchSpec {
-        argv: vec!["python".to_string(), "-c".to_string(), code],
+        argv: vec![PYTHON.to_string(), "-c".to_string(), code],
         cwd: PathBuf::from("."),
         env: BTreeMap::new(),
         log_name: log_name.to_string(),
@@ -190,10 +193,17 @@ fn ticket(port: u16) -> SpawnTicket {
 /// this box). Every other `Err` — a log-file collision included — must panic,
 /// never skip: a green run must never hide the flagship kill-path tests.
 fn python_is_missing(error: &SpawnError) -> bool {
+    // Windows: "program not found". Linux: "No such file or directory (os
+    // error 2)". Either way the skip is the interpreter's absence, and every
+    // other spawn error still panics.
     matches!(
         error,
         SpawnError::SpawnFailed { reason }
-            if reason.contains("cannot spawn python") && reason.contains("program not found")
+            if reason.contains("cannot spawn")
+                && reason.contains(PYTHON)
+                && (reason.contains("program not found")
+                    || reason.contains("os error 2")
+                    || reason.contains("No such file or directory"))
     )
 }
 
@@ -420,7 +430,7 @@ async fn probe_fails_fast_when_the_child_already_exited() {
     let runtime = ProcessRuntime::new();
     let spec = LaunchSpec {
         argv: vec![
-            "python".to_string(),
+            PYTHON.to_string(),
             "-c".to_string(),
             "import sys; sys.exit(3)".to_string(),
         ],
@@ -719,7 +729,7 @@ async fn probe_names_the_missing_model_file_when_a_child_exits_early() {
     let missing = "Z:\\definitely-not-here\\doomed.gguf";
     let spec = LaunchSpec {
         argv: vec![
-            "python".to_string(),
+            PYTHON.to_string(),
             "-c".to_string(),
             "import sys; sys.exit(3)".to_string(),
             "-m".to_string(),

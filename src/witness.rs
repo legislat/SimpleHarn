@@ -368,8 +368,10 @@ impl RamWitness for GlobalRamWitness {
     }
 }
 
-/// Samples host RAM via `GlobalMemoryStatusEx`; `None` when the call is nonsense
-/// (zero total), so the page omits the bar rather than lying.
+/// Samples host RAM; `None` when the sample is nonsense (zero total), so the
+/// page omits the bar rather than lying. Windows reads `GlobalMemoryStatusEx`;
+/// Linux reads `/proc/meminfo`.
+#[cfg(windows)]
 #[must_use]
 pub fn ram_sample() -> Option<RamSample> {
     use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
@@ -391,6 +393,22 @@ pub fn ram_sample() -> Option<RamSample> {
     Some(RamSample {
         total_gib,
         used_gib: total_gib - gib(status.ullAvailPhys),
+    })
+}
+
+/// Linux: `MemTotal` and `MemAvailable` from `/proc/meminfo`.
+#[cfg(unix)]
+#[must_use]
+pub fn ram_sample() -> Option<RamSample> {
+    let (total, available) = crate::platform::host_ram_bytes()?;
+    let gib = |bytes: u64| bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+    let total_gib = gib(total);
+    if total_gib <= 0.0 {
+        return None;
+    }
+    Some(RamSample {
+        total_gib,
+        used_gib: total_gib - gib(available),
     })
 }
 

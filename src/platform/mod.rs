@@ -93,20 +93,44 @@ pub trait SingleInstance: Sized {
     fn acquire() -> Result<Self, String>;
 }
 
+#[cfg(unix)]
+mod unix;
 #[cfg(windows)]
 mod windows;
 
+#[cfg(unix)]
+pub use unix::{
+    descendant_pids_of, host_ram_bytes, working_set_bytes_of, KillGroup, SingleInstanceGuard,
+    UnixProcessIdentity, UnixProcessTree,
+};
 #[cfg(windows)]
 pub use windows::{
     descendant_pids_of, working_set_bytes_of, KillGroup, SingleInstanceGuard, WinProcessIdentity,
     WinProcessTree, CREATE_NO_WINDOW,
 };
 
+/// Hides a short-lived control child: no window on this target.
+pub fn hide_window(command: &mut tokio::process::Command) {
+    #[cfg(windows)]
+    windows::hide_window(command);
+    #[cfg(unix)]
+    unix::hide_window(command);
+    #[cfg(not(any(windows, unix)))]
+    let _ = command;
+}
+
 /// The live process-tree implementation for this target.
 #[cfg(windows)]
 #[must_use]
 pub fn process_tree() -> Arc<dyn ProcessTree> {
     Arc::new(WinProcessTree)
+}
+
+/// The live process-tree implementation for this target.
+#[cfg(unix)]
+#[must_use]
+pub fn process_tree() -> Arc<dyn ProcessTree> {
+    Arc::new(UnixProcessTree)
 }
 
 /// The live process-identity implementation for this target.
@@ -116,9 +140,50 @@ pub fn process_identity() -> Arc<dyn ProcessIdentity> {
     Arc::new(WinProcessIdentity)
 }
 
+/// The live process-identity implementation for this target.
+#[cfg(unix)]
+#[must_use]
+pub fn process_identity() -> Arc<dyn ProcessIdentity> {
+    Arc::new(UnixProcessIdentity)
+}
+
 /// The process-identity seam the custody boot sweep drives.
 #[cfg(windows)]
 #[must_use]
 pub fn custody_os() -> Arc<dyn crate::custody::CustodyOs> {
     Arc::new(WinProcessIdentity)
+}
+
+/// The process-identity seam the custody boot sweep drives.
+#[cfg(unix)]
+#[must_use]
+pub fn custody_os() -> Arc<dyn crate::custody::CustodyOs> {
+    Arc::new(UnixProcessIdentity)
+}
+
+/// The host boot id recorded on every custody entry at launch and compared
+/// by the boot sweep (see [`crate::custody::boot_id_matches`]). Windows has
+/// no boot identity this harness reads (the FILETIME token already spans a
+/// reboot because a process object cannot outlive one), so it answers `None`
+/// and entries stay unstamped. Linux reads the kernel's per-boot uuid; an
+/// unreadable `/proc` answers `None`, which the asymmetric gate treats as
+/// "no permission to act on a stamped entry", never as a match.
+#[cfg(windows)]
+#[must_use]
+pub fn host_boot_id() -> Option<String> {
+    None
+}
+
+/// The host boot id (see the [`crate::custody::boot_id_matches`] rule).
+#[cfg(unix)]
+#[must_use]
+pub fn host_boot_id() -> Option<String> {
+    unix::host_boot_id()
+}
+
+/// The host boot id: no boot identity exists to read on this target.
+#[cfg(not(any(windows, unix)))]
+#[must_use]
+pub fn host_boot_id() -> Option<String> {
+    None
 }

@@ -15,6 +15,14 @@ use async_trait::async_trait;
 /// `CREATE_NO_WINDOW`: hidden children (Step 8).
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Hides a short-lived control child: the same flag the engine spawn uses,
+/// without the suspended/resume discipline (control commands are not sealed
+/// into a job).
+pub fn hide_window(command: &mut tokio::process::Command) {
+    // tokio's Command exposes creation_flags inherently on Windows.
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
 /// Owned Job Object handle. `Send` because the runtime owns it exclusively: it is
 /// created on one task, stored once, and closed exactly once — by [`Drop`].
 struct JobHandle(windows::Win32::Foundation::HANDLE);

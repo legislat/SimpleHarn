@@ -91,14 +91,13 @@ use tokio::process::{Child, Command};
 
 use crate::platform::{
     process_identity, process_tree, working_set_bytes_of, KillGroup, ProcessIdentity, ProcessTree,
-    CREATE_NO_WINDOW,
 };
 pub(crate) use win32::DESCENDANT_CAP;
 
 #[cfg(test)]
 use std::collections::BTreeMap;
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 use std::process::Stdio;
 
 #[cfg(test)]
@@ -116,8 +115,8 @@ use staging::{
     STAGED_PROFILE_KEEP,
 };
 
-#[cfg(test)]
-use crate::platform::descendant_pids_of;
+#[cfg(all(test, windows))]
+use crate::platform::{descendant_pids_of, CREATE_NO_WINDOW};
 
 /// Poll pause between release-evidence checks inside the deadline.
 const RELEASE_POLL: Duration = Duration::from_millis(100);
@@ -354,7 +353,8 @@ impl ProcessRuntime {
 
     /// Parks this runtime's `release_confirmed` pollers in the await gap
     /// before the final generation re-check. Test-only; see [`ReleaseGate`].
-    #[cfg(test)]
+    /// Its only driver is the Windows-shaped release-race pin.
+    #[cfg(all(test, windows))]
     #[must_use]
     fn with_release_gate(mut self, gate: Arc<ReleaseGate>) -> Self {
         self.release_gate = Some(gate);
@@ -363,8 +363,9 @@ impl ProcessRuntime {
 
     /// Scripts this runtime's `kill`-carried container reap verdicts (the
     /// seam also reports the names each scripted verdict answered for).
-    /// Test-only; see [`ReapSeam`].
-    #[cfg(test)]
+    /// Test-only; see [`ReapSeam`]. Its only drivers are the Windows-shaped
+    /// stand-in reap pins.
+    #[cfg(all(test, windows))]
     #[must_use]
     fn with_reap_seam(mut self, verdicts: &[bool]) -> (Self, Arc<ReapSeam>) {
         let seam = Arc::new(ReapSeam {
@@ -532,8 +533,9 @@ impl ProcessRuntime {
         custody::reconcile(&ledger, &*crate::platform::custody_os(), grace).await
     }
 
-    /// Test-only read of the custody sidecar behind slice 10b's pins.
-    #[cfg(test)]
+    /// Test-only read of the custody sidecar behind slice 10b's pins — all of
+    /// which drive Windows-shaped stand-ins.
+    #[cfg(all(test, windows))]
     fn custody_entries(&self) -> Vec<custody::CustodyEntry> {
         self.custody
             .lock()
@@ -769,7 +771,11 @@ impl EngineRuntime for ProcessRuntime {
         // boot sweep to act on. A child whose start time cannot be read records
         // nothing (warn): an identity that cannot be proven must never
         // authorize a future kill, and a record that cannot be written never
-        // stops a launch (the engine-side rule, ported).
+        // stops a launch (the engine-side rule, ported). The entry is stamped
+        // with the host boot id where one exists (Linux): after a reboot the
+        // sweep drops the entry instead of reaping a pid the new kernel
+        // recycled; Windows has no boot identity to stamp (None, omitted from
+        // the JSON — the pre-stamp shape).
         let custody_token = match (spec.custody.as_deref(), pid) {
             (Some(engine), pid) if pid != 0 => self
                 .identity
@@ -783,6 +789,7 @@ impl EngineRuntime for ProcessRuntime {
                             instance: spec.log_name.clone(),
                             engine: engine.to_string(),
                             claimed_at_ms: custody::now_ms(),
+                            boot_id: crate::platform::host_boot_id(),
                         },
                     );
                 }),

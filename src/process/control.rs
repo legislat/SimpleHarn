@@ -9,7 +9,7 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use super::CREATE_NO_WINDOW;
+use crate::platform::hide_window;
 
 /// Windows env var names (case-insensitive) an engine child may keep (§5 locked
 /// decision, E3): external engines obey only harness-owned configuration, so a
@@ -17,6 +17,7 @@ use super::CREATE_NO_WINDOW;
 /// the harness's own environment with its plaintext `SIMPLEHARN_TOKEN`, its
 /// `PYTHONPATH`/`VIRTUAL_ENV` (strata is a Python child: import-hijack risk), and
 /// every other stray var.
+#[cfg(windows)]
 pub(super) const OS_ENV_BASELINE: &[&str] = &[
     "SystemRoot",
     "windir",
@@ -27,15 +28,27 @@ pub(super) const OS_ENV_BASELINE: &[&str] = &[
     "TMP",
 ];
 
+/// The unix engine child's OS baseline: the same E3 rule, the smaller list.
+/// `PATH` (program lookup — the fallback is the harness's own directory, the
+/// Windows rule's twin) and `TMPDIR` (scratch, falling back to
+/// [`std::env::temp_dir`]). Nothing else is "truly needed" by an external
+/// engine here: there is no OS locator variable (`/` is not a var), and `HOME`
+/// stays out on purpose — it names the operator's account, and `LD_*` and
+/// locale vars would let the harness's own toolchain shape the child's loader
+/// and collation. One rule as on Windows: baseline plus what the spec declares.
+#[cfg(not(windows))]
+pub(super) const OS_ENV_BASELINE: &[&str] = &["PATH", "TMPDIR"];
+
 /// Builds the child baseline by copying the [`OS_ENV_BASELINE`] names out of
 /// `source` (the harness env at the spawn site), matching names case-insensitively:
 /// Windows env names are case-insensitive and [`std::env::vars`] preserves whatever
 /// spelling the parent carried, so lookups go through the uppercased key while the
 /// output uses the baseline's canonical spelling. A name supplied under several
 /// spellings (e.g. `PATH` and `Path`) collapses to one entry, first occurrence
-/// wins. `SystemRoot`, `windir`, `COMSPEC` and `PATHEXT` are never invented: absent
-/// from `source` they stay absent and the spawn fails loudly if Windows demands
-/// one. `Path`, `TEMP` and `TMP` are always present via [`baseline_fallback`].
+/// wins. Names without a [`baseline_fallback`] (`SystemRoot`, `windir`, `COMSPEC`,
+/// `PATHEXT` on Windows) are never invented: absent from `source` they stay absent
+/// and the spawn fails loudly if the OS demands one. `Path`/`PATH` and the temp
+/// directory names are always present via the fallback.
 pub(super) fn child_env_baseline_from<I>(source: I) -> Vec<(String, String)>
 where
     I: IntoIterator<Item = (String, String)>,
@@ -64,9 +77,10 @@ where
         .collect()
 }
 
-/// The always-present baseline values the harness env may lack: `Path` falls back
-/// to the harness's own directory and `TEMP`/`TMP` to [`std::env::temp_dir`];
-/// every other name returns `None` and is omitted rather than invented.
+/// The always-present baseline values the harness env may lack: `Path`/`PATH`
+/// falls back to the harness's own directory and `TEMP`/`TMP`/`TMPDIR` to
+/// [`std::env::temp_dir`]; every other name returns `None` and is omitted
+/// rather than invented.
 ///
 /// # Panics
 ///
@@ -82,7 +96,7 @@ fn baseline_fallback(name_upper: &str) -> Option<String> {
                 .to_string_lossy()
                 .into_owned(),
         ),
-        "TEMP" | "TMP" => Some(std::env::temp_dir().to_string_lossy().into_owned()),
+        "TEMP" | "TMP" | "TMPDIR" => Some(std::env::temp_dir().to_string_lossy().into_owned()),
         _ => None,
     }
 }
@@ -197,12 +211,12 @@ async fn run_control_command_with_stdin_timeout(
     let mut command = Command::new(program);
     command
         .args(args)
-        .creation_flags(CREATE_NO_WINDOW)
         .kill_on_drop(true)
         .env_clear()
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    hide_window(&mut command);
     for (key, value) in control_child_env() {
         command.env(key, value);
     }

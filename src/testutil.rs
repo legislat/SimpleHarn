@@ -131,6 +131,7 @@ pub(crate) mod testlog {
 
     /// Runs `run` with a subscriber that records every event it sees and returns the
     /// recorded lines alongside `run`'s value.
+    #[cfg(feature = "tray")]
     pub(crate) fn with_capture<R>(run: impl FnOnce() -> R) -> (R, Vec<String>) {
         let session = Session::start();
         let result = run();

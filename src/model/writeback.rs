@@ -879,6 +879,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 #[cfg(test)]
 struct CorruptArm {
     path: PathBuf,
+    #[cfg_attr(not(windows), allow(dead_code))]
     lock_target: bool,
 }
 
@@ -956,6 +957,8 @@ fn corrupt_if_armed(
             if arm.lock_target {
                 lock_without_delete_share(path);
             }
+            #[cfg(not(windows))]
+            let _ = arm;
             Ok(format!("{text}\njust text corrupt seam\n"))
         }
         (_, other) => other,
@@ -1116,6 +1119,7 @@ fn restore_probe() -> &'static Mutex<Vec<(PathBuf, bool)>> {
 /// `Some(true)` = the `.bak` was on disk before the restore began; `Some(false)`
 /// = the order regressed; `None` = no restore ran for that path.
 #[cfg(test)]
+#[cfg(windows)]
 pub(crate) fn restore_entered_with_backup(path: &Path) -> Option<bool> {
     restore_probe()
         .lock()
