@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, maintainer]
 source_of_truth_for: [release history]
-last_reviewed: 2026-11-07
+last_reviewed: 2026-11-08
 review_trigger: release
 ---
 
@@ -17,6 +17,19 @@ Versioning.
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
 ## Unreleased
+
+### Changed
+
+- The harness no longer publishes an unauthenticated control plane. Boot now
+  refuses a bind address that is not loopback when no control token is set,
+  and the refusal names both remedies. Set `control_token` or the
+  `SIMPLEHARN_TOKEN` environment variable to publish to the local network
+  with the token guarding every route. To keep the previous open-bind
+  behavior on purpose, set the new config key
+  `allow_unauthenticated_network_bind` to `true`; the harness then boots and
+  keeps warning on the control page that the bind is open and outside the
+  supported posture. The key defaults to `false`; loopback boots and
+  token-guarded boots are unchanged.
 
 ## v1.4.0 - 2026-11-07
 

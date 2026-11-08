@@ -652,6 +652,17 @@ pub struct AppConfig {
     /// the value is never logged and never accepted in a URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub control_token: Option<String>,
+    /// Explicit opt-in for publishing a non-loopback [`Self::internal_host`]
+    /// with no control token resolved (boot gate, operator task 2026-11-08).
+    /// False (default): boot refuses the open bind before any listener binds
+    /// and names both remedies — set a token, or set this key true. True:
+    /// boot proceeds and the `lan_open_without_token` page warning stays.
+    /// A loopback bind never consults this key and a resolved token never
+    /// consults it; the gate reads the resolved posture, not this key alone.
+    /// Always serialized, like [`AppConfig::allow_mock_engine`], so the file
+    /// states the posture explicitly instead of relying on the default.
+    #[serde(default)]
+    pub allow_unauthenticated_network_bind: bool,
     /// Gate for the test-facing `mock` engine adapter: production boot registers it **only**
     /// when this is true (chunk 10 \[3]). The adapter's argv names the bare program
     /// `mock-engine`, which `CreateProcessW` resolves through the harness's own directories,
@@ -719,6 +730,7 @@ impl fmt::Debug for AppConfig {
             ninfer_log_max_files,
             source_path,
             control_token,
+            allow_unauthenticated_network_bind,
             allow_mock_engine,
             prefetch_on_release,
             engines,
@@ -755,6 +767,10 @@ impl fmt::Debug for AppConfig {
             .field("ninfer_log_max_files", ninfer_log_max_files)
             .field("source_path", source_path)
             .field("control_token", &format_args!("REDACTED({presence})"))
+            .field(
+                "allow_unauthenticated_network_bind",
+                allow_unauthenticated_network_bind,
+            )
             .field("allow_mock_engine", allow_mock_engine)
             .field("prefetch_on_release", prefetch_on_release)
             .field("engines", engines)
@@ -787,6 +803,7 @@ impl Default for AppConfig {
             ninfer_log_max_size_mib: default_ninfer_log_max_size_mib(),
             ninfer_log_max_files: default_ninfer_log_max_files(),
             control_token: None,
+            allow_unauthenticated_network_bind: false,
             allow_mock_engine: false,
             prefetch_on_release: false,
             engines: None,
@@ -1431,6 +1448,36 @@ impl AppConfig {
             .collect()
     }
 
+    /// Boot gate for the unauthenticated network bind (operator task
+    /// 2026-11-08): `Some(reason)` when [`Self::internal_host`] is not
+    /// loopback, no control token resolves (`token_present` is
+    /// `ApiState::requires_token()`, as in [`Self::config_warnings`]), and
+    /// [`Self::allow_unauthenticated_network_bind`] is false. The reason is
+    /// the refusal sentence and names both remedies. Pure and env-agnostic
+    /// like [`Self::config_warnings`]; `main.rs` calls it after the token is
+    /// resolved (`ApiState::new`) and before `run()` binds a listener, so a
+    /// refused posture never reaches the network. A loopback bind never
+    /// consults the key; a resolved token never consults the key — the
+    /// legs below are exactly that sentence. `validate()` cannot carry this
+    /// gate: it also runs on every write-back re-check and must stay
+    /// env-agnostic, while the posture depends on the resolved token.
+    #[must_use]
+    pub fn unauthenticated_network_bind_refusal(&self, token_present: bool) -> Option<String> {
+        if self.internal_host.is_loopback()
+            || token_present
+            || self.allow_unauthenticated_network_bind
+        {
+            return None;
+        }
+        Some(format!(
+            "refusing to start: `internal_host` {} is not a loopback address and no control \
+             token resolves. Set `control_token` in the config file or the `SIMPLEHARN_TOKEN` \
+             environment variable, or set `allow_unauthenticated_network_bind` to true to \
+             accept an unauthenticated bind on the local network.",
+            self.internal_host
+        ))
+    }
+
     /// FR-15: the page-visible posture warnings, derived from the config alone
     /// plus whether a control token resolves (`token_present` is
     /// `ApiState::requires_token()` — this crate stays env-agnostic here).
@@ -1446,8 +1493,9 @@ impl AppConfig {
                 code: "lan_open_without_token",
                 message: format!(
                     "The harness listens on {} with no control token. Every device on \
-                     this network can load models and drive the GPU. Set control_token \
-                     or SIMPLEHARN_TOKEN.",
+                     this network can load models and drive the GPU; boot refuses this \
+                     posture unless `allow_unauthenticated_network_bind` is true. Set \
+                     control_token or SIMPLEHARN_TOKEN.",
                     self.internal_host
                 ),
             });
@@ -1560,6 +1608,151 @@ mod tests {
             ..AppConfig::default()
         };
         assert!(cfg.validate().is_empty(), "0.0.0.0 must validate");
+    }
+
+    /// The opt-in key's default is the refusal: an operator file written
+    /// before this gate existed must NOT keep publishing unauthenticated.
+    /// Falsifier: flip the serde/`Default` default to true, or drop the key
+    /// from the schema, and the first or second assert goes red.
+    #[test]
+    fn allow_unauthenticated_network_bind_defaults_to_false_and_parses_true() {
+        assert!(
+            !AppConfig::default().allow_unauthenticated_network_bind,
+            "the safe posture must be the default"
+        );
+        let absent = AppConfig::parse("{}").expect("defaults parse");
+        assert!(
+            !absent.allow_unauthenticated_network_bind,
+            "an omitted key means false"
+        );
+        assert!(absent.validate().is_empty());
+        let opted = AppConfig::parse("{\"allow_unauthenticated_network_bind\": true}")
+            .expect("the opt-in parses");
+        assert!(opted.allow_unauthenticated_network_bind);
+        assert!(opted.validate().is_empty(), "{:?}", opted.validate());
+    }
+
+    /// The boot gate itself: the open bind (unspecified v4 or v6) with no
+    /// resolved token and no opt-in is a startup refusal, and the sentence
+    /// names both remedies so the log line alone is actionable. Falsifier:
+    /// drop the token leg or the key leg in
+    /// `unauthenticated_network_bind_refusal`, or drop a remedy from the
+    /// sentence, and the matching assert goes red.
+    #[test]
+    fn an_open_network_bind_without_a_token_refuses_boot_without_the_opt_in() {
+        for host in [
+            IpAddr::from([0, 0, 0, 0]),
+            "::".parse().expect("v6 unspecified"),
+        ] {
+            let open = AppConfig {
+                internal_host: host,
+                ..AppConfig::default()
+            };
+            let refusal = open
+                .unauthenticated_network_bind_refusal(false)
+                .unwrap_or_else(|| panic!("{host} with no token and no opt-in must refuse boot"));
+            for remedy in [
+                "control_token",
+                "SIMPLEHARN_TOKEN",
+                "allow_unauthenticated_network_bind",
+            ] {
+                assert!(
+                    refusal.contains(remedy),
+                    "the refusal must name `{remedy}`: {refusal}"
+                );
+            }
+            assert!(
+                refusal.contains(&host.to_string()),
+                "the refusal names the refused bind: {refusal}"
+            );
+        }
+    }
+
+    /// The opt-in buys the boot, never the silence: with the key true the
+    /// same open bind passes the gate and the page warning keeps riding
+    /// every status read, naming the opt-in. Falsifier: make the gate
+    /// ignore the key (first assert red) or retire the warning when the
+    /// key is true (second assert red).
+    #[test]
+    fn the_opt_in_boots_the_open_bind_and_keeps_the_warning() {
+        let opted = AppConfig {
+            internal_host: IpAddr::from([0, 0, 0, 0]),
+            allow_unauthenticated_network_bind: true,
+            ..AppConfig::default()
+        };
+        assert!(
+            opted.unauthenticated_network_bind_refusal(false).is_none(),
+            "the opt-in must buy the boot for exactly this posture"
+        );
+        let lan = opted
+            .config_warnings(false)
+            .into_iter()
+            .find(|w| w.code == "lan_open_without_token")
+            .expect("the opted-in open bind keeps its warning on every status read");
+        assert!(
+            lan.message.contains("allow_unauthenticated_network_bind"),
+            "the warning must mention the explicit opt-in: {}",
+            lan.message
+        );
+    }
+
+    /// The gate consults the key only for exactly the open posture: a
+    /// loopback bind never needs the key or a token, and a resolved token
+    /// never needs the key. Falsifier: let the refusal leg ignore
+    /// `is_loopback` or `token_present` and the matching assert goes red.
+    #[test]
+    fn loopback_and_a_resolved_token_never_consult_the_opt_in_key() {
+        let loopback = AppConfig::default();
+        assert!(
+            loopback
+                .unauthenticated_network_bind_refusal(false)
+                .is_none(),
+            "the default loopback boot is the supported posture, key or not"
+        );
+        let published = AppConfig {
+            internal_host: IpAddr::from([0, 0, 0, 0]),
+            ..AppConfig::default()
+        };
+        assert!(
+            published
+                .unauthenticated_network_bind_refusal(true)
+                .is_none(),
+            "a resolved token is the supported LAN posture: the key is not consulted"
+        );
+    }
+
+    /// §6 restart guard: the opt-in decides whether the next boot publishes
+    /// unauthenticated, so the write-back must stamp it and a restart must
+    /// read it back unchanged — in both directions. Falsifier: add
+    /// `skip_serializing_if` on the key and the default-stamp assert fires;
+    /// break the serde default and the opt-in survival assert fires.
+    #[test]
+    fn the_network_bind_opt_in_survives_the_config_write_back() {
+        let opted = AppConfig {
+            allow_unauthenticated_network_bind: true,
+            ..AppConfig::default()
+        };
+        let text = write_back_text(&opted);
+        let reloaded = AppConfig::parse(&text).expect("persisted opt-in parses");
+        assert!(
+            reloaded.validate().is_empty(),
+            "persisted config must validate: {:?}",
+            reloaded.validate()
+        );
+        assert!(
+            reloaded.allow_unauthenticated_network_bind,
+            "an opt-in must survive a write-back and a restart"
+        );
+
+        // Pinned serde choice: false is serialized (like `allow_mock_engine`),
+        // never omitted, so the file states the refusal explicitly.
+        let text = write_back_text(&AppConfig::default());
+        let stamped: serde_json::Value = serde_json::from_str(&text).expect("stamped json parses");
+        assert_eq!(
+            stamped["allow_unauthenticated_network_bind"],
+            serde_json::Value::Bool(false),
+            "the default refusal must be stamped, not omitted"
+        );
     }
 
     #[test]
@@ -1714,6 +1907,7 @@ mod tests {
             wsl_user: Some("operator".to_string()),
             source_path: Some(std::path::PathBuf::from("F:/simpleharn.json")),
             control_token: Some("SENTINEL-B".to_string()),
+            allow_unauthenticated_network_bind: true,
             allow_mock_engine: true,
             prefetch_on_release: true,
             ..AppConfig::default()
@@ -1739,6 +1933,7 @@ mod tests {
             ("wsl_distro", "Ubuntu-24.04"),
             ("wsl_user", "operator"),
             ("source_path", "simpleharn.json"),
+            ("allow_unauthenticated_network_bind", "true"),
             ("allow_mock_engine", "true"),
             ("prefetch_on_release", "true"),
         ] {
@@ -2318,7 +2513,8 @@ mod tests {
         assert_eq!(
             lan.message,
             "The harness listens on 0.0.0.0 with no control token. Every device on \
-             this network can load models and drive the GPU. Set control_token or \
+             this network can load models and drive the GPU; boot refuses this posture \
+             unless `allow_unauthenticated_network_bind` is true. Set control_token or \
              SIMPLEHARN_TOKEN."
         );
         assert!(

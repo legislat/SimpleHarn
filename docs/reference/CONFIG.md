@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent]
 source_of_truth_for: [harness configuration keys, category eviction rules]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-08
 review_trigger: behavior-change, release
 ---
 
@@ -49,8 +49,9 @@ nothing.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `internal_host` | `127.0.0.1` | Bind address. `0.0.0.0` publishes to the LAN. Set `control_token` first; see the Security note in `README.md`. |
+| `internal_host` | `127.0.0.1` | Bind address. `0.0.0.0` publishes to the LAN. Set `control_token` first; a non-loopback bind with no control token refuses boot unless `allow_unauthenticated_network_bind` is true; see the Security note in `README.md`. |
 | `control_token` | *unset* | When set, every route except the page assets requires it, on `X-Har-Token` or `Authorization: Bearer`. `SIMPLEHARN_TOKEN` overrides it and keeps the secret out of the file. |
+| `allow_unauthenticated_network_bind` | `false` | Explicit opt-in to publish a non-loopback `internal_host` with no control token. False: boot refuses the open bind before any listener binds and names both remedies (set a token, or set this key true). True: boot proceeds and the page keeps its `lan_open_without_token` warning on every status read. Loopback binds never consult it; a resolved token never consults it. The write-back stamps it (default and opt-in alike), so the file states the posture. |
 | `categories` | four defaults | Per-category `id`, optional `label`, `public_port`, `max_models` (1-6 for AUX, exactly 1 otherwise), `default_model`, `evictable_by`, `idle_timeout_s` (0 = never), `control` (exactly one), and `engine_ports` (empty = automatic plan; a non-empty list must name exactly `max_models` ports). An omitted `evictable_by` and an empty list mean the same: nobody may evict that category. Boot names every non-WORK category left with no evictor. |
 | `vram_total_gb` | `72.0` | Admission ceiling. First start normally **detects it** (NVML total, floored to 0.1 GiB). This default survives only a failed card probe. Every boot warns when the stored value and the card disagree beyond `witness_tolerance_gb`. It never repairs the value. |
 | `vram_reserve_gb` | `2.0` | Card GiB kept unreachable: the gate subtracts it before it compares (DOCTRINE item 4). |

@@ -380,6 +380,19 @@ async fn main() -> ExitCode {
         Arc::clone(&witness) as Arc<dyn simpleharn::budget::VramWitness>,
         boot,
     ));
+    // Boot gate for the unauthenticated network bind (operator task
+    // 2026-11-08): a non-loopback `internal_host` with no resolved control
+    // token refuses startup unless `allow_unauthenticated_network_bind` is
+    // true. The token is resolved and known here (`ApiState::new` reads
+    // `control_token` / `SIMPLEHARN_TOKEN`), and no listener has bound yet —
+    // `run()` starts every supervisor below this point.
+    if let Some(reason) = state
+        .config
+        .unauthenticated_network_bind_refusal(state.requires_token())
+    {
+        tracing::error!(reason = %reason, "refusing to start");
+        return ExitCode::FAILURE;
+    }
 
     // One shutdown channel for every exit path: Ctrl+C and the tray's Exit item
     // (v3.3 §20 lesson: a single Notify can only wake one waiter).

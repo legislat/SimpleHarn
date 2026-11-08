@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [operator, user, agent]
 source_of_truth_for: [operator recovery procedures]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-08
 review_trigger: behavior-change, release
 ---
 
@@ -16,6 +16,30 @@ action, and a stop condition. Case-by-case diagnosis lives in
 `docs/reference/TROUBLESHOOTING.md`. Two rules apply to every procedure: the
 harness reaps only what it spawned, so never stop a process it does not own,
 and never start a second harness instance.
+
+## Boot refuses: open network bind without a control token
+
+Symptom: the harness exits at boot without binding; the log line
+`refusing to start` names `internal_host` and says no control token
+resolves.
+
+Evidence to collect: the refusing log line; the `internal_host` value in
+`simpleharn.json`; whether `control_token` is set in that file or
+`SIMPLEHARN_TOKEN` is set in the harness environment; the value of
+`allow_unauthenticated_network_bind`.
+
+Safe action: pick one remedy the refusal itself names. To publish to the
+local network with the supported posture, set `control_token` in the config
+file or set the `SIMPLEHARN_TOKEN` environment variable (the token keeps
+every route except the page assets authenticated). To keep an
+unauthenticated bind on purpose, set `allow_unauthenticated_network_bind`
+to true; the harness then boots and keeps warning about the open bind on
+the control page. To stay local, set `internal_host` back to `127.0.0.1`.
+
+Stop condition: stop when the boot log reaches `boot ready`. Do not set the
+opt-in just to silence the refusal when a token was the intent: the opt-in
+publishes the control plane to the whole segment unauthenticated
+(`SECURITY.md`).
 
 ## Engine listener down or slot unreachable
 
