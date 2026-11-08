@@ -1635,6 +1635,7 @@ async fn a_strata_model_without_a_profile_source_is_refused_before_the_victim_di
     );
 }
 
+#[cfg(windows)]
 #[tokio::test]
 async fn an_illegal_ninfer_container_name_is_refused_before_the_occupant_dies() {
     // The security refusal of chunk 10 [2]: a `ninfer_container` docker would not

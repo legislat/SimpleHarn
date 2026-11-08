@@ -3,7 +3,7 @@
 //! the bounded late-release watch. The state and the actor loop stay owned by
 //! `mod.rs`.
 
-use crate::engine::{LaunchSpec, Probe, SpawnError};
+use crate::engine::{EngineError, LaunchSpec, Probe, SpawnError};
 use crate::model::ModelEntry;
 use crate::ownership::{ResourceKind, SpawnTicket};
 use std::sync::Arc;
@@ -285,6 +285,16 @@ impl ActorState {
                 .expect("invariant: callers hold live job ids");
             (job.engine.clone(), job.model.clone())
         };
+        // The adapter's platform list is a compiled-in property. A row whose
+        // engine does not run on this host refuses here, before any eviction,
+        // and names the platform; the scan warned about the same row earlier.
+        if let Some(reason) = crate::engine::policy::engine_refusal_on_host(&engine) {
+            return Err(SchedulerError::from(EngineError::Rejected {
+                engine,
+                model,
+                reason,
+            }));
+        }
         let Some(adapter) = self.adapters.get(&engine).cloned() else {
             return Err(SchedulerError::Spawn(format!(
                 "no adapter registered for engine `{engine}`"

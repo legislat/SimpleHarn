@@ -11782,3 +11782,84 @@ async fn a_death_report_never_touches_another_slots_resident() {
     assert_eq!(survivor_row.state, SwapState::Serving);
     assert_eq!(survivor_row.outcome.as_deref(), Some("loaded"));
 }
+
+/// P4: a row whose engine does not list this host warns at scan and still
+/// publishes; the load path refuses through the same helper. Ninfer is the
+/// only Windows-only row today, so this pin runs on Linux.
+#[cfg(unix)]
+#[test]
+fn a_windows_only_row_warns_at_scan_and_still_publishes() {
+    let dir = crate::testutil::temp_dir("platform-scan");
+    let (tx, _rx) = mpsc::unbounded_channel::<ActorMsg>();
+    let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
+    adapters.insert(
+        "ninfer".to_string(),
+        Arc::new(MockAdapter) as Arc<dyn EngineAdapter>,
+    );
+    let mut state = ActorState::empty(
+        crate::config::AppConfig::default(),
+        dir,
+        adapters,
+        Arc::new(NeverRuntime) as Arc<dyn crate::engine::EngineRuntime>,
+        Arc::new(LedgerOnlyWitness) as Arc<dyn crate::budget::VramWitness>,
+        tx,
+    );
+    let (map, problems) =
+        crate::model::scan::parse_flat_yaml("engine: ninfer\ncategory: work\nvram_gb: 2\n");
+    assert!(problems.is_empty(), "{problems:?}");
+    let entry = ModelEntry::from_flat(&map, "windows-only-row").expect("entry");
+    state.apply_catalog(
+        crate::model::scan::Catalog {
+            models: vec![entry],
+            errors: Vec::new(),
+        },
+        None,
+        &DriftStats::default(),
+    );
+    assert!(
+        state.catalog.iter().any(|m| m.name == "windows-only-row"),
+        "the row still publishes: {:?}",
+        state.catalog.iter().map(|m| &m.name).collect::<Vec<_>>()
+    );
+    assert!(
+        state
+            .catalog_errors
+            .iter()
+            .any(|e| e.reason.contains("runs on windows only") && e.reason.contains("linux")),
+        "the scan must warn naming the platform: {:?}",
+        state.catalog_errors
+    );
+}
+/// P4: the load path refuses a row whose engine does not list this host,
+/// before any eviction, and the reason names both platforms.
+#[cfg(unix)]
+#[test]
+fn a_windows_only_row_refuses_at_load_naming_the_platform() {
+    let dir = crate::testutil::temp_dir("platform-load");
+    let (tx, _rx) = mpsc::unbounded_channel::<ActorMsg>();
+    let mut state = ActorState::empty(
+        crate::config::AppConfig::default(),
+        dir,
+        BTreeMap::new(),
+        Arc::new(NeverRuntime) as Arc<dyn crate::engine::EngineRuntime>,
+        Arc::new(LedgerOnlyWitness) as Arc<dyn crate::budget::VramWitness>,
+        tx,
+    );
+    let (map, problems) =
+        crate::model::scan::parse_flat_yaml("engine: ninfer\ncategory: work\nvram_gb: 2\n");
+    assert!(problems.is_empty(), "{problems:?}");
+    let entry = ModelEntry::from_flat(&map, "windows-only-row").expect("entry");
+    let job = state.register_queued_load(0, &entry, Vec::new());
+    match state.preflight_spec(job) {
+        Err(crate::scheduler::SchedulerError::Engine(crate::engine::EngineError::Rejected {
+            reason,
+            ..
+        })) => {
+            assert!(
+                reason.contains("runs on windows only") && reason.contains("linux"),
+                "the load refusal must name both platforms: {reason}"
+            );
+        }
+        other => panic!("expected a platform rejection, got {other:?}"),
+    }
+}

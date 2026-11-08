@@ -157,6 +157,19 @@ impl ActorState {
             .models
             .into_iter()
             .filter(|entry| {
+                if let Some(reason) = crate::engine::policy::engine_refusal_on_host(&entry.engine) {
+                    errors.push(ScanError {
+                        kind: ScanKind::Other,
+                        file: entry
+                            .file
+                            .as_ref()
+                            .and_then(|p| p.file_name())
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| format!("<synthetic `{}`>", entry.name)),
+                        reason,
+                    });
+                    return true;
+                }
                 if self.adapters.contains_key(&entry.engine) {
                     return true;
                 }

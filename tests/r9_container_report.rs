@@ -5,6 +5,8 @@
 //! the actor — the engine gate, the readiness call site, the parse, the message
 //! plumbing — is invisible there and fatal here.
 
+#![cfg(windows)]
+
 mod mock_runtime;
 
 use mock_runtime::MockRuntime;

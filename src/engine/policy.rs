@@ -841,6 +841,36 @@ impl PartialEq for ExtraWordsContract {
 
 impl Eq for ExtraWordsContract {}
 
+/// One host this product runs on. Compiled into the policy table as an
+/// adapter property, never read from a row key: an engine's platform support
+/// is a fact about the adapter, not about the operator's model row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostPlatform {
+    /// Windows.
+    Windows,
+    /// Linux.
+    Linux,
+}
+
+impl HostPlatform {
+    /// The host this binary was compiled for.
+    pub(crate) const fn host() -> Self {
+        if cfg!(target_os = "windows") {
+            Self::Windows
+        } else {
+            Self::Linux
+        }
+    }
+
+    /// The stable lowercase spelling used in messages and docs.
+    #[must_use]
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Windows => "windows",
+            Self::Linux => "linux",
+        }
+    }
+}
 /// One engine's row: every compiled-in fact the harness owns about it. Rows
 /// carry only facts real code reads (10a cell rule); the §20-9 cells whose
 /// per-engine fact does not exist in the code yet (`stop_grace`, a per-engine
@@ -901,6 +931,10 @@ pub(crate) struct EnginePolicy {
     /// victim planner asks this cell instead of matching engine ids (the
     /// same row-scoped posture as [`Self::supports_fit`]).
     pub expert_offload: bool,
+    /// The hosts this adapter runs on. A row whose engine does not list the
+    /// host warns at scan and refuses at load, naming the platform; it is an
+    /// adapter property, never a row key.
+    pub platforms: &'static [HostPlatform],
 }
 
 static MOCK_ROW: EnginePolicy = EnginePolicy {
@@ -919,6 +953,7 @@ static MOCK_ROW: EnginePolicy = EnginePolicy {
     config_knobs: &["allow_mock_engine"],
     supports_fit: false,
     expert_offload: false,
+    platforms: &[HostPlatform::Windows, HostPlatform::Linux],
 };
 
 static LLAMA_ROW: EnginePolicy = EnginePolicy {
@@ -957,6 +992,7 @@ static LLAMA_ROW: EnginePolicy = EnginePolicy {
     // llama never offloads experts to host RAM on its own: `-ngl 0`
     // `cpu_offload` is a whole-model CPU residency, not an expert tier.
     expert_offload: false,
+    platforms: &[HostPlatform::Windows, HostPlatform::Linux],
 };
 
 static STRATA_ROW: EnginePolicy = EnginePolicy {
@@ -1008,6 +1044,7 @@ static STRATA_ROW: EnginePolicy = EnginePolicy {
     config_knobs: &["engines.strata.python", "engines.strata.cwd"],
     supports_fit: false,
     expert_offload: true,
+    platforms: &[HostPlatform::Windows, HostPlatform::Linux],
 };
 
 static BASALT_ROW: EnginePolicy = EnginePolicy {
@@ -1056,6 +1093,7 @@ static BASALT_ROW: EnginePolicy = EnginePolicy {
     config_knobs: &[],
     supports_fit: false,
     expert_offload: true,
+    platforms: &[HostPlatform::Windows, HostPlatform::Linux],
 };
 
 static NINFER_ROW: EnginePolicy = EnginePolicy {
@@ -1082,6 +1120,7 @@ static NINFER_ROW: EnginePolicy = EnginePolicy {
     ],
     supports_fit: false,
     expert_offload: false,
+    platforms: &[HostPlatform::Windows],
 };
 
 static MAYA_ROW: EnginePolicy = EnginePolicy {
@@ -1127,6 +1166,7 @@ static MAYA_ROW: EnginePolicy = EnginePolicy {
     config_knobs: &[],
     supports_fit: false,
     expert_offload: true,
+    platforms: &[HostPlatform::Windows, HostPlatform::Linux],
 };
 
 static XOLOTL_ROW: EnginePolicy = EnginePolicy {
@@ -1179,6 +1219,7 @@ static XOLOTL_ROW: EnginePolicy = EnginePolicy {
     // hold (the strata-family posture, ruling 3b): a greedy admit on this
     // engine may reclaim host RAM from large CPU residents before spawn.
     expert_offload: true,
+    platforms: &[HostPlatform::Windows, HostPlatform::Linux],
 };
 
 static POLICIES: &[&EnginePolicy] = &[
@@ -1203,6 +1244,29 @@ pub(crate) fn all() -> &'static [&'static EnginePolicy] {
 #[must_use]
 pub(crate) fn engine_policy(id: &str) -> Option<&'static EnginePolicy> {
     POLICIES.iter().copied().find(|row| row.id == id)
+}
+
+/// Why a load of `engine` must refuse on this host, or `None` when the row
+/// lists this platform (or the table does not know the engine, which the
+/// adapter-registry check owns). The scan turns the same answer into a warning
+/// so the operator sees the refusal before the first load tries it.
+#[must_use]
+pub(crate) fn engine_refusal_on_host(engine: &str) -> Option<String> {
+    let row = engine_policy(engine)?;
+    let host = HostPlatform::host();
+    if row.platforms.contains(&host) {
+        return None;
+    }
+    let hosts = row
+        .platforms
+        .iter()
+        .map(|platform| platform.name())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "engine `{engine}` runs on {hosts} only; this host is {}",
+        host.name()
+    ))
 }
 
 /// The union of every row's path markers: the argv flags whose following
@@ -2240,5 +2304,37 @@ mod tests {
                 "`{flag}` must be refused through `basalt_engine_args`"
             );
         }
+    }
+    /// P4: the platform cell is a compiled-in adapter property. Every row
+    /// lists at least one host; ninfer is Windows-only until a native adapter
+    /// exists, so on Linux it refuses and on Windows it is supported. Unknown
+    /// engines answer `None` here (the adapter registry owns them).
+    #[test]
+    fn every_row_lists_a_host_and_ninfer_is_windows_only() {
+        for row in all() {
+            assert!(
+                !row.platforms.is_empty(),
+                "row `{}` must list at least one host",
+                row.id
+            );
+        }
+        let ninfer = engine_policy("ninfer").expect("the ninfer row ships");
+        assert_eq!(ninfer.platforms, &[HostPlatform::Windows]);
+        assert_eq!(
+            engine_refusal_on_host("ninfer").is_some(),
+            !cfg!(windows),
+            "ninfer runs only on Windows: the refusal must follow the host"
+        );
+        if !cfg!(windows) {
+            let reason = engine_refusal_on_host("ninfer").expect("linux refuses ninfer");
+            assert!(
+                reason.contains("runs on windows only") && reason.contains("linux"),
+                "the refusal must name both sides: {reason}"
+            );
+        }
+        assert!(
+            engine_refusal_on_host("unknown-engine").is_none(),
+            "an unknown id is not this cell's refusal"
+        );
     }
 }
