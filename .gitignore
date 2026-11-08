@@ -15,3 +15,5 @@
 /handoff
 # Kilo agent config (skills, worktrees, session state) is local-only.
 /.kilo
+# The IDE workspace file holds machine-local paths.
+/*.code-workspace
