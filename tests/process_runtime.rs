@@ -5,6 +5,9 @@
 
 use simpleharn::engine::{EngineRuntime, LaunchSpec, Probe, ReadinessSpec, SpawnError, Spawned};
 use simpleharn::ownership::{ResourceKind, SpawnTicket};
+// The single-instance lock is reached through the platform trait (Linux port
+// phase P0): the trait must be in scope to call `acquire`.
+use simpleharn::platform::SingleInstance;
 use simpleharn::process::ProcessRuntime;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -778,7 +781,7 @@ async fn probe_names_the_missing_model_file_when_a_child_exits_early() {
 #[tokio::test]
 async fn dropping_the_runtime_kills_its_child_via_the_job_object() {
     // FINDINGS-20 [5]: the file header advertises `JOB_OBJECT_LIMIT_KILL_ON_CLOSE`
-    // (src/process.rs `create_kill_on_close_job`) — the guarantee that stops an
+    // (src/platform/windows.rs `create_kill_on_close_job`) — the guarantee that stops an
     // orphaned llama-server holding 40+ GiB after a harness crash or a dropped
     // runtime — but every kill exercised here is the cooperative `kill()` path.
     // Dropping the KILL_ON_CLOSE limit flag is a one-line typo that no existing

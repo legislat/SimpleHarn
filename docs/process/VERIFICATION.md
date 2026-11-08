@@ -18,16 +18,20 @@ evidence rules. No other document lists gate commands. Every other document link
 The cardless gate is exactly these commands, in this order:
 
 ```text
-cargo check --all-targets
-cargo test
-cargo clippy --all-targets -- -D warnings
+cargo check --all-targets --features tray
+cargo test --features tray
+cargo clippy --all-targets --features tray -- -D warnings
 cargo fmt --check
 node tests/webui/webui_dom_test.mjs
 node scripts/check-docs.mjs
 node scripts/check-instructions.mjs
+node scripts/check-comments.mjs -Fail
 ```
 
 - `cargo test` includes the doc-test.
+- The cargo commands carry `--features tray`, the shipped Windows set, so the
+  gate compiles the tray module and every tray pin. A build without the feature
+  is headless; the Linux port's CI runs that form.
 - A gate line that omits one of these commands is stale.
 - The gate must not start an engine and must not load a model.
 - The gate runs from any session, including a served session.

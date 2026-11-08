@@ -87,8 +87,11 @@ minimum supported Rust version (MSRV) is 1.88. CI checks the crate on the
 MSRV.
 
 ```powershell
-cargo build --release
+cargo build --release --features tray
 ```
+
+The tray is an optional feature. Omit it for a headless build; the harness then
+runs without the icon and logs one warning if `tray_enabled` is set.
 
 1. Put one flat `.yaml` file per model in `ModelConf` beside the built exe. The harness
    creates the folder on boot if it is missing. Start from a ready row in

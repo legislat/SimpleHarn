@@ -8,6 +8,7 @@ use simpleharn::budget::VramWitness;
 use simpleharn::config::{self, firstrun, AppConfig, ConfigError};
 use simpleharn::engine::EngineRuntime;
 use simpleharn::observability;
+use simpleharn::platform::SingleInstance;
 use simpleharn::process::{ContainerCandidate, ProcessRuntime, SingleInstanceGuard};
 use simpleharn::scheduler::{Scheduler, SchedulerHandle};
 use std::net::SocketAddr;
@@ -398,6 +399,7 @@ async fn main() -> ExitCode {
     // One shutdown channel for every exit path: Ctrl+C and the tray's Exit item
     // (v3.3 §20 lesson: a single Notify can only wake one waiter).
     let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+    #[cfg(feature = "tray")]
     if config.tray_enabled {
         let control_url = format!("http://{}/", state.control_addr);
         simpleharn::tray::spawn(
@@ -406,6 +408,16 @@ async fn main() -> ExitCode {
             control_url,
             tokio::runtime::Handle::current(),
             shutdown,
+        );
+    }
+    // A binary built without the `tray` feature is headless: the config key is
+    // honored as "no tray", said once on the log, never silently dropped.
+    #[cfg(not(feature = "tray"))]
+    if config.tray_enabled {
+        let _ = (scheduler, listeners, shutdown);
+        tracing::warn!(
+            "tray_enabled is set, but this binary was built without the tray feature; \
+             the tray stays off"
         );
     }
 

@@ -107,7 +107,9 @@ pub enum TerminateOutcome {
 /// The process-identity seam the boot reconcile drives through: pid
 /// operations only, never engine endpoints. Tests substitute a mock; the
 /// R8 falsifier depends on there being nothing else to drive — a failing
-/// engine-side custody probe cannot reach this seam at all.
+/// engine-side custody probe cannot reach this seam at all. The platform
+/// implementation lives in `crate::platform`, where the identity legs
+/// delegate to [`crate::platform::ProcessIdentity`].
 #[async_trait]
 pub trait CustodyOs: Send + Sync {
     /// The pid's current start token, `None` when dead or unreadable.
@@ -118,7 +120,24 @@ pub trait CustodyOs: Send + Sync {
     fn terminate(&self, pid: u32, recorded_token: u64) -> TerminateOutcome;
 
     /// Whether `port` refuses TCP connections, polling until `grace` passes.
-    async fn port_closed(&self, port: u16, grace: Duration) -> bool;
+    /// The default is the pure loopback probe — identical on every platform,
+    /// so the platform seam inherits it; a test mock may still script the
+    /// verdict through its own implementation.
+    async fn port_closed(&self, port: u16, grace: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + grace;
+        loop {
+            if tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .is_err()
+            {
+                return true;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(PORT_CLOSE_POLL).await;
+        }
+    }
 }
 
 /// Wall-clock ms since the epoch for the claim stamp.
@@ -342,165 +361,10 @@ pub async fn reconcile(
     report
 }
 
-/// `STILL_ACTIVE`: what `GetExitCodeProcess` reports for a running process.
-const STILL_ACTIVE: u32 = 259;
-
 /// Poll pause while `port_closed` waits for a released port to stop accepting a
 /// loopback connect within its grace. A short fixed sleep: the check is a cheap
 /// connect attempt, and the deadline (not the cadence) bounds the wait.
 const PORT_CLOSE_POLL: Duration = Duration::from_millis(100);
-
-/// The real [`CustodyOs`]: Win32 pid identity through `OpenProcess` +
-/// `GetProcessTimes`, terminate through a re-verified handle. The start-time
-/// token is the process creation FILETIME as `u64` — the same "same for one
-/// process's lifetime, different for a reused pid" property the engine-side
-/// probe keys on.
-pub struct WinCustodyOs;
-
-/// FILETIME pair → the 64-bit 100 ns tick count since 1601.
-#[must_use]
-fn file_time_ticks(low: u32, high: u32) -> u64 {
-    ((u64::from(high)) << 32) | u64::from(low)
-}
-
-/// The creation-time token of the process behind an open handle: the same
-/// value [`CustodyOs::start_token`] answers for a live pid, read straight off
-/// the launch handle (slice 10b: the spawn path records what the sweep will
-/// later verify — one token rule, one spelling).
-///
-/// The token is a process creation FILETIME: same for one process's whole
-/// lifetime, different for a later process that reuses the pid.
-pub(crate) fn start_token_of(handle: windows::Win32::Foundation::HANDLE) -> Option<u64> {
-    // Safety: `handle` is a valid process handle from `OpenProcess`; the four
-    // out-params are plain 64-bit slots `GetProcessTimes` always writes for a
-    // process handle.
-    unsafe {
-        let mut creation = windows::Win32::Foundation::FILETIME::default();
-        let mut exit = windows::Win32::Foundation::FILETIME::default();
-        let mut kernel = windows::Win32::Foundation::FILETIME::default();
-        let mut user = windows::Win32::Foundation::FILETIME::default();
-        windows::Win32::System::Threading::GetProcessTimes(
-            handle,
-            &mut creation,
-            &mut exit,
-            &mut kernel,
-            &mut user,
-        )
-        .ok()
-        .map(|()| file_time_ticks(creation.dwLowDateTime, creation.dwHighDateTime))
-    }
-}
-
-/// The start token of a live pid; `None` for pid 0, a dead process, one that
-/// cannot be opened, or whose times cannot be read — never a guess.
-fn live_start_token(pid: u32) -> Option<u64> {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    if pid == 0 {
-        return None;
-    }
-    // Safety: query-limited access only; the handle is closed on every path
-    // below, and every API result is checked.
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
-        let outcome = (|| {
-            let mut code = 0u32;
-            GetExitCodeProcess(handle, &mut code).ok()?;
-            if code != STILL_ACTIVE {
-                return None;
-            }
-            start_token_of(handle)
-        })();
-        let _ = CloseHandle(handle);
-        outcome
-    }
-}
-
-#[async_trait]
-impl CustodyOs for WinCustodyOs {
-    fn start_token(&self, pid: u32) -> Option<u64> {
-        live_start_token(pid)
-    }
-
-    fn terminate(&self, pid: u32, recorded_token: u64) -> TerminateOutcome {
-        use windows::Win32::Foundation::CloseHandle;
-        use windows::Win32::System::Threading::{
-            GetExitCodeProcess, OpenProcess, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-            PROCESS_TERMINATE,
-        };
-        if pid == 0 {
-            return TerminateOutcome::IdentityGone;
-        }
-        // Re-verify at the instant of the signal ON THE SAME HANDLE the signal
-        // uses (review 10b): Windows cannot recycle a pid while any handle to
-        // its process object is open, so checking the token and reading the
-        // exit code through this one handle — then terminating through that
-        // same handle — leaves no window in which the verified process dies,
-        // the pid is handed out again, and a stranger receives the terminate.
-        unsafe {
-            let handle = match OpenProcess(
-                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
-                false,
-                pid,
-            ) {
-                Ok(handle) => handle,
-                Err(_) => {
-                    // The combined open failed: either the process is gone or
-                    // a live process refuses terminate access. The query-only
-                    // probe tells those apart — a live matching identity we
-                    // may not signal keeps the claim for the next boot,
-                    // anything else is nothing to signal.
-                    return match live_start_token(pid) {
-                        Some(token) if token == recorded_token => TerminateOutcome::Failed {
-                            reason: "cannot open the process for termination".to_string(),
-                        },
-                        _ => TerminateOutcome::IdentityGone,
-                    };
-                }
-            };
-            let outcome = if start_token_of(handle) != Some(recorded_token) {
-                // A different process owns this pid now (or the token is
-                // unreadable): never signal it.
-                TerminateOutcome::IdentityGone
-            } else {
-                let mut code = 0u32;
-                // Identity proven; liveness unreadable or provably exited
-                // leaves nothing to signal (same no-guess rule as
-                // `live_start_token`).
-                if GetExitCodeProcess(handle, &mut code).is_err() || code != STILL_ACTIVE {
-                    TerminateOutcome::IdentityGone
-                } else {
-                    match TerminateProcess(handle, 1) {
-                        Ok(()) => TerminateOutcome::Done,
-                        Err(error) => TerminateOutcome::Failed {
-                            reason: error.message().to_string(),
-                        },
-                    }
-                }
-            };
-            let _ = CloseHandle(handle);
-            outcome
-        }
-    }
-
-    async fn port_closed(&self, port: u16, grace: Duration) -> bool {
-        let deadline = tokio::time::Instant::now() + grace;
-        loop {
-            if tokio::net::TcpStream::connect(("127.0.0.1", port))
-                .await
-                .is_err()
-            {
-                return true;
-            }
-            if tokio::time::Instant::now() >= deadline {
-                return false;
-            }
-            tokio::time::sleep(PORT_CLOSE_POLL).await;
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

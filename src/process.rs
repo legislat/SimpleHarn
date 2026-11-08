@@ -7,7 +7,10 @@
 //! job only reaps the `wsl.exe` client; the container itself is reaped
 //! cooperatively (`docker rm -f` in `kill`) and reconciled pre-spawn by removing
 //! any stale container of the same name — a harness crash can orphan one until the
-//! model loads again.
+//! model loads again. The Win32 seam of this supervision — the kill job, the
+//! suspended-sealed spawn, the pid identity, the descendant walk, and the
+//! single-instance mutex — lives behind the platform traits in
+//! [`crate::platform`]; the shared code here calls no `windows::` API directly.
 //! Spawns are hidden (`CREATE_NO_WINDOW`); engine children additionally start
 //! suspended and run only after the kill job has claimed them, so no
 //! engine descendant can be born outside the job. stdout/stderr are captured to
@@ -32,10 +35,10 @@ mod logs;
 mod staging;
 mod win32;
 
+pub use crate::platform::SingleInstanceGuard;
 pub use container::ContainerCandidate;
 pub use logs::{harness_logs_dir, prune_harness_log_files};
 pub use staging::script_content_hash;
-pub use win32::SingleInstanceGuard;
 
 pub(crate) use staging::{
     rendered_profiles_dir, sanitize_slug, staged_profile_name, strata_profiles_dir,
@@ -44,7 +47,7 @@ pub(crate) use staging::{
 /// The per-pid working-set reader the CPU-resident sampler drives
 /// the RAM twin of the witness seams.
 /// The live impl answers with one `GetProcessMemoryInfo` per pid
-/// ([`win32::working_set_bytes_of`]); tests inject their own reader, so the
+/// ([`crate::platform::working_set_bytes_of`]); tests inject their own reader, so the
 /// cardless gate never touches the real API. `None` is absence — the process
 /// is gone or unreadable — never a zero measurement (doctrine 4). Sync by
 /// design, like the host RAM witness: two cheap syscalls per pid, no cache,
@@ -59,7 +62,7 @@ pub(crate) struct Win32WorkingSetProbe;
 
 impl WorkingSetProbe for Win32WorkingSetProbe {
     fn working_set_bytes(&self, pid: u32) -> Option<u64> {
-        win32::working_set_bytes_of(pid)
+        working_set_bytes_of(pid)
     }
 }
 
@@ -85,10 +88,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::process::{Child, Command};
-use win32::{
-    assign_to_job, create_kill_on_close_job, descendant_pids_of, resume_primary_thread,
-    terminate_job, JobHandle, CREATE_NO_WINDOW,
+
+use crate::platform::{
+    process_identity, process_tree, working_set_bytes_of, KillGroup, ProcessIdentity, ProcessTree,
+    CREATE_NO_WINDOW,
 };
+pub(crate) use win32::DESCENDANT_CAP;
 
 #[cfg(test)]
 use std::collections::BTreeMap;
@@ -112,7 +117,7 @@ use staging::{
 };
 
 #[cfg(test)]
-use win32::DESCENDANT_CAP;
+use crate::platform::descendant_pids_of;
 
 /// Poll pause between release-evidence checks inside the deadline.
 const RELEASE_POLL: Duration = Duration::from_millis(100);
@@ -131,8 +136,8 @@ const ENGINE_STATUS_HTTP_TIMEOUT: Duration = Duration::from_secs(2);
 /// One tracked engine tree: the child plus its Job Object.
 struct EngineProc {
     child: Child,
-    /// Win32 job handle; closing/terminating it kills the whole tree.
-    job: JobHandle,
+    /// Win32 job group; closing/terminating it kills the whole tree.
+    job: KillGroup,
     /// Set once the kill path ran; the entry stays until release is confirmed.
     terminated: bool,
     /// Detached WSL container backing this engine (ninfer): the job object only
@@ -175,6 +180,13 @@ pub struct ProcessRuntime {
     /// confirmed release, swept at boot — one shared record per process
     /// lifetime, the same single-authority rule as the claim ledger.
     custody: Arc<Mutex<CustodyLedger>>,
+    /// The platform process-tree seam: the kill-on-close groups, the
+    /// suspended-sealed spawn, the descendant walk, and the working-set
+    /// reads. Unit state: every clone shares one stateless implementation.
+    tree: Arc<dyn ProcessTree>,
+    /// The platform process-identity seam: the start-time token recorded at
+    /// spawn is the very token the boot sweep re-verifies through it.
+    identity: Arc<dyn ProcessIdentity>,
     /// Test seam: per-engine overrides of the rendered-profile staging roots
     /// (generalized from a strata-only root;
     /// production always resolves the compiled-in row per launch).
@@ -221,6 +233,10 @@ impl ProcessRuntime {
             // rule (slice 10b): recorded when a custodied launch really
             // started, cleared on confirmed release, swept at boot.
             custody: Arc::new(Mutex::new(CustodyLedger::load(strata_custody_path()))),
+            // The platform seams: stateless unit implementations, shared as
+            // trait objects so the supervision logic never names an OS type.
+            tree: process_tree(),
+            identity: process_identity(),
             #[cfg(test)]
             profiles_root_overrides: BTreeMap::new(),
             client: reqwest::Client::builder()
@@ -367,14 +383,14 @@ impl ProcessRuntime {
     /// # Errors
     ///
     /// The Win32 reason the job could not be created.
-    fn create_kill_job(&self) -> Result<windows::Win32::Foundation::HANDLE, String> {
+    fn create_kill_job(&self) -> Result<KillGroup, String> {
         #[cfg(test)]
         if self.fail_job_after_spawn {
             return Err("injected job-object failure (test)".to_string());
         }
-        // Safety: the handle is created here and handed to exactly one `JobHandle`,
-        // whose `Drop` closes it; job handles are usable from any thread.
-        unsafe { create_kill_on_close_job() }
+        // The group owns the OS handle its owner's `Drop` closes exactly once;
+        // job handles are usable from any thread (platform seam doc).
+        self.tree.create_kill_group()
     }
 
     /// Clears this launch's custody sidecar entry, token-guarded: `None` (the
@@ -513,7 +529,7 @@ impl ProcessRuntime {
         if ledger.lock().expect("custody sidecar lock").is_empty() {
             return custody::ReconcileReport::default();
         }
-        custody::reconcile(&ledger, &custody::WinCustodyOs, grace).await
+        custody::reconcile(&ledger, &*crate::platform::custody_os(), grace).await
     }
 
     /// Test-only read of the custody sidecar behind slice 10b's pins.
@@ -685,18 +701,16 @@ impl EngineRuntime for ProcessRuntime {
             .stdout(log_file.try_clone().map_err(|e| SpawnError::SpawnFailed {
                 reason: format!("cannot duplicate log handle: {e}"),
             })?)
-            .stderr(log_file)
-            // Hidden AND suspended. The primary thread runs no
-            // instruction until the seal below has put this child in its kill
-            // job and resumed it, so no engine thread can ever run — and no
-            // grandchild ever be born — outside the job.
-            .creation_flags(
-                CREATE_NO_WINDOW | windows::Win32::System::Threading::CREATE_SUSPENDED.0,
-            )
-            // §5 (E3): the child sees exactly the OS baseline plus `spec.env`,
-            // never the harness environment. The control commands in this module
-            // get the same baseline with no spec entries ([`control_child_env`]).
-            .env_clear();
+            .stderr(log_file);
+        // Hidden AND suspended. The primary thread runs no
+        // instruction until the seal below has put this child in its kill
+        // job and resumed it, so no engine thread can ever run — and no
+        // grandchild ever be born — outside the job.
+        self.tree.prepare_engine_command(&mut command);
+        // §5 (E3): the child sees exactly the OS baseline plus `spec.env`,
+        // never the harness environment. The control commands in this module
+        // get the same baseline with no spec entries ([`control_child_env`]).
+        command.env_clear();
         for (key, value) in engine_child_env(std::env::vars(), &spec.env) {
             command.env(key, value);
         }
@@ -713,23 +727,18 @@ impl EngineRuntime for ProcessRuntime {
         // descendant is born inside the job; a failed seal kills the still
         // frozen child, which never runs and never had a thread to fork.
         let pid = child.id().unwrap_or(0);
-        // Safety: the job handle is created and assigned here, on this task,
-        // while the child is still suspended and before it is stored;
-        // `raw_handle` is valid while the child is alive, and the job is closed
-        // exactly once, by `JobHandle::drop`.
-        let job = match self.create_kill_job().map(JobHandle) {
+        // The group owns the OS handle its `Drop` closes exactly once, and the
+        // claim-plus-resume (`seal`) runs on the platform seam while the child
+        // is still suspended and before it is stored, so the first engine
+        // instruction runs only after the assignment.
+        let job = match self.create_kill_job() {
             Ok(job) => job,
             Err(reason) => {
                 let _ = child.kill().await;
                 return Err(SpawnError::SpawnFailed { reason });
             }
         };
-        let sealed = match (child.raw_handle(), pid) {
-            (Some(handle), pid) if pid != 0 => {
-                unsafe { assign_to_job(job.0, handle) }.and_then(|()| resume_primary_thread(pid))
-            }
-            _ => Err("the spawned client reported no usable handle or pid".to_string()),
-        };
+        let sealed = self.tree.seal(&job, &child);
         if let Err(reason) = sealed {
             // Nothing is written as ownership evidence before the seal, so a
             // failed seal retracts nothing: the frozen child dies here with no
@@ -762,9 +771,9 @@ impl EngineRuntime for ProcessRuntime {
         // authorize a future kill, and a record that cannot be written never
         // stops a launch (the engine-side rule, ported).
         let custody_token = match (spec.custody.as_deref(), pid) {
-            (Some(engine), pid) if pid != 0 => child
-                .raw_handle()
-                .and_then(|raw| custody::start_token_of(windows::Win32::Foundation::HANDLE(raw)))
+            (Some(engine), pid) if pid != 0 => self
+                .identity
+                .start_token_of_spawned(&child)
                 .inspect(|&token| {
                     self.custody.lock().expect("custody sidecar lock").record(
                         custody::CustodyEntry {
@@ -845,9 +854,10 @@ impl EngineRuntime for ProcessRuntime {
             let engine = engines
                 .get_mut(&ticket.port)
                 .expect("invariant: the verdict above just read Ours for this port");
-            // Safety: the job handle is valid (created in spawn, closed by Drop)
-            // and terminating a job is safe from any thread.
-            unsafe { terminate_job(engine.job.0) };
+            // Terminating the whole group is the platform seam: the handle is
+            // valid (created in spawn, closed by the entry's `Drop`) and the
+            // call is safe from any thread.
+            self.tree.terminate_group(&engine.job);
             // A confirmed reap retires the duty forever: re-kills (cancel,
             // release-retry) must not re-run `docker rm` (review, 2026-10-26).
             // An UNCONFIRMED reap re-arms on the next explicit kill (REV7-01),
@@ -1039,8 +1049,8 @@ impl EngineRuntime for ProcessRuntime {
                     // under the same pid — and a ticket that
                     // removed nothing clears nobody's record.
                     self.forget_custody(engine.pid, engine.custody_token);
-                    // `engine` drops here: `JobHandle::drop` closes the
-                    // handle exactly once.
+                    // `engine` drops here: dropping the kill job group closes
+                    // the handle exactly once.
                     tracing::info!(
                         port = ticket.port,
                         "release confirmed: engine gone, port closed"
@@ -1093,7 +1103,7 @@ impl EngineRuntime for ProcessRuntime {
     }
 
     async fn descendant_pids(&self, pid: u32) -> Vec<u32> {
-        descendant_pids_of(pid)
+        self.tree.descendants(pid)
     }
 
     async fn container_report(&self, container: &str) -> Option<String> {

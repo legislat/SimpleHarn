@@ -40,21 +40,11 @@ async-trait = "0.1"
 # HTTP client: engine readiness probes now (mock engine), proxy surface later (Step 11).
 # `stream` enables byte-for-byte SSE pass-through.
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream"] }
-# Tray icon + menu (Step 15): the only GUI dependency; no Qt/egui.
-tray-icon = "0.21"
-# Win32: tray message pump (Step 15) and Job Objects + single-instance mutex (Step 8).
-windows = { version = "0.62", features = [
-    "Win32_Foundation",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Threading",
-    "Win32_Security",
-    "Win32_System_JobObjects",
-    "Win32_System_SystemInformation",
-    "Win32_System_ProcessStatus",
-    "Win32_System_Diagnostics_ToolHelp",
-    "Win32_Graphics_Gdi",
-] }
+# Tray icon + menu (Step 15): the only GUI dependency; no Qt/egui. Optional and
+# deliberately NOT in `default`: Cargo features are not target-conditional, so a
+# default tray would drag GUI dependencies onto headless hosts. The tray ships
+# behind the `tray` feature; a binary built without it runs headless.
+tray-icon = { version = "0.21", optional = true }
 
 # Stream adapters: broadcast receiver -> SSE body stream (Step 12 events).
 tokio-stream = { version = "0.1", features = ["sync"] }
@@ -69,6 +59,33 @@ base64 = "0.23"
 [dev-dependencies]
 # `tower::ServiceExt::oneshot` drives the router in tests without binding a port.
 tower = "0.5"
+
+# Cargo features (Linux port phase P0): the tray is the optional GUI feature.
+# Windows release builds pass `--features tray`; a build without it is headless
+# and carries no GUI dependency. The tray never enters `default` because Cargo
+# features are not target-conditional.
+[features]
+default = []
+tray = ["dep:tray-icon"]
+
+# Windows-only dependencies: the platform boundary (`src/platform/`) keeps every
+# `windows::` call behind the platform traits, so these compile only on targets
+# that can link them.
+[target.'cfg(windows)'.dependencies]
+# Win32: tray message pump (Step 15), Job Objects + single-instance mutex (Step 8),
+# and the pid-identity reads of process supervision.
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemInformation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Graphics_Gdi",
+] }
 
 # Approved but deliberately absent until its module lands (no unused deps):
 # - yaml crate    -> Step 9 ModelConf write-back (flat key: value round-trip)

@@ -5,13 +5,16 @@
 # and never calls a live harness. It runs the eight commands in order, stops on
 # the first failure, and prints PASS/FAIL per command plus the overall result.
 # Counts are taken from the command output only; nothing is hardcoded.
+# The cargo commands carry `--features tray`: that is the shipped feature set
+# (a Windows release builds with `--features tray`), so the gate exercises the
+# tray module and every tray pin exactly as the release binary carries them.
 
 $ErrorActionPreference = 'Continue'
 
 $gate = @(
-  @{ Name = 'cargo check --all-targets'; Exe = 'cargo'; CmdArgs = @('check', '--all-targets') },
-  @{ Name = 'cargo test'; Exe = 'cargo'; CmdArgs = @('test') },
-  @{ Name = 'cargo clippy --all-targets -- -D warnings'; Exe = 'cargo'; CmdArgs = @('clippy', '--all-targets', '--', '-D', 'warnings') },
+  @{ Name = 'cargo check --all-targets --features tray'; Exe = 'cargo'; CmdArgs = @('check', '--all-targets', '--features', 'tray') },
+  @{ Name = 'cargo test --features tray'; Exe = 'cargo'; CmdArgs = @('test', '--features', 'tray') },
+  @{ Name = 'cargo clippy --all-targets --features tray -- -D warnings'; Exe = 'cargo'; CmdArgs = @('clippy', '--all-targets', '--features', 'tray', '--', '-D', 'warnings') },
   @{ Name = 'cargo fmt --check'; Exe = 'cargo'; CmdArgs = @('fmt', '--check') },
   @{ Name = 'node tests/webui/webui_dom_test.mjs'; Exe = 'node'; CmdArgs = @('tests/webui/webui_dom_test.mjs') },
   @{ Name = 'node scripts/check-docs.mjs'; Exe = 'node'; CmdArgs = @('scripts/check-docs.mjs') },

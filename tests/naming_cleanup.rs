@@ -156,9 +156,9 @@ fn the_current_names_are_present_where_the_wire_mutex_and_roots_live() {
         2,
         "both owned_by renderings must carry the current name"
     );
-    let win32 = read("src/process/win32.rs");
+    let guard = read("src/platform/windows.rs");
     assert!(
-        win32.contains(r#"w!("SimpleHarn-SingleInstance")"#),
+        guard.contains(r#"w!("SimpleHarn-SingleInstance")"#),
         "the single-instance mutex must carry the current name"
     );
     let policy = read("src/engine/policy.rs");
