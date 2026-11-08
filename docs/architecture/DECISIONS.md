@@ -775,5 +775,25 @@ recorded here so dated references to ARCHIVED still resolve:
   Residual (accepted): when the projection overstates what a release frees
   (foreign traffic during the serve), the release-first kill can precede a
   settle re-gate that refuses; that is the accepted cost of the 2026-11-01
-  release-first ruling, and the card is never overcommitted.
   | 2026-11-06 | `this change`
+
+- **Xolotl engine adapter** (operator rulings 2026-11-08): Xolotl
+  (DeepSeek-V4.1-Flash GSQ; engine `ds41_generate.exe` behind its
+  `serve_ds41.py` shim) joins as a compiled-in `engine: xolotl` row, not a
+  strata mode and not a launcher knob. The harness renders and stages the serve
+  profile from row knobs; the operator's serve JSON is a value source, never
+  launch truth. The forced launch is
+  `python -I <launcher> --engine strata --host 127.0.0.1 --config <staged> --port <slot>`;
+  readiness is `/health` 200 with `loaded: true`, and the measured sum comes
+  from the same `/metrics` engine block the strata adapter reads. The serve
+  server's `aliases` and `reasoning_budget_tokens` profile keys join the render
+  as optional row keys, and the env allow-list is `STRATA_*` plus the one
+  curated `GGML_NO_BACKTRACE`. First cut is the 256K profile only (one row):
+  `cost: greedy` with `launch_only_with_at_least_vram_free: whole`, host-RAM
+  reclaim through the engine's `expert_offload` cell, and operator sequencing
+  of the card. A DSpark sidecar named by the row and missing on disk refuses by
+  path. Deferred ruling with the seam kept open: hybrid booking, where a
+  non-CPU row claims host RAM (`ram_gb`) and admission gates both ledgers; not
+  adopted now because the whole-card posture plus the reclaim leg cover the
+  tested recipe, and the change reaches into the RAM gate's doctrine.
+  | 2026-11-08 | `this task`
