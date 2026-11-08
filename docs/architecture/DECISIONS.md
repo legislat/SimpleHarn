@@ -797,3 +797,33 @@ recorded here so dated references to ARCHIVED still resolve:
   adopted now because the whole-card posture plus the reclaim leg cover the
   tested recipe, and the change reaches into the RAM gate's doctrine.
   | 2026-11-08 | `this task`
+
+- **API surface additions deferred** (operator ruling 2026-11-08): the proxy keeps
+  its closed route set (`/v1/chat/completions`, `/v1/completions`,
+  `/v1/embeddings`) plus the harness routes; no endpoint is added now. Deferred
+  candidates ranked by cost: `GET /v1/models/{id}` (harness-only, catalog lookup);
+  `POST /v1/tokenize` and `/v1/detokenize` (engine-native, admitted only where the
+  resident engine serves them); `POST /v1/responses` (a translation and state task
+  of its own); engine introspection (`/props`, `/slots`) which the harness status
+  already covers. Images, audio, files, batches, and rerank stay out of scope.
+  Governance: routes are never governed by per-endpoint configuration booleans; a
+  route is admitted only where the resident engine capability serves it, and the
+  supported matrix is documented in `COMPATIBILITY.md`. If an escape hatch is ever
+  required, it is a single exact-path allowlist with an empty default, never
+  wildcard proxying.
+  | 2026-11-08 | `this task`
+
+- **Linux support: design authorized** (operator 2026-11-08): the port is designed
+  as a platform boundary, not a second product: the same four categories, ports,
+  YAML rows, admission rules, and refusals, with `windows` gated by target and a
+  `src/platform/` trait boundary for process identity, tree control, host RAM, and
+  single instance. Windows remains the shipped target until the phases land. The
+  tray becomes optional; Linux boots headless by default on the same ports. Engine
+  adapters declare the platforms they serve: llama, strata, basalt, maya, and
+  xolotl document Linux (research 2026-11-08; xolotl is Linux-primary and
+  source-built); ninfer ships native Linux, but this adapter is WSL-shaped, so
+  Linux support there is a separate adapter, not a path change.
+  Linux card evidence stays BLOCKED until a GPU Linux machine exists. Commitment
+  beyond the boundary phase, the tray posture, the first-release engine set, and
+  the artifact source remain open decisions.
+  | 2026-11-08 | `this task`
