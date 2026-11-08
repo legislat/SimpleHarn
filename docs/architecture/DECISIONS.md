@@ -838,3 +838,15 @@ recorded here so dated references to ARCHIVED still resolve:
   harness residents. Whole remains the posture for dedicated cards. First load:
   chat 200, unload 200; the engine held 71.4 GiB with 1.1 GiB free.
   | 2026-11-08 | `this task`
+
+- **Correction: whole already allows foreign occupancy up to the reserve**
+  (2026-11-08): the xolotl entry above overstated the refusal. `whole` requires
+  the credited witness to reach `total - reserve` (the error field is literally
+  `total - 2 * reserve` on a figure that already nets the reserve), so up to
+  `vram_reserve_gb` of foreign, unreclaimable residency is allowed and only the
+  excess is a blocker. This three-monitor desktop holds about 2.6 GiB against a
+  2.0 GiB reserve, hence the 0.6 GiB shortfall. Levers: raise
+  `vram_reserve_gb` to cover the GUI baseline, or use a numeric floor sized to
+  the measured need (66 GiB tested, 67 GiB recommended for margin). The 256K row
+  uses the floor; `whole` stays the posture for dedicated cards.
+  | 2026-11-08 | `this task`
