@@ -26,7 +26,7 @@ impl ActorState {
     /// stays physical free against `max(need, launch floor) + vram_reserve_gb` with the
     /// ruled 2026-10-26 one-sided tolerance: no ledger baseline is consulted — an
     /// unattributable desktop floor is not a leak — but the config guard band is, so a
-    /// swap cannot reach the card state the no-release path refuses (R2-01-01).
+    /// swap cannot reach the card state the no-release path refuses.
     ///
     /// A witness that dies mid-window fails **closed**, exactly as at admission: a
     /// confirmed release proves the port closed, never that the VRAM came back, and
@@ -37,7 +37,7 @@ impl ActorState {
     /// A CPU-resident row takes the same shape over its own ladder — the host RAM
     /// witness and `ram_reserve_gb` — in [`Self::spawn_ram_settle_task`]; comparing
     /// it against a VRAM target would block a CPU load behind the very card the RAM
-    /// ladder rules out (operator ruling 2026-11-05).
+    /// ladder rules out.
     pub(super) fn spawn_settle_task(&mut self, job_id: JobId) {
         if self.jobs[&job_id].resource == crate::model::Resource::Ram {
             self.spawn_ram_settle_task(job_id);
@@ -142,8 +142,8 @@ impl ActorState {
             .push(handle);
     }
 
-    /// §0.3 memory evidence on the RAM ladder (operator ruling 2026-11-05,
-    /// W2 step 2): after a **confirmed** Ram release, wait until the host witness
+    /// Memory evidence on the RAM ladder: after a **confirmed** Ram release,
+    /// wait until the host witness
     /// has physically freed the RAM gate target **plus the `ram_reserve_gb` guard
     /// band** — the same physical half of the RAM admission decision the
     /// direct-admit leg judges — within the shared `witness_tolerance_gb`
@@ -382,7 +382,7 @@ impl ActorState {
             let terminal = loop {
                 match runtime.probe(port, &readiness).await {
                     Probe::Ready => {
-                        // Step 10 (F-4): the upstream id is discovered, not asserted.
+                        // The upstream id is discovered, not asserted.
                         discovered = runtime.discover_model_id(port).await;
                         break Probe::Ready;
                     }
@@ -616,7 +616,7 @@ impl ActorState {
             .push(handle);
     }
 
-    /// Whether the late-release watch of R2-02-02 has spent its bound: exactly one
+    /// Whether the late-release watch has spent its bound: exactly one
     /// `release_timeout_s` window measured from the watch start — the same budget the
     /// job's own reap already had. Pure so the bound is pinned by a unit test without
     /// wall-clock waits; the production window is never shortened for a test.
@@ -624,7 +624,7 @@ impl ActorState {
         elapsed >= window
     }
 
-    /// Whether the late-release watch of R2-02-02 may name this ticket (REV8-01).
+    /// Whether the late-release watch may name this ticket.
     ///
     /// The watch exists for the **uninstalled spawn**: an engine the scheduler no longer
     /// owns and can never reap again. Where the ticket *is* the slot's installed occupant
@@ -647,7 +647,7 @@ impl ActorState {
         })
     }
 
-    /// R2-02-02 option B (owner ruling 2026-11-03): one bounded, ticket-scoped watch on
+    /// One bounded, ticket-scoped watch on
     /// a release the job terminalized without proving.
     ///
     /// A job that started an engine but never installed it and then lost its reap to the

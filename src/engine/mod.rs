@@ -74,8 +74,8 @@ pub enum ReadinessSpec {
     /// (a JSON Pointer, e.g. `/data/0/id`) must be exactly the string `expect`.
     /// Fail-CLOSED, the inverse posture of [`ReadinessSpec::HttpFlag`]: a body
     /// that is not JSON, a missing pointer, or a non-string value is `NotYet`,
-    /// never Ready — the served id is verified, not trusted (basalt `/v1/models`
-    /// alias check, `TASK-BASALT` stage 1).
+    /// never Ready — the served id is verified, not trusted (the basalt
+    /// `/v1/models` alias check).
     HttpString {
         /// Probe path.
         path: String,
@@ -93,8 +93,8 @@ pub enum ReadinessSpec {
 /// A harness-rendered engine profile, tagged with the engine that rendered it.
 /// The runtime resolves its staging root from the tag — the `custody_data_roots`
 /// first cell of the named row — so one engine's bytes can never stage into
-/// another engine's custody directory (`TASK-BASALT` stage 1 generalized the
-/// strata-only door of ruling 19 into a per-engine one).
+/// another engine's custody directory (the door is per-engine, not
+/// strata-only).
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderedProfile {
     /// The id of the engine whose adapter rendered these bytes.
@@ -116,7 +116,7 @@ pub struct LaunchSpec {
     /// harness environment is inherited.
     pub env: BTreeMap<String, String>,
     /// Log file base name; the runtime sanitizes it into the forensic pool key
-    /// (`sanitize_slug`) and appends the epoch (Step 8, R2-08-03). The raw value
+    /// (`sanitize_slug`) and appends the epoch. The raw value
     /// stays the custody/instance identity — adapters pass the model name as-is.
     pub log_name: String,
     /// Readiness contract.
@@ -126,7 +126,7 @@ pub struct LaunchSpec {
     /// this name (Step 8 extension, 2026-10-26). `None` for process engines.
     pub container: Option<String>,
     /// A shell script the runtime must stage into the distro and run **instead of**
-    /// the script named in argv (template adoption, operator ruling 2026-10-31): the
+    /// the script named in argv (template adoption): the
     /// harness renders the canonical autostart body itself, so every ninfer launch is
     /// a script it can check and expect, not an operator file that may drift. The
     /// runtime stages the bytes content-addressed (replace-atomically, then verify)
@@ -136,8 +136,7 @@ pub struct LaunchSpec {
     pub script: Option<String>,
     /// A profile JSON the runtime must stage into the harness's own
     /// profile root and pass via `--config` **instead of** the operator path named
-    /// in argv (strata template mode, operator ruling 2026-11-02 row 19; engine-
-    /// tagged for basalt in `TASK-BASALT` stage 1): the adapter renders the full
+    /// in argv (strata template mode; engine-tagged per adapter): the adapter renders the full
     /// profile from validated row-yaml values, so the child can only ever read a
     /// file the harness wrote — `host`/`port`/`key` are absent by construction and
     /// the bind/port stay harness-forced argv. The runtime stages the bytes
@@ -185,8 +184,8 @@ pub enum Probe {
 }
 
 /// The context a catalog entry effectively serves — the single computation home
-/// behind the `/har/models` `context` field and the page's Ctx column (operator
-/// ruling 2026-11-02: the display shows what each engine really serves, never
+/// behind the `/har/models` `context` field and the page's Ctx column: the
+/// display shows what each engine really serves, never
 /// the inert row key). Per engine: llama reads its own `context` knob (the one
 /// engine mapping it to a flag, unchanged); strata answers the context
 /// figure riding its `strata_args` argv — the token after `--max-context`
@@ -375,8 +374,7 @@ pub struct Spawned {
     pub pid: u32,
 }
 
-/// Where a process engine's measured memory footprint came from
-/// (`TASK-ENGINE-MEASUREMENT`, ORCHESTRATION 2026-11-04 §1). The source rides
+/// Where a process engine's measured memory footprint came from. The source rides
 /// on every [`EngineMeasurement`] so the fold can stamp the provenance it
 /// persists: doctrine 12 — a measured figure books only if its provenance is
 /// trusted, and provenance is decided at the source, never upgraded post-hoc.
@@ -397,9 +395,8 @@ pub(crate) enum MeasurementSource {
     ProcessTreeNvml,
 }
 
-/// How much trust the harness places in a measured figure
-/// (`TASK-ENGINE-MEASUREMENT` acceptance 1: the report carries source AND
-/// confidence). The class is minted at the source together with
+/// How much trust the harness places in a measured figure — the report carries source AND
+/// confidence. The class is minted at the source together with
 /// [`MeasurementSource`] and never re-decided downstream — the same doctrine
 /// 12 rule that keeps provenance from being upgraded post-hoc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -414,9 +411,8 @@ pub(crate) enum MeasurementConfidence {
     Low,
 }
 
-/// One measured memory footprint of a process engine
-/// (`TASK-ENGINE-MEASUREMENT` phase 1; the shape is fixed by ORCHESTRATION
-/// §1 and phases may not re-decide it). The figure arrives unbounded on
+/// One measured memory footprint of a process engine; the shape is fixed and
+/// later phases may not re-decide it. The figure arrives unbounded on
 /// purpose: [`crate::scheduler::ActorState::measurable_figure`] is the single
 /// figure gate, and the sampler applies the same rule before sending so a
 /// refused figure never consumes the one-shot (review 2026-10-31, M1).
@@ -478,7 +474,7 @@ pub trait EngineRuntime: Send + Sync {
     async fn probe(&self, port: u16, readiness: &ReadinessSpec) -> Probe;
 
     /// The engine's self-reported OpenAI model id (`GET /v1/models`, first entry),
-    /// discovered at readiness — the proxy rewrite target (Step 10, F-4 fix).
+    /// discovered at readiness — the proxy rewrite target.
     /// `None` when the engine does not answer or reports nothing: callers fall
     /// back to the harness name.
     async fn discover_model_id(&self, port: u16) -> Option<String>;
@@ -554,7 +550,7 @@ pub trait EngineRuntime: Send + Sync {
     /// `/v1/status` reports no footprint).
     /// `None` for any failure (no answer, body that is not JSON): the sampler
     /// then falls back to the witness-based process-tree sum rather than
-    /// guessing (`TASK-ENGINE-MEASUREMENT` ORCHESTRATION §1). Default `None`:
+    /// guessing. Default `None`:
     /// only the process runtime answers, so every mock stays inert.
     async fn engine_status_json(&self, _port: u16, _path: &str) -> Option<serde_json::Value> {
         None
@@ -568,7 +564,7 @@ pub trait EngineRuntime: Send + Sync {
     /// process holding the card. The root itself is never listed, the walk
     /// touches no process, and a hard pid cap bounds a pathological tree.
     /// Empty on any snapshot failure and for a pid already gone: absence is
-    /// reported, never a guess (`TASK-ENGINE-MEASUREMENT` ORCHESTRATION §1).
+    /// reported, never a guess.
     /// Default empty: only the process runtime answers.
     async fn descendant_pids(&self, _pid: u32) -> Vec<u32> {
         Vec::new()

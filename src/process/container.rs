@@ -55,7 +55,7 @@ pub(super) fn table_verdict(held_generation: Option<u64>, ticket_generation: u64
     }
 }
 
-/// Test seam (R2-08-01 pin): a two-way gate that parks a `release_confirmed`
+/// Test seam: a two-way gate that parks a `release_confirmed`
 /// poller in the await gap between reading the table verdict and re-judging it
 /// under the final table lock — the window in which a concurrent same-ticket
 /// poller plus the scheduler's Dispose->Spawn gate used to be able to install
@@ -247,8 +247,8 @@ pub(super) fn excerpt(bytes: &[u8]) -> String {
 /// # Returns
 ///
 /// `true` only when docker confirmed the removal — both ownership paths drop
-/// the claim for a name only on that evidence: the boot reclaim, and (since
-/// R2-08-02) the live release, whose `kill` records the verdict on the entry
+/// the claim for a name only on that evidence: the boot reclaim, and the live
+/// release, whose `kill` records the verdict on the entry
 /// and whose `release_confirmed` demands it, so a failed reap stays
 /// reclaimable at the next boot instead of silently orphaning.
 pub(super) async fn reap_container(distro: &str, user: &str, name: &str) -> bool {

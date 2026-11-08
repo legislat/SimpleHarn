@@ -295,7 +295,7 @@ pub fn attach_file_sink(dir: &Path) -> std::io::Result<PathBuf> {
 /// still holds. The closed generation stays on disk under the boot's own budget, which
 /// also means an incident sitting on the size boundary does not lose its earlier half.
 ///
-/// A successful roll then re-prunes the budget (R2-15-01): [`HARNESS_LOG_CAP`] used to
+/// A successful roll then re-prunes the budget: [`HARNESS_LOG_CAP`] used to
 /// be enforced only at boot, so a request-flooded or swap-heavy boot rolled generation
 /// after generation with nothing capping `logs/` until the next boot. The prune keeps
 /// the newest `HARNESS_LOG_CAP - 1` files and the live file is newest-by-mtime, so it
@@ -369,7 +369,7 @@ fn roll_budget() -> u64 {
 /// `BufWriter` (it would hold the tail the whole design exists to keep) and no
 /// per-line `sync_all` (power loss is not the failure mode being defended).
 ///
-/// The sink lock is taken with `try_lock` (R2-15-02): a `write_all` that stalls
+/// The sink lock is taken with `try_lock`: a `write_all` that stalls
 /// instead of failing — a paused share, an AV filter, a hibernated disk — would
 /// otherwise park every thread that emits, HTTP serving included, behind one wedged
 /// handle. On contention the append is skipped (the ring already holds the event)
@@ -524,10 +524,10 @@ pub(crate) fn file_sink_path_for_test() -> Option<PathBuf> {
 /// Initializes the global tracing subscriber.
 ///
 /// Filter level comes from the `SIMPLEHARN_LOG` environment variable — the one
-/// name read (TASK-NAMING-CLEANUP); when it is unset the level defaults to
+/// name read; when it is unset the level defaults to
 /// `DEFAULT_LOG_LEVEL`. A value that does not parse is **not** silently
 /// accepted: `EnvFilter::new` is `parse_lossy`, which drops unparseable directives and
-/// defaults to `ERROR` (tracing-subscriber-0.3.23 src/filter/env/mod.rs:350-354) — so
+/// defaults to `ERROR` — so
 /// `SIMPLEHARN_LOG=verbose`, or a mistyped directive typed while debugging a boot
 /// failure, produced an errors-only ring with no diagnostic, and `parse_lossy`'s own
 /// warning fired before a subscriber existed, going to the no-op dispatcher
@@ -629,7 +629,7 @@ mod tests {
         assert_eq!(tail.last().expect("non-empty").message, "event 509");
     }
 
-    /// TASK-NAMING-CLEANUP pin (rewiring of the R1R-01 wiring half): `init` reads the
+    /// Pin: `init` reads the
     /// knob only through `config::log_level_from_env` — the name itself and its
     /// single-name status are pinned in `config`, and a raw `std::env::var` here
     /// would bypass the centralized reader while staying invisible to every other
@@ -755,7 +755,7 @@ mod tests {
 
     /// Redaction stays upstream's job (`config`'s `REDACTED(present)` marker, the
     /// 15[9] posture); this pin's teeth are **parity** — the file must add no surface
-    /// the ring does not already have. R2-15-03: the pin now emits real `tracing`
+    /// the ring does not already have. The pin now emits real `tracing`
     /// events through one local subscriber that carries BOTH sink layers, so every
     /// event runs each layer's real `on_event` — the old shape hand-fed `ring_push`
     /// and `write_entry`, so a redaction added inside one sink's `on_event` stayed
@@ -894,7 +894,7 @@ mod tests {
             .collect()
     }
 
-    /// R2-15-01: the budget is a bound, not a boot-time snapshot — every roll re-prunes
+    /// The budget is a bound, not a boot-time snapshot — every roll re-prunes
     /// `logs/`. Falsifier: drop the `prune_harness_log_files` call from `rotate_sink`
     /// and the 12 rolls below leave 13 harness logs in the dir, past the cap of 10.
     #[test]
@@ -997,7 +997,7 @@ mod tests {
         assert!(!write_failure_reported_for_test());
     }
 
-    /// R2-15-02: a stalled `write_all` must not become a rendezvous for every emitter.
+    /// A stalled `write_all` must not become a rendezvous for every emitter.
     /// While this thread holds the sink lock, another thread's `write_entry` returns
     /// promptly, skips the append (the ring already holds the event), and counts the
     /// loss. Falsifier: restore `lock()` and the recv below times out because the

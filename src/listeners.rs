@@ -25,7 +25,7 @@ use std::time::Instant;
 pub enum ListenerState {
     /// No verdict yet: no supervisor has published a bind outcome for this category.
     /// Neither healthy nor down — the tray reads amber once the boot grace is over
-    /// (§15, operator ruling 2026-10-28), and `/har/status` says `"Pending"`.
+    /// (§15), and `/har/status` says `"Pending"`.
     Pending,
     /// Bound and serving.
     Serving,

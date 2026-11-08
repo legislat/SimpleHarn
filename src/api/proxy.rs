@@ -35,7 +35,7 @@ pub(super) struct ListenerState {
 /// into `listener`'s category when it is not serving yet.
 ///
 /// This is deliberately a separate entry point from [`ensure_target`]: `proxy` rewrites
-/// `body["model"]` to the engine's self-reported id (F-4), so anything re-resolving a
+/// `body["model"]` to the engine's self-reported id, so anything re-resolving a
 /// request after that rewrite must pass the NAME it captured beforehand. The T10.1
 /// crash-retry used to re-resolve from the rewritten body and therefore looked the
 /// engine's id up in the catalog, which 404s every llama engine (its id is the gguf
@@ -80,7 +80,7 @@ async fn ensure_named(
 /// wrong-category and unknown models `404` **before** any ensure (Step 11).
 ///
 /// Returns `(harness_name, port, serve_id)`; `serve_id` is the engine's
-/// self-reported id (F-4) and is the proxy rewrite target when present.
+/// self-reported id and is the proxy rewrite target when present.
 async fn ensure_target(
     listener: &ListenerState,
     body: &Value,
@@ -90,7 +90,7 @@ async fn ensure_target(
     match requested {
         Some(model) => ensure_named(listener, model).await,
         None => {
-            // F-2 rule (operator, 2026-10-24): "use this category".
+            // A request that names no model uses this category.
             let status = api.scheduler.status().await.map_err(ApiError::from)?;
             if let Some((model, port, serve_id)) =
                 pick_loaded_occupant(api, &status, listener.category)
@@ -160,7 +160,7 @@ pub enum RetryAction {
 
 /// What the two reqwest error flags say about a failed forward.
 ///
-/// Kept separate from `reqwest::Error` so the both-flags pair (R2-18-06) is
+/// Kept separate from `reqwest::Error` so the both-flags pair is
 /// testable through a direct table; the timeout-first rule decides the real
 /// pair, not a synthetic error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,11 +175,11 @@ pub(super) enum SendFailureClass {
 
 /// Decides the class from reqwest's two error flags.
 ///
-/// `is_timeout()` is judged before `is_connect()` (R2-18-06): an error that
+/// `is_timeout()` is judged before `is_connect()`: an error that
 /// reports both — a connect timeout against a live listener whose backlog
 /// blackholes SYNs — describes a live engine, and reaping it is the harm
-/// FINDINGS-06 [2] closed. A connect-only failure (refused/reset) is the only
-/// restart class.
+/// this ordering exists to prevent. A connect-only failure
+/// (refused/reset) is the only restart class.
 pub(super) fn classify_send_failure_flags(is_timeout: bool, is_connect: bool) -> SendFailureClass {
     if is_timeout {
         SendFailureClass::Timeout
@@ -190,14 +190,14 @@ pub(super) fn classify_send_failure_flags(is_timeout: bool, is_connect: bool) ->
     }
 }
 
-/// Classifies a `send()` failure for the crash-retry arm (FINDINGS-06 \[2]).
+/// Classifies a `send()` failure for the crash-retry arm.
 ///
 /// Restart-and-retry ONLY when the request never got a response AND the engine is
 /// not listening — reqwest's `is_connect()` alone (refused/reset before response
 /// head). A timeout (`is_timeout()`) is a live-but-slow engine (long non-streamed
 /// generation, huge prefill): reaping it would discard a healthy KV cache and
 /// re-forward the same slow request, so it answers `502` naming the class
-/// instead. The timeout flag is judged first (R2-18-06), so an error reporting
+/// instead. The timeout flag is judged first, so an error reporting
 /// both flags stays the timeout class and never reaps. Any other send error is
 /// likewise never treated as death.
 ///
@@ -225,7 +225,7 @@ pub fn classify_send_failure(error: &reqwest::Error, port: u16) -> Result<RetryA
 }
 
 /// Ensures `model` is serving in `category`; returns its engine port and the
-/// engine's self-reported id (F-4).
+/// engine's self-reported id.
 async fn swap_for_port(
     api: &ApiState,
     model: &str,
@@ -263,8 +263,8 @@ async fn swap_for_port(
 /// Does this request wake its slot — that is, may it trigger admission and load a
 /// model?
 ///
-/// The deny-by-default, single source of truth for "reads never wake" (operator
-/// ruling 2026-11-04): only the three inference POST paths wake. Everything else
+/// The deny-by-default, single source of truth for "reads never wake":
+/// only the three inference POST paths wake. Everything else
 /// — `GET /v1/models`, `/health`, every `/har/*` route, and any non-POST variant
 /// — answers `false` and can never load a model. [`category_router`] wires
 /// exactly these paths to [`proxy`], and the unit pin
@@ -323,16 +323,16 @@ async fn proxy(
         .map(|path_and_query| path_and_query.as_str())
         .unwrap_or_else(|| uri.path())
         .to_string();
-    // F-4 fix: rewrite to the engine's self-reported id when discovery found one;
+    // Rewrite to the engine's self-reported id when discovery found one;
     // the harness name is the fallback (llama engines ignore the field either way).
     body["model"] = Value::String(serve_id.unwrap_or_else(|| model.clone()));
 
-    // T10.1: a connection-level failure (engine died before any response) triggers
+    // A connection-level failure (engine died before any response) triggers
     // exactly one reap + reload + retry. Only a connect-only failure classifies as
-    // death (FINDINGS-06 [2], R2-18-06): a timeout — even one whose error also
+    // death: a timeout — even one whose error also
     // reports `is_connect()` — means a live engine is still thinking, and reaping
     // it discards a healthy KV cache. A genuine upstream HTTP status is never
-    // retried (A9), and a death mid-stream surfaces in the body stream, past this
+    // retried, and a death mid-stream surfaces in the body stream, past this
     // loop.
     let mut port = port;
     let mut attempts = 0;
@@ -354,7 +354,7 @@ async fn proxy(
                     error = %error,
                     "engine unreachable mid-request; restarting once (T10.1)"
                 );
-                // The refused `port` rides the command (R2-06-01): the actor tells
+                // The refused `port` rides the command: the actor tells
                 // the corpse this request witnessed from a successor a previous
                 // retry already installed, and never reaps the healthy generation.
                 listener
@@ -383,18 +383,18 @@ async fn proxy(
     // Engine→client header pass-through. The body streams through `bytes_stream()`
     // undecoded (reqwest is built without gzip/brotli/deflate/zstd), so the wire
     // bytes ARE the engine's bytes and every header describing them must survive —
-    // `content-encoding` included (FINDINGS-06 [9]: stripping it labelled a
-    // compressed body as identity and the client could not decode it). Dropped are
+    // `content-encoding` included: stripping it labelled a compressed body as
+    // identity and the client could not decode it. Dropped are
     // the headers that would LIE about the forwarded body — `transfer-encoding` and
     // `content-length` (hyper re-frames this streamed body and recomputes them) —
-    // and the RFC 9110 §7.6.1 hop-by-hop set, which belongs to the engine↔harness
-    // hop only (R2-06-02): `connection` itself, the six registered hop-by-hop names
+    // and the RFC 9110 hop-by-hop set, which belongs to the engine↔harness
+    // hop only: `connection` itself, the six registered hop-by-hop names
     // (`keep-alive`, `upgrade`, `te`, `trailer`, `proxy-authenticate`,
     // `proxy-authorization`), and every header NAME enumerated by the engine's
     // `connection` value — forwarding a header the dropped `connection` made
     // hop-by-hop would advertise a trailer or protocol switch this harness never
     // re-frames or relays. Client→engine request headers are never copied at all
-    // (FINDINGS-06 "verified clean": the forward is `post(url).json(&body)` only),
+    // (the forward is `post(url).json(&body)` only),
     // so there is no request-side encoding to strip and no token/host/cookie leak.
     let connection_named: Vec<String> = upstream
         .headers()
@@ -466,6 +466,6 @@ pub fn category_router(api: Arc<ApiState>, category: CategoryId) -> Router {
         ))
         .layer(axum::middleware::from_fn_with_state(guard_state, guard))
         // Outermost: the router's own 404/405 refusals carry the project
-        // envelope, the guard's request id included (R2-05-03).
+        // envelope, the guard's request id included.
         .layer(axum::middleware::from_fn(envelope_router_errors))
 }

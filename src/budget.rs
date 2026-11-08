@@ -169,8 +169,8 @@ pub(crate) const DISAGREE_GIB: f64 = 0.05;
 /// The four memory refusals (`BelowLaunchFloor`, `Insufficient`,
 /// `InsufficientRam`, `WholeMachineBusy`) carry this struct; the API renders
 /// `Some` figures as structured JSON fields. Neither figure is a promise: the
-/// harness runs no wait queue, so both describe the decision moment only
-/// (operator ruling 2026-11-04: "an estimate, never a promise").
+/// harness runs no wait queue, so both describe the decision moment:
+/// an estimate, never a promise.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct WaitHint {
     /// Rolling median of the harness's own measured release durations in
@@ -187,7 +187,7 @@ pub struct WaitHint {
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum AdmissionError {
     /// Neither `vram_gb` nor a GGUF size is known; the message says so explicitly
-    /// (v3.3's F-7 lied about the reason).
+    /// and never blames a different reason.
     #[error("under-specified model: no `vram_gb` and no GGUF size to estimate from")]
     UnderSpecified,
     /// `cost: exact` with no `vram_gb`: the class asserts the engine's precise
@@ -211,8 +211,8 @@ pub enum AdmissionError {
     /// The card could not be read at all (NVML and the `nvidia-smi` fallback both
     /// failed) and this is a real GPU box, so there is no honest number to budget
     /// against. Refused rather than guessed: admission is the product, and a stale
-    /// or absent reading is exactly how v3.3 over-committed onto a saturated card
-    /// (F-3/F-7). A `ledger_only` witness is exempt — there the ledger is the
+    /// or absent reading is exactly how v3.3 over-committed onto a saturated
+    /// card. A `ledger_only` witness is exempt — there the ledger is the
     /// declared source of truth (tests, machines without a GPU).
     #[error("witness unavailable, refusing to guess: {reason}")]
     WitnessUnavailable {
@@ -247,8 +247,8 @@ pub enum AdmissionError {
     /// gate may release covers the deficit: the same Step 6 refusal contract
     /// as [`AdmissionError::Insufficient`], judged on the RAM ladder —
     /// `ram_total - ram_reserve - observed ram_used`, credited once for the
-    /// same-slot RAM resident (operator ruling 2026-11-05). The planner
-    /// considers Ram residents only (W2 ruling 2026-11-05): a GPU resident's
+    /// same-slot RAM resident. The planner
+    /// considers Ram residents only: a GPU resident's
     /// host RAM rides the reading, never enters the releasable set, and rides
     /// `blockers` as an uncontrolled holder. Unattributable host RAM rides
     /// the `unreleasable` figure.
@@ -302,7 +302,7 @@ pub enum AdmissionError {
         victims_considered: Vec<VictimInfo>,
         /// Models that cannot be evicted, with reasons.
         blockers: Vec<BlockerInfo>,
-        /// Row-10 guard (operator ruling 2026-11-01): even freeing everything the
+        /// Unreachable-floor guard: even freeing everything the
         /// harness may release — its own booked same-slot occupant plus every
         /// evictable resident, never foreign occupancy — would not reach the floor.
         /// The refusal says so and the load was refused BEFORE any release.
@@ -391,7 +391,7 @@ const GGUF_OVERHEAD: f64 = 2.0;
 /// # Errors
 ///
 /// - [`AdmissionError::UnderSpecified`] when both inputs are `None`; the refusal names
-///   the reason instead of blaming a neighbor (F-7 lesson).
+///   the reason instead of blaming a neighbor.
 pub fn need_gb(
     declared: Option<Gibibytes>,
     gguf_size: Option<Gibibytes>,
@@ -521,8 +521,7 @@ impl MemorySample {
 /// The VRAM witness: NVML in-process when the driver library is present,
 /// `nvidia-smi` as the fallback, and a caller-visible error when neither answers —
 /// which the admission gate treats as a **refusal** ([`AdmissionError::
-/// WitnessUnavailable`]), never a stale guess or a silent ledger fallback
-/// (F-3/F-7).
+/// WitnessUnavailable`]), never a stale guess or a silent ledger fallback.
 #[async_trait::async_trait]
 pub trait VramWitness: Send + Sync {
     /// Samples the card. Implementations may cache briefly (status polling must
@@ -530,7 +529,7 @@ pub trait VramWitness: Send + Sync {
     async fn sample(&self) -> Result<MemorySample, String>;
 
     /// Whose number it was: the label the page prints beside every figure, so an
-    /// `nvidia-smi` fallback is never read as an in-process NVML reading (F-7 —
+    /// `nvidia-smi` fallback is never read as an in-process NVML reading —
     /// never present a number without saying whose number it is).
     fn source(&self) -> String;
 
@@ -574,10 +573,10 @@ pub fn parse_smi_sample(gpu_csv: &str, apps_csv: &str) -> Result<MemorySample, S
             .trim()
             .parse()
             .map_err(|_| format!("not a number in --query-gpu line: {line:?}"))?;
-        // R2-01-03: `parse::<f64>` accepts "NaN"/"inf"/"-inf"; a half-wedged
+        // `parse::<f64>` accepts "NaN"/"inf"/"-inf"; a half-wedged
         // nvidia-smi printing garbage must not hand it through as a figure.
         // Rejecting here fails the whole sample, which the gate treats as a
-        // refusal (F-3/F-7) instead of resting on the downstream guards.
+        // refusal instead of resting on the downstream guards.
         if !mib.is_finite() {
             return Err(format!("not a finite number in --query-gpu line: {line:?}"));
         }
@@ -596,7 +595,7 @@ pub fn parse_smi_sample(gpu_csv: &str, apps_csv: &str) -> Result<MemorySample, S
             Err(_) => continue,
         };
         let used: f64 = match used.trim().trim_end_matches(" MiB").parse::<f64>() {
-            // R2-01-03: a garbage (`NaN`/`inf`) process figure is dropped like
+            // A garbage (`NaN`/`inf`) process figure is dropped like
             // any other unreadable entry — the totals still gate, the entry is
             // never booked.
             Ok(mib) if mib.is_finite() => mib / 1024.0,
@@ -712,7 +711,7 @@ mod tests {
         );
     }
 
-    /// Row-10 guard (operator ruling 2026-11-01): when NO release the harness may
+    /// Unreachable-floor guard: when NO release the harness may
     /// perform reaches the floor, the refusal names it — the operator's diagnosis is
     /// foreign residents, not a numeric shrug. The sentence rides only the guarded
     /// refusal (the `false` leg above pins its absence).
@@ -871,7 +870,7 @@ mod tests {
         );
     }
 
-    /// R2-01-03: Rust's `parse::<f64>` succeeds on "NaN"/"inf"/"-inf"/"infinity"
+    /// Rust's `parse::<f64>` succeeds on "NaN"/"inf"/"-inf"/"infinity"
     /// (documented behaviour), so a half-wedged `nvidia-smi` printing garbage in
     /// a memory column used to produce a "valid" `MemorySample` whose honesty
     /// rested entirely on the downstream guards. The gpu columns now reject it at

@@ -231,9 +231,9 @@ impl ActorState {
             errors = errors.len(),
             "catalog scanned"
         );
-        // Phase 4 (`TASK-ENGINE-MEASUREMENT`, the 2026-11-04 manual-reload
-        // trap): the replace keeps the OLD rows so the re-book round below can
-        // tell a cost move from a flag move before anything judges stale.
+        // The manual-reload trap: the replace keeps the OLD rows so the re-book
+        // round below can tell a cost move from a flag move before anything
+        // judges stale.
         let previous = std::mem::replace(&mut self.catalog, models);
         self.catalog_errors = errors;
         self.invalidate_queued_loads(drift);
@@ -323,14 +323,14 @@ impl ActorState {
             || old.measured_profile != new.measured_profile
     }
 
-    /// The phase-4 half of the reload trap (`TASK-ENGINE-MEASUREMENT`, the
-    /// 2026-11-04 readmission incident): a rescan that moved a loaded row's
+    /// The cost half of the reload trap (the readmission incident): a rescan
+    /// that moved a loaded row's
     /// cost figures ONLY re-books the resident's slot `need` from the new
     /// bytes — the release credit, the R3 no-release guard and the eviction
     /// planner stop billing a stranger's paper number — instead of leaving
     /// the operator to unload, edit and reload to move the booking. Runs in
-    /// the same pre-gathered-evidence posture as every other drift round
-    /// (FINDINGS-07 [8]): it judges only the `previous` rows kept by the
+    /// the same pre-gathered-evidence posture as every other drift round:
+    /// it judges only the `previous` rows kept by the
     /// replace and the `drift` stats gathered off-thread — zero filesystem
     /// calls. The rows it re-books leave the marker round with a capture that
     /// matches the bytes the booking now follows, so they stay green; every
@@ -339,8 +339,7 @@ impl ActorState {
     /// through to the unchanged marker verdict — invalidate, never launder.
     /// One posture neither re-books nor falls through: a RAM resident adopts
     /// the bytes without a re-book, because its booking follows only a reload
-    /// and the moved cost keys are inert for its RAM gate (ruling 2026-11-05,
-    /// review W1-01/CLOSURE-01).
+    /// and the moved cost keys are inert for its RAM gate.
     fn rebook_cost_only_moves(&mut self, previous: &[ModelEntry], drift: &DriftStats) {
         for slot in &mut self.slots {
             let Some(occupant) = slot.occupant.as_mut() else {
@@ -426,7 +425,7 @@ impl ActorState {
         }
     }
 
-    /// The resident half of reload (Axis 2 = B, operator ruling 2026-10-29): on the
+    /// The resident half of reload: on the
     /// reload turn — and only here, at install, and on a harness write-back — the
     /// `stale_config` verdict is recomputed for every resident: the yaml it launched
     /// from, re-stat'ed **off-thread** by [`super::gather_drift_stats`] on the reload's
@@ -451,7 +450,7 @@ impl ActorState {
     ///   cleanly.
     ///
     /// The yaml capture is the whole verdict: no engine ships a harness-tracked
-    /// profile file any more (ruling 2026-11-02 row 19 made strata's profile
+    /// profile file any more (strata's profile is
     /// harness-rendered L3 bytes, and ninfer's is the cksum-verified staged
     /// script — both drift-proof by construction), so `queue_fingerprint` →
     /// `spawn_config` is the entire `stale_config` story (FINDINGS-25). Only the

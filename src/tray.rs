@@ -1,4 +1,4 @@
-//! Tray icon (DESIGN Step 15, operator spec 2026-10-25; tri-state ruling 2026-10-28).
+//! Tray icon.
 //!
 //! The tray is a *view*: it renders the scheduler's status snapshot and the listener
 //! registry, and sends the same scheduler commands the HTTP handlers send — no
@@ -11,8 +11,8 @@
 //! = an in-flight swap (a load or unload), **green** = a model is loaded, **gray** =
 //! nothing loaded. Per-job
 //! errors are *not* red; they ride in the tooltip. This is the LISTENER palette and
-//! stays untouched by config-state marking: the page's `stale_config` amber (Axis-2
-//! ruling 2026-10-29, the row dot) is the CONFIG palette's and never drives the icon. Left click does nothing; the
+//! stays untouched by config-state marking: the page's `stale_config` amber (the
+//! row dot) is the CONFIG palette's and never drives the icon. Left click does nothing; the
 //! right-click menu is Open Web UI / Unload All Models / Unload WORK / Unload RP /
 //! Unload All AUX / Unload EMB / Exit.
 //!
@@ -253,12 +253,12 @@ fn run(ctx: TrayCtx) -> Result<(), String> {
     let icon = state_icon(TrayState::Gray)?;
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        // The header's "Left click does nothing" is a contract, not an observation
-        // (FINDINGS2-15 [1]): tray-icon defaults `menu_on_left_click: true`
-        // (tray-icon-0.21.3 src/lib.rs:209) and pops the modal menu on `WM_LBUTTONDOWN`
-        // whenever a menu is attached (platform_impl/windows/mod.rs:462-467) — which
-        // ours is, so a misclick opened the menu whose items act on the fleet. The
-        // right-click menu is the only entry point the operator was told about.
+        // The header's "Left click does nothing" is a contract, not an
+        // observation: tray-icon defaults `menu_on_left_click: true` and pops
+        // the modal menu on `WM_LBUTTONDOWN` whenever a menu is attached —
+        // which ours is, so a misclick opened the menu whose items act on the
+        // fleet. The right-click menu is the only entry point the operator was
+        // told about.
         .with_menu_on_left_click(false)
         .with_tooltip("SimpleHarn")
         .with_icon(icon)
@@ -596,8 +596,8 @@ fn down_reason(listeners: &crate::listeners::ListenerRegistry) -> Option<String>
 }
 
 /// `NOTIFYICONDATAW.szTip` is a fixed `[u16; 128]` and tray-icon copies at most 128
-/// UTF-16 units (tray-icon-0.21.3 src/platform_impl/windows/mod.rs:209-212). Anything
-/// past that is cut silently, with no error from `set_tooltip` (FINDINGS-15 [4]).
+/// UTF-16 units. Anything
+/// past that is cut silently, with no error from `set_tooltip`.
 const SOLTIP_CAPACITY: usize = 128;
 
 /// Assembles hover text so the part that matters survives the truncation the shell
@@ -1289,13 +1289,13 @@ mod tests {
         );
     }
 
-    /// FINDINGS2-15 [2] + FINDINGS-15 [4]: the listener `Down` reason never reached the
+    /// The listener `Down` reason must reach the hover. A regression once let it never
+    /// reach the
     /// hover at all, and even the job error that did was appended last — where the
-    /// vendored `szTip` copy (`tray-icon-0.21.3 src/platform_impl/windows/mod.rs:209-212`,
-    /// `for i in 0..tip.len().min(128)`) silently cuts it. Long model names are the
-    /// realistic case that eats the budget. Falsifier: move the reason back behind the
-    /// category list (append it instead of leading with it) and the tail assertion fails
-    /// while the icon is red — the exact state that needs the sentence.
+    /// vendored `szTip` copy (`for i in 0..tip.len().min(128)`) silently cuts it. Long
+    /// model names are the realistic case that eats the budget. Falsifier: move the reason
+    /// back behind the category list (append it instead of leading with it) and the tail
+    /// assertion fails while the icon is red — the exact state that needs the sentence.
     #[test]
     fn the_red_reason_survives_the_soltip_cap() {
         let registry = ListenerRegistry::new();

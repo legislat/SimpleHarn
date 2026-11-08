@@ -14,7 +14,7 @@ use super::excerpt;
 /// The in-distro directory a harness-rendered autostart script is staged into.
 /// Deliberately outside every model directory and outside the operator's script
 /// tree: a staged file can never shadow or be confused with a hand-written one
-/// (template adoption, operator ruling 2026-10-31). The value is READ from the
+/// (template adoption). The value is READ from the
 /// ninfer row's `custody_exec_roots` cell of the [`crate::engine::policy`]
 /// table (slice 10b: the table cell is the single home, not a re-aliased
 /// constant), so the compiled-in custody root and the staging path cannot
@@ -66,8 +66,7 @@ pub fn script_content_hash(script: &str) -> u64 {
 }
 
 /// How many staged profile renders of one model survive in the rendered-profile
-/// root (the keep-N twin of [`STAGED_SCRIPT_KEEP`], strata template mode,
-/// operator ruling 2026-11-02 row 19).
+/// root (the keep-N twin of [`STAGED_SCRIPT_KEEP`], strata template mode).
 pub(super) const STAGED_PROFILE_KEEP: usize = 10;
 
 /// The slug alphabet every staged artifact shares: the model or container name
@@ -106,8 +105,8 @@ pub(crate) fn staged_profile_name(slug: &str, text: &str) -> String {
 /// The absolute directory harness-rendered profiles of one engine stage into:
 /// the first `custody_data_roots` cell of that engine's compiled-in row,
 /// resolved under the executable's own directory — the exe-adjacent home
-/// [`strata_custody_path`] keeps (operator ruling 2026-11-02 row 19 for strata;
-/// `TASK-BASALT` stage 1 generalized the door, one root per engine).
+/// [`strata_custody_path`] keeps (the door was generalized from strata-only to
+/// one root per engine).
 ///
 /// # Panics
 ///
@@ -216,8 +215,7 @@ pub(super) fn rewrite_config_slot(mut argv: Vec<String>, path: &str) -> Option<V
 }
 
 /// Stage a harness-rendered profile into the exe-adjacent root named by its
-/// engine's row (operator ruling 2026-11-02 row 19, engine-tagged in
-/// `TASK-BASALT` stage 1). Three guarantees, one door:
+/// engine's row (engine-tagged). Three guarantees, one door:
 ///
 /// * **name binds bytes** — the argv placeholder must equal
 ///   `<slug>-<fnv>.json` recomputed from `text`, so a hand-built spec cannot
@@ -230,7 +228,7 @@ pub(super) fn rewrite_config_slot(mut argv: Vec<String>, path: &str) -> Option<V
 ///   newest first (the in-distro script driver's [`STAGED_SCRIPT_KEEP`] rule
 ///   ported to the Windows filesystem), and every `<pool-name>.<suffix>`
 ///   sidecar (Maya's `shared-settings` writes) pruned with its pool file, so
-///   sidecars cannot outlive the renders that minted them (`TASK-MAYA`, FR-09).
+///   sidecars cannot outlive the renders that minted them.
 ///
 /// # Returns
 ///

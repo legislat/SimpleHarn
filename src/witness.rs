@@ -3,11 +3,11 @@
 //! NVML in-process is the primary source (no process spawn per sample, per-process
 //! attribution where the driver offers it). When the NVML library or a sample fails,
 //! the witness falls back to spawning `nvidia-smi` — logged once, and labelled as a
-//! fallback by `source()` (F-7): the label follows the leg that served the **current**
-//! figure, so a later NVML sample clears the fallback attribution again (R2-01-02).
+//! fallback by `source()`: the label follows the leg that served the **current**
+//! figure, so a later NVML sample clears the fallback attribution again.
 //! When neither answers, `sample()` errors and the
-//! caller **refuses** rather than deciding on a stale guess or a bookkeeping fallback
-//! (F-3/F-7 lesson); only `LedgerOnlyWitness` budgets from the ledger instead.
+//! caller **refuses** rather than deciding on a stale guess or a bookkeeping fallback;
+//! only `LedgerOnlyWitness` budgets from the ledger instead.
 
 use crate::budget::{attribution_from_processes, parse_smi_sample, MemorySample, VramWitness};
 use async_trait::async_trait;
@@ -49,7 +49,7 @@ pub struct NvmlWitness {
     /// without this N concurrent misses each spawned their own `nvidia-smi` pair.
     refill: tokio::sync::Mutex<()>,
     /// Attribution of the figure currently served: true iff `nvidia-smi` produced
-    /// it. Set by an smi sample and **cleared** by an NVML sample (R2-01-02), so
+    /// it. Set by an smi sample and **cleared** by an NVML sample, so
     /// the label tracks the producing leg instead of latching on a first failure.
     fell_back: Mutex<bool>,
     /// Whether the fallback warning was already logged (the module doc's "logged
@@ -208,7 +208,7 @@ impl Default for NvmlWitness {
 impl VramWitness for NvmlWitness {
     fn source(&self) -> String {
         // Naming the source is the point: a fallback reading must never be
-        // displayed as an in-process NVML one (F-7). R2-01-02: the label follows
+        // displayed as an in-process NVML one. The label follows
         // the leg that served the current figure — `sample()` re-derives the
         // latch on every successful sample.
         source_label(
@@ -246,7 +246,7 @@ impl VramWitness for NvmlWitness {
                 *self.cache.lock().expect("witness cache lock") =
                     Some((Instant::now(), sample.clone()));
                 *self.failure.lock().expect("witness failure lock") = None;
-                // R2-01-02: attribute the figure now served to its producing leg.
+                // Attribute the figure now served to its producing leg.
                 // An NVML success clears a stale fallback latch, so the label
                 // never claims "nvidia-smi (fallback)" for an NVML figure. The
                 // fail-closed error arm below is untouched: no figure, no label.
@@ -263,14 +263,14 @@ impl VramWitness for NvmlWitness {
     }
 }
 
-/// Which leg produced a served figure (R2-01-02).
+/// Which leg produced a served figure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ServingSource {
     Nvml,
     Smi,
 }
 
-/// Fallback-label state machine for one served figure, pure (R2-01-02): the
+/// Fallback-label state machine for one served figure, pure: the
 /// latch reflects the leg that produced the **current** figure, not the worst
 /// leg ever seen. The old code OR'd into the latch and never cleared it
 /// (`fell_back || smi`), so one transient per-call NVML failure mislabelled
@@ -282,7 +282,7 @@ fn next_fell_back(fell_back: bool, served_by: ServingSource) -> bool {
     matches!(served_by, ServingSource::Smi)
 }
 
-/// The `source()` label for the figure currently served (F-7): a fallback
+/// The `source()` label for the figure currently served: a fallback
 /// whenever NVML never answered or the last figure came from `nvidia-smi`.
 fn source_label(nvml_unavailable: bool, fell_back: bool) -> &'static str {
     if nvml_unavailable || fell_back {
@@ -313,9 +313,8 @@ async fn smi(args: &[&str]) -> Result<String, String> {
 }
 
 /// Host RAM numbers: the header bar (A1, the v3.3 `GlobalMemoryStatusEx`
-/// source) and the RAM admission gate's witness (operator ruling 2026-11-05:
-/// RAM is its own resource ladder — a CPU-resident row budgets against these
-/// numbers, never against the card).
+/// source) and the RAM admission gate's witness: RAM is its own resource ladder —
+/// a CPU-resident row budgets against these numbers, never against the card.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RamSample {
     /// Installed physical memory in GiB.
@@ -523,8 +522,8 @@ mod tests {
             match witness.nvml.get().expect("init ran") {
                 // The driver answered the init: the sample path ran NVML-first.
                 Some(_) => {}
-                // Init ran and failed: the witness fell back, and F-7 demands the
-                // source never claims NVML in that case.
+                // Init ran and failed: the witness fell back, and the source
+                // label must never claim NVML in that case.
                 None => {
                     assert_eq!(witness.source(), "nvidia-smi (fallback)");
                 }
@@ -536,7 +535,7 @@ mod tests {
 
     #[tokio::test]
     async fn source_labels_nvml_and_the_fallback_apart() {
-        // F-7: a fallback reading must never be displayed as an in-process NVML one,
+        // A fallback reading must never be displayed as an in-process NVML one,
         // so the two cases cannot collapse into one label. With the init lazy, the
         // distinction only exists after the first sample — that is when it is pinned.
         let witness = NvmlWitness::new();
@@ -552,7 +551,7 @@ mod tests {
         assert_eq!(witness.source(), "nvidia-smi (fallback)");
     }
 
-    /// R2-01-02 regression: the old latch was sticky (`fell_back || smi`, never
+    /// Regression: the old latch was sticky (`fell_back || smi`, never
     /// cleared), so after one transient per-call NVML failure — init stays `Some`,
     /// only `device_count`/`memory_info` hiccup — every later figure actually
     /// served from NVML was labelled "nvidia-smi (fallback)" for the life of the

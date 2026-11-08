@@ -1,3 +1,7 @@
 # Allowlist for scripts/check-comments.mjs. One exception per line, in the
 # form "<relative-path> <substring>"; a '#' line explains why the exception is
 # deliberate. Keep this file short: each entry is a decision, not a workaround.
+
+# A public standards anchor, not a release pin: the "3.2.2" is the RFC 3986
+# host grammar the IPv6 split follows, so the version-pin regex misreads it.
+src/api/guards.rs RFC 3986 §3.2.2

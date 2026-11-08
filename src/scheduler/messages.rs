@@ -125,8 +125,8 @@ pub(super) enum ActorMsg {
         required_to_free_gb: f64,
         total_gib: f64,
     },
-    /// A process engine's one-shot measured footprint (`TASK-ENGINE-MEASUREMENT`,
-    /// ORCHESTRATION §3): the figure basalt/strata stated at their own status
+    /// A process engine's one-shot measured footprint: the figure basalt/strata
+    /// stated at their own status
     /// endpoint, or the witness's process-tree sum of the engine's pid plus its
     /// direct children. One shot per launch like `MeasuredEngineReport`; the
     /// measurement's `source` decides the provenance it folds under. `total_gib`
@@ -138,8 +138,7 @@ pub(super) enum ActorMsg {
         measurement: crate::engine::EngineMeasurement,
         total_gib: f64,
     },
-    /// One CPU-resident RAM reading for a serving occupant
-    /// (`TASK-CPU-LLAMA-EVICTION` W2 step 3): the working set summed over the
+    /// One CPU-resident RAM reading for a serving occupant: the working set summed over the
     /// engine's own pid plus every descendant, converted to the GiB newtype
     /// once at the probe boundary — no MiB or raw-bytes figure crosses here.
     /// The actor decides what folds: `attribution` is the provenance the
@@ -242,14 +241,13 @@ pub(super) enum Event {
     /// Engine start finished.
     Spawned(Result<Spawned, SpawnError>),
     /// Readiness loop finished (terminal tri-state only) plus the engine's
-    /// self-reported model id when ready and discoverable (Step 10, F-4).
+    /// self-reported model id when ready and discoverable.
     Probed(Probe, Option<String>),
     /// Witness sample for admission returned (Err = no reading, which refuses unless
     /// the witness declares `ledger_only`). The two slots mirror the two ladders:
     /// a VRAM row carries `Some(card)` and `None` ram (its gate never reads the
     /// host, and the host witness is never spent on it); a RAM row carries
-    /// `None` card and the host reading (which refuses fail-closed when absent,
-    /// operator ruling 2026-11-05).
+    /// `None` card and the host reading (which refuses fail-closed when absent).
     Admitted(
         Option<Result<crate::budget::MemorySample, String>>,
         Option<crate::witness::RamSample>,

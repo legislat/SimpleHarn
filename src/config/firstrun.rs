@@ -1,4 +1,4 @@
-//! First-start config materialization (operator ruling 2026-10-29).
+//! First-start config materialization.
 //!
 //! A fresh install has no `simpleharn.json`; until now it booted on hardcoded
 //! defaults, which fossilize THIS machine (notably `vram_total_gb` = 72.0 — this
@@ -101,8 +101,8 @@ pub fn detect_llama_server_in<'a>(dirs: impl IntoIterator<Item = &'a Path>) -> O
         .find(|candidate| candidate.is_file())
 }
 
-/// Searches PATH (filtered by [`path_entries`]) — and nothing else (FR-13,
-/// operator ruling 2026-11-06): the harness embeds no author-machine install fallback, so
+/// Searches PATH (filtered by [`path_entries`]) — and nothing else: the harness
+/// embeds no author-machine install fallback, so
 /// the first-run choice is the operator's own install or none. The result is
 /// written once into the created config; no answer leaves the key absent, and
 /// each llama row must then name its own `llama_server_exe`.

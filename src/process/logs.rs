@@ -81,7 +81,7 @@ fn is_container_log(path: &std::path::Path) -> bool {
 /// `swift`'s keep-N claim (and delete) `swift-7b`'s files. Harness boot logs are
 /// excluded from both classes by [`is_harness_log`]. The caller passes the ONE
 /// forensic pool key — [`sanitize_slug`] of the model, the same stem both mint
-/// sites use (R2-08-03) — never a raw name or a private spelling.
+/// sites use — never a raw name or a private spelling.
 pub(super) fn prune_model_logs(dir: &std::path::Path, prefix: &str, keep: usize) {
     let owned_prefix = format!("{prefix}-");
     let matches_model = |path: &std::path::Path| {

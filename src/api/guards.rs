@@ -88,8 +88,8 @@ pub const ROUTINE_POLL_PATHS: [&str; 3] = ["/har/status", "/har/log", "/har/mode
 
 /// The control token, if any: the environment wins so the secret can stay out of the
 /// config file entirely (AGENTS.md — secrets live in the environment, not in
-/// code/config). The env name is `SIMPLEHARN_TOKEN`, and it is the only name read
-/// (TASK-NAMING-CLEANUP). Whitespace-only values mean "no token" at read time;
+/// code/config). The env name is `SIMPLEHARN_TOKEN`, and it is the only name read.
+/// Whitespace-only values mean "no token" at read time;
 /// `validate` rejects them in the file, so a typo can never silently disable auth.
 pub(super) fn resolve_control_token(config: &AppConfig) -> Option<String> {
     crate::config::token_from_env()
@@ -221,11 +221,11 @@ pub async fn guard(
     // them (operator, 2026-10-26).
     let routine_poll =
         method == axum::http::Method::GET && ROUTINE_POLL_PATHS.contains(&path.as_str());
-    // R2-05-01: a public page or asset is not a command. Every `PUBLIC_PATHS` member
+    // A public page or asset is not a command. Every `PUBLIC_PATHS` member
     // answers 200 without a token in every posture, so counting them as a re-arm
     // let an attacker alternate refused POSTs with free `GET /` packets and turn
     // the ring over at request rate — the exact eviction flood the cardinality
-    // cap was built to end (FINDINGS-BATCH-2026-10-28M [2]). Only a success on a
+    // cap was built to end. Only a success on a
     // path that needed something of the harness (a command) re-arms the window.
     if response.status().is_success() && !routine_poll && !PUBLIC_PATHS.contains(&path.as_str()) {
         // A real command succeeded: whatever the guard refused since the last one gets
@@ -319,8 +319,8 @@ fn reject_reason(state: &ApiState, request: &axum::extract::Request) -> Option<A
 /// non-IP authority passes only as `localhost`: rebinding attacks deliver the
 /// attacker's hostname in `Host`, so hostnames stay refused — that is the
 /// DNS-rebinding defense. If the value carries a port, it must be one of the
-/// harness's own configured ports (FINDINGS-05 [4]: accepting every IP literal
-/// left `Host: 203.0.113.9:8708` and any wrong port passing, load-bearing only
+/// harness's own configured ports: accepting every IP literal let a `Host:`
+/// naming a foreign address with any wrong port pass, load-bearing only
 /// because the Origin check happened to also compare the port). The allowed
 /// ports come from the boot config, and the listener binds derive from it, so
 /// the two cannot diverge.

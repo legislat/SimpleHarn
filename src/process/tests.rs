@@ -312,8 +312,8 @@ async fn a_rendered_profile_stages_under_the_profile_root_before_the_child() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `TASK-BASALT` stage 1: the staging roots are per-engine — the strata
-/// door of ruling 19 keeps its byte-identical tail, basalt stages beside
+/// The staging roots are per-engine: the strata
+/// door keeps its byte-identical tail, basalt stages beside
 /// it, and the two pools can never prune each other's files.
 #[test]
 fn rendered_profile_roots_are_per_engine_and_distinct() {
@@ -907,7 +907,7 @@ fn a_prefix_sharing_model_never_prunes_the_longer_names_pool() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// R2-08-03 falsifier: one forensic pool key, `sanitize_slug`, for both
+/// One forensic pool key, `sanitize_slug`, for both
 /// mint sites. Model `qwen 7b` must land its REAL spawned capture under the
 /// sanitized stem `qwen_7b-`, and its keep-N prune must bound the captures
 /// AND the `qwen_7b-*.container.log` snapshots in one pool — while a
@@ -1467,7 +1467,7 @@ async fn a_failed_container_spawn_leaves_no_claim() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The belt on that suspenders, in its R2-08-04 shape: the client started
+/// The belt on that suspenders: the client started
 /// (suspended) — then the spawn is nevertheless reported failed (here: the job
 /// object could not be created) before the seal, so the child never ran and
 /// never reached the claim mint. A failed post-spawn report now leaves no
@@ -1548,7 +1548,7 @@ async fn a_started_client_mints_the_claim_the_reaps_depend_on() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// R2-08-04, the seal pinned through the production `spawn`: the client
+/// The seal pinned through the production `spawn`: the client
 /// starts suspended (so no first act can precede the job assignment), the
 /// seal assigns it to the kill job and resumes it — and the resume really
 /// happens: the first-act file appears, and the tracked stand-in exits and
@@ -1684,7 +1684,7 @@ async fn a_custodied_launch_records_then_a_release_clears_the_sidecar() {
 /// started a client records no custody evidence (the entry is written
 /// only after every spawn-failure return), and a client that started but
 /// whose spawn is nevertheless reported failed (injected job failure)
-/// never reaches the write at all — since R2-08-04 the job seal precedes
+/// never reaches the write at all — the job seal precedes
 /// every custody write — so a launch the harness calls failed never
 /// leaves a record the boot sweep could act on.
 #[tokio::test]
@@ -1733,7 +1733,7 @@ async fn a_failed_custodied_spawn_leaves_no_sidecar_entry() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// R2-08-01 (HIGH): two live jobs can park two pollers on the SAME victim
+/// Two live jobs can park two pollers on the SAME victim
 /// ticket (the eviction job's victim and a same-slot reload's own reaper).
 /// The old code read the table verdict under the lock, dropped the lock for
 /// the TCP await, then removed `engines[port]` unguarded: a poller that
@@ -1847,7 +1847,7 @@ async fn a_blocked_release_poller_may_not_remove_the_successor_that_took_its_por
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// R2-08-02 (MEDIUM): a detached container's client exit and a refusing
+/// A detached container's client exit and a refusing
 /// port are NOT release evidence — `kill`'s `docker rm -f` is. Here the
 /// reap cannot run (blank WSL coordinates make [`reap_container`] refuse
 /// and report false — the stub the pin asked for, with no `wsl.exe` and no
@@ -2425,7 +2425,7 @@ fn assembled_env_reaches_a_real_child_without_inherited_secrets() {
 /// including through an assertion panic. Only names no other test in this
 /// binary reads may be injected: the crate reads just `SIMPLEHARN_LOG`,
 /// `SIMPLEHARN_TOKEN` and `SIMPLEHARN_CONFIG` — and nothing else
-/// (TASK-NAMING-CLEANUP: no older spelling is read; the log knob is read only
+/// (no older spelling is read; the log knob is read only
 /// inside `observability::init`, which tests never call) — never
 /// `PYTHONPATH`/`VIRTUAL_ENV`, and integration suites are separate processes.
 /// `std::env::set_var` is a safe call in edition 2021 — an `unsafe` block here
@@ -2684,7 +2684,7 @@ async fn serve_status_fixtures() -> u16 {
     port
 }
 
-/// TASK-ENGINE-MEASUREMENT phase 1: `engine_status_json` is a generic
+/// `engine_status_json` is a generic
 /// loopback read — an answered JSON body reaches the per-engine parser,
 /// and every other outcome (body that is not JSON, nothing listening)
 /// answers `None`, so the sampler falls back to the witness instead of

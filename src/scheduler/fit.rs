@@ -29,7 +29,7 @@ pub(super) const FIT_WARM_DELAY: Duration = Duration::from_millis(1500);
 /// projection does not (other tenants' sampling instants, KV growth under
 /// load), so the cross-check window is wider than the booking margin.
 ///
-/// Calibration decision (TASK-R11-FIT, C1 capture 2026-11-02): margin 3,
+/// Calibration decision: margin 3,
 /// surcharge 2 and this 2.0 slack STAND - the capture booked conservative
 /// against the live witness figure on the single sample the card holds, and
 /// any numeric change needs multi-sample card-window evidence first. The C1
@@ -579,7 +579,7 @@ impl ActorState {
     /// defined tolerance ([`None`] - the row never validates, silently, the
     /// same degradation an unavailable reading gets). Split out of
     /// [`Self::maybe_validate_fit`] so the composition carries a direct test
-    /// pin (TASK-R11-FIT: tolerance = margin + slack, default slack 2.0).
+    /// pin (tolerance = margin + slack, default slack 2.0).
     pub(super) fn fit_validation_tolerance(margin_gb: Option<f64>) -> Option<f64> {
         margin_gb
             .filter(|margin| margin.is_finite())

@@ -207,8 +207,8 @@ pub(crate) const FLAG_TABLE: &[(&str, &str)] = &[
 /// review decision.
 const NEGATIVE_FORM_KEYS: &[&str] = &[];
 
-/// The shared value-shape floor for every [`FLAG_TABLE`] value (R2-09-01,
-/// FINDINGS-09 [1]). The closed `extra_args` allow-list is only closed while
+/// The shared value-shape floor for every [`FLAG_TABLE`] value. The closed
+/// `extra_args` allow-list is only closed while
 /// the value slot of a harness-owned flag cannot carry an option word: a
 /// parser that will not bind `--api-key` to the preceding `-c` re-reads it as
 /// its own option — the door [`valid_extra_value`] slams on the operator's
@@ -217,7 +217,7 @@ const NEGATIVE_FORM_KEYS: &[&str] = &[];
 /// not option-shaped unless its flag documents a negative form, and a value
 /// is one clean token with no control characters. The refusal is raised in
 /// [`build_args`], which `preflight_spec` runs before `Quiesce`/`Dispose`, and
-/// in the fit probe via [`table_value_rejection`] (R2-09-05) —
+/// in the fit probe via [`table_value_rejection`] —
 /// a row typo costs the operator an `AdmitFail`, never the resident model.
 /// `None` admits the value; `Some(detail)` names what is wrong, for
 /// [`rejected_table_value`].
@@ -258,7 +258,7 @@ fn safe_display(value: &str) -> String {
     out
 }
 
-/// The probe-side voice for the same floor (R2-09-05): `Some(text)` naming the
+/// The probe-side voice for the same floor: `Some(text)` naming the
 /// yaml key, the flag it feeds and the escaped value, worded exactly like
 /// [`rejected_table_value`], so the fit probe refuses an option-shaped value
 /// before it reaches the calculator instead of rendering it unvalidated.
@@ -334,8 +334,8 @@ pub fn jinja_on(value: &str) -> bool {
 }
 
 /// Resolves a `model:` value to the one path the scan, the booking, and the
-/// launch all read (R2-09-02, FINDINGS-09 [2]). The same resolver anchors a
-/// relative `mmproj:` (R2-13-02): the vision projector is a second weights
+/// launch all read. The same resolver anchors a relative `mmproj:`: the
+/// vision projector is a second weights
 /// file and must open at the same base as the GGUF. The scan stats a relative
 /// value as `ModelConf_dir/<value>` and books `gguf_size_gb` from that stat,
 /// while the engine — spawned with `cwd = exe.parent()` — resolved the raw
@@ -393,8 +393,8 @@ pub(crate) fn resolve_model_path(raw: &str, dir: Option<&Path>) -> String {
 /// `model_dir` is the catalog directory that anchors a relative `model:` (the
 /// parent of the entry's yaml — the same directory the scan stat'd for the
 /// existence trace and the size booking, [`resolve_model_path`]) and, by the
-/// same base, a relative `mmproj:` (R2-13-02); `None` launches the value
-/// verbatim, the pre-R2-09-02 behavior.
+/// same base, a relative `mmproj:`; `None` launches the value verbatim, the
+/// behavior from before values were anchored.
 pub(crate) fn build_args(
     raw: &BTreeMap<String, String>,
     port: u16,
@@ -432,9 +432,9 @@ pub(crate) fn build_args(
             if let Some(detail) = table_value_problem(key, flag, v) {
                 return Err(rejected_table_value(model_name, key, flag, v, &detail));
             }
-            // R2-13-02 (engine half): a relative `mmproj:` is a second weights
-            // file — it joins the yaml dir exactly like `model:` (R2-09-02),
-            // never the engine's exe-dir cwd. The row's raw map stays verbatim.
+            // A relative `mmproj:` is a second weights file — it joins the
+            // yaml dir exactly like `model:`, never the engine's exe-dir cwd.
+            // The row's raw map stays verbatim.
             let token = if *key == "mmproj" {
                 resolve_model_path(v, model_dir)
             } else {
@@ -550,7 +550,7 @@ impl EngineAdapter for LlamaAdapter {
         }
         // The catalog dir that anchors a relative `model:` is the parent of
         // the entry's yaml — the dir the scan stat'd for the existence trace
-        // and the size booking (R2-09-02); a synthetic entry has none.
+        // and the size booking; a synthetic entry has none.
         let model_dir = model.file.as_deref().and_then(Path::parent);
         let argv = build_args(&model.raw, port, &model.name, model_dir)?;
         Ok(LaunchSpec {
@@ -558,7 +558,7 @@ impl EngineAdapter for LlamaAdapter {
                 .into_iter()
                 .chain(argv)
                 .collect(),
-            // R2-09-03: `Path::new("llama-server.exe").parent()` is `Some("")`
+            // `Path::new("llama-server.exe").parent()` is `Some("")`
             // — std strips the last component of a bare file name to the empty
             // path — so the fallback must also fire on the empty parent, or a
             // bare `llama_server_exe` hands `""` (not NULL) to the spawn's
@@ -1083,8 +1083,8 @@ mod tests {
         );
     }
 
-    /// R2-09-01 falsifier (FINDINGS-09 [1]): a `FLAG_TABLE` value is data,
-    /// never a second door into the engine parser. The review's probe `context:
+    /// A `FLAG_TABLE` value is data,
+    /// never a second door into the engine parser. A probe `context:
     /// --api-key` used to render `Ok` and placed the forbidden word in L3, and
     /// any garbage value cleared `preflight_spec` so a row typo evicted the
     /// resident before the engine's own parser died. Every value here must
@@ -1152,7 +1152,7 @@ mod tests {
         assert!(NEGATIVE_FORM_KEYS.is_empty());
     }
 
-    /// R2-09-02 (FINDINGS-09 [2]): one `model:` key, one location. The scan
+    /// One `model:` key, one location. The scan
     /// existence-traced and size-booked a relative value against the yaml's
     /// own dir, while `-m` carried the raw string and the engine opened it
     /// relative to its spawn `cwd` — the exe's parent — so the same key
@@ -1199,8 +1199,8 @@ mod tests {
         );
     }
 
-    /// R2-13-02 (engine half): a relative `mmproj:` is a second weights file,
-    /// so `--mmproj` joins the yaml dir exactly like `-m` (R2-09-02) — never
+    /// A relative `mmproj:` is a second weights file,
+    /// so `--mmproj` joins the yaml dir exactly like `-m` — never
     /// the engine's exe-dir cwd — and the row's raw map stays verbatim. The
     /// exe lives in a different directory here: the old exe-dir resolution is
     /// the falsifier that must NOT appear.
@@ -1262,9 +1262,9 @@ mod tests {
         assert_eq!(spec.argv[2], "hf://org/repo/x.gguf");
     }
 
-    /// R2-09-03 (FINDINGS-09 [3]): `Path::new("llama-server.exe").parent()` is
-    /// `Some("")`, so the old fallback fired only for the blank config (the
-    /// historical R2-11-06 shape, now refused at boot) and a bare
+    /// `Path::new("llama-server.exe").parent()` is
+    /// `Some("")`, so the old fallback fired only for the blank config (a
+    /// historical shape, now refused at boot) and a bare
     /// `llama_server_exe` handed an empty working directory to the spawn instead
     /// of the documented current dir.
     #[test]

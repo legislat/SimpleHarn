@@ -349,8 +349,8 @@ impl ActorState {
         } else {
             (high, low)
         };
-        // Same-slot release credit (TASK-GREEDY-SWAP-CREDIT, operator ruling
-        // 2026-11-06): a greedy row books its nominal `vram_gb` (DOCTRINE 12), so
+        // Same-slot release credit: a greedy row books its nominal `vram_gb`
+        // (DOCTRINE 12), so
         // the booking can badly understate what releasing this resident would
         // physically free, and a replacement swap dies on paper (field incident
         // 2026-11-06: booked 12.0, held 68.4). Stamp the largest of THIS SPAWN's
@@ -596,7 +596,7 @@ impl ActorState {
         // The spawn's own verdict on provenance, decided before any arithmetic: a
         // spawn that already folded the engine's own static figure — the
         // container's `engine_report` or a process engine's `engine_status`
-        // reading (TASK-ENGINE-MEASUREMENT, ORCHESTRATION §4) — never takes a
+        // reading — never takes a
         // witness reading into its range again (both figures are static for the
         // launch; the total-diff could only corrupt them).
         if matches!(
@@ -630,7 +630,7 @@ impl ActorState {
         // while the unaccounted remainder of the card stands still. A static
         // foreign holder is already discounted by the admit baseline; memory that
         // MOVES inside the window is what turned qwen-turbo's range into the
-        // 23.8–59.3 noise (blanked by the operator's ruling 2026-11-01). When the
+        // 23.8–59.3 noise (blanked by the operator). When the
         // unaccounted movement exceeds what this engine's own growth explains,
         // the fold is someone else's story and nothing is minted — a labelled
         // blank beats a stand-in lie. A witness that never answered at admit has
@@ -743,9 +743,9 @@ impl ActorState {
         });
     }
 
-    /// Folds one process-engine measurement (`TASK-ENGINE-MEASUREMENT`,
-    /// ORCHESTRATION §4): the footprint basalt/strata stated at their own status
-    /// endpoint, or the witness's process-tree sum of the engine's pid plus its
+    /// Folds one process-engine measurement: the footprint basalt/strata stated
+    /// at their own status endpoint, or the witness's process-tree sum of the
+    /// engine's pid plus its
     /// direct children. Same guard order as [`Self::on_engine_report`] — the
     /// reading must still own an uncontested serving window (a drop is visible
     /// because the sampler's one-shot does not retry; review 2026-10-31, M1),
@@ -806,8 +806,8 @@ impl ActorState {
             fold_range: false,
             pair: MeasuredPair::Vram,
         });
-        // Phase 4 (`TASK-ENGINE-MEASUREMENT`, the 2026-11-04 readmission
-        // incident): the fold moved the row's max truth, but the resident's
+        // The readmission incident: the fold moved the row's max truth, but
+        // the resident's
         // booking lives on the SLOT — the same-slot release credit, the R3
         // no-release floor guard and the eviction planner all read that
         // figure, and an occupant left holding the paper number hands a
@@ -980,8 +980,8 @@ impl ActorState {
         self.publish();
     }
 
-    /// Folds one CPU-resident working-set reading into the row's RAM pair
-    /// (`TASK-CPU-LLAMA-EVICTION` W2 step 3): the process-tree sum of the
+    /// Folds one CPU-resident working-set reading into the row's RAM pair:
+    /// the process-tree sum of the
     /// engine's pid plus its descendants, sampled on the serve cadence. The
     /// pair accumulates the serve window's extremes through the same anchor
     /// range the witness fold averages (spawn-seeded from the row's RAM pair,

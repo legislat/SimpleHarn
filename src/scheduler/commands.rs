@@ -13,11 +13,10 @@ use super::{
 
 impl ActorState {
     /// Whether `ticket` names an engine a live job has already committed to
-    /// release: its ticket is that job's `victim`, one of its queued `victims`
-    /// (R2-02-01), or one of its queued expert-offload reclaim victims
-    /// (M-R-01 review, operator ruling 2026-11-06: a reclaim victim is just as
-    /// committed from the moment it is planned, or the idle sweep could evict
-    /// it between plan and dequeue and produce two ledger deaths for one
+    /// release: its ticket is that job's `victim`, one of its queued `victims`,
+    /// or one of its queued expert-offload reclaim victims (a reclaim victim is
+    /// just as committed from the moment it is planned, or the idle sweep could
+    /// evict it between plan and dequeue and produce two ledger deaths for one
     /// release). The occupant stays installed until that release is confirmed
     /// ([`ActorState::commit_victim_release`] is the window's close, and the same
     /// commit terminalizes the victim's own load row - EVID-01), so an
@@ -38,7 +37,7 @@ impl ActorState {
     }
 
     /// The single derivation of the `/har/status` `slots[].state` label
-    /// (operator ruling 2026-11-04; the only writer is `ActorState::snapshot`).
+    /// (the only writer is `ActorState::snapshot`).
     /// Rules, in order:
     /// - `releasing`: the slot still shows its occupant and
     ///   [`ActorState::is_committed_release_target`] names that occupant — the
@@ -80,7 +79,7 @@ impl ActorState {
         for &s in &slots {
             if let (Some(occupant), None) = (&self.slots[s].occupant, self.slots[s].job) {
                 if occupant.model == model {
-                    // R2-02-01: an occupant a live job has committed to kill is
+                    // An occupant a live job has committed to kill is
                     // not "already serving" — the eviction in flight empties
                     // this slot, so `Already` would be a success receipt for an
                     // engine the harness has decided to destroy (DOCTRINE 3:
@@ -116,7 +115,7 @@ impl ActorState {
                 }
             }
         }
-        // F-6 fix: an identical in-flight load gets the waiter attached, not a race.
+        // An identical in-flight load gets the waiter attached, not a race.
         for &s in &slots {
             if let Some(job_id) = self.slots[s].job {
                 if let Some(job) = self.jobs.get(&job_id) {
@@ -198,7 +197,7 @@ impl ActorState {
     /// load it fresh. Reuses the standard replacement path — the dead occupant
     /// becomes the victim, so release + settle + spawn all run normally.
     ///
-    /// R2-06-01: `failed_port` is the engine the caller's forward refused on — the
+    /// `failed_port` is the engine the caller's forward refused on — the
     /// corpse it witnessed. A second `Restart` for the same model can arrive after
     /// the first retry already reloaded it and installed a successor: when the
     /// occupant serves a port other than the refused one, it is a different, live
@@ -460,8 +459,7 @@ impl ActorState {
     /// threshold starts an unload. WORK defaults to 0 (never idles); config is king.
     /// An occupant a live job has already committed to release is skipped: a
     /// cross-slot victim's slot stays job-free while that release runs, and a
-    /// second unload behind it would name two causes of death for one model
-    /// (R2-20-01).
+    /// second unload behind it would name two causes of death for one model.
     pub(super) fn on_tick(&mut self) {
         let now = Instant::now();
         let due: Vec<usize> = self
@@ -472,8 +470,8 @@ impl ActorState {
                 let (Some(occupant), None) = (&slot.occupant, slot.job) else {
                     return false;
                 };
-                // R2-20-01 (same window [`ActorState::is_committed_release_target`]
-                // guards in `on_swap`, R2-02-01): the sweep's `job.is_none()` spare
+                // Same window [`ActorState::is_committed_release_target`]
+                // guards in `on_swap`: the sweep's `job.is_none()` spare
                 // never covers a cross-slot victim, so consult the commitment.
                 if self.is_committed_release_target(&occupant.ticket) {
                     return false;

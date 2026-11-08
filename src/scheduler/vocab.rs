@@ -15,7 +15,7 @@ impl std::fmt::Display for JobId {
 }
 
 /// Commands into the scheduler actor (Step 2). A dropped waiter (client disconnect)
-/// drops the oneshot, never the in-flight work — that is the F-1 fix.
+/// drops the oneshot, never the in-flight work.
 ///
 /// Register/unregister (externals display list) are v0-deferred (§0.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,7 +26,7 @@ pub enum Command {
     /// Kill the occupant of `model`'s slot (dead engine) and load it fresh —
     /// the T10.1 crash-retry primitive: reap + reload in one command.
     /// `port` is the engine port the caller's forward refused to connect on:
-    /// the identity of the corpse it witnessed (R2-06-01). A `Restart` naming a
+    /// the identity of the corpse it witnessed. A `Restart` naming a
     /// port the slot no longer serves describes a crash a previous retry already
     /// recovered, and the actor must answer it against the live successor rather
     /// than reap it.
@@ -79,7 +79,7 @@ pub enum SwapState {
     /// Occupant installed and serving; terminal-success for the job.
     Serving,
     /// Any step failed; cleanup pending. Every exit sets exactly one of
-    /// {slot installed, last_error + reaped} — never neither (F-6 funnel).
+    /// {slot installed, last_error + reaped} — never neither.
     Failed,
     /// Killing what this job spawned; then `Idle`.
     Reap,
@@ -107,7 +107,7 @@ impl SwapState {
 /// Rules encoded:
 /// - the happy path `Idle -> Admit -> Quiesce -> Dispose -> Spawn -> Ready -> Install
 ///   -> Serving` with no skips (a swap may never jump straight to `Spawn` — that is
-///   how double spawns happened, F-6/F-3);
+///   how double spawns happened);
 /// - every working step may fail into `Failed` (the exit funnel);
 /// - any non-idle state may observe `CancelRequested`, and cancel always ends in
 ///   `Reap`, never in `Spawn`;
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn no_skip_to_spawn_or_serving() {
         use SwapState::*;
-        // Skipping quiesce/dispose is how double spawns happened (F-6, F-3).
+        // Skipping quiesce/dispose is how double spawns happened.
         assert!(!transition_allowed(Idle, Spawn));
         assert!(!transition_allowed(Admit, Spawn));
         assert!(!transition_allowed(Idle, Serving));

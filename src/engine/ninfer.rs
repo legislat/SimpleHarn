@@ -1292,7 +1292,7 @@ mod tests {
         );
     }
 
-    /// Template adoption (operator ruling 2026-10-31): the launch runs the harness's
+    /// Template adoption: the launch runs the harness's
     /// own rendered script, staged by the runtime — never an operator file. This pins
     /// the three incident-review properties (`--restart no`, loopback-only publish,
     /// bounded logs), the parameterized body, and the untouched positional contract.
@@ -1511,7 +1511,7 @@ mod tests {
     }
 
     /// The shipped reference template must be the canonical script byte for byte,
-    /// not a hand-written copy that drifts from it (review F-01). A partial pin
+    /// not a hand-written copy that drifts from it. A partial pin
     /// (a few `contains` checks) passed while the copy had already diverged; only
     /// full equality fails at the gate on any drift. To change the reference, edit
     /// the canonical constant instead.
@@ -1711,7 +1711,7 @@ mod tests {
 
     #[test]
     fn a_template_launch_names_the_key_file_it_will_read_and_never_the_secret() {
-        // R2-10-01: the serve line must expand the key array itself, in the
+        // The serve line must expand the key array itself, in the
         // `set -u` safe form — the expansion rides the run line whether or not
         // the row declared a key, and expands to nothing for an empty array.
         const KEY_EXPANSION: &str = r#"${API_KEY_ARGS[@]+"${API_KEY_ARGS[@]}"}"#;
@@ -1769,7 +1769,7 @@ const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 pub struct EngineReport {
     /// GiB that must be free to run this model safely: the larger of the
     /// startup-record reserve (pools + graphs + slack) and the post-ready
-    /// resident footprint (`weights ready` + `runtime`, ruling 2026-11-01 —
+    /// resident footprint (`weights ready` + `runtime` —
     /// the engine's own word, read after the weight stream landed).
     pub required_to_free_gb: f64,
     /// Raw `total_device_memory_bytes` the engine saw (`totalGlobalMem`).
@@ -1877,7 +1877,7 @@ pub fn parse_startup_memory(log: &str) -> Option<EngineReport> {
         // 2026-11-01: qwen-fp8 reserved 32.0 GiB at startup and installed 44.1).
         // The engine's own post-ready lines are per-engine, post-load and immune
         // to whatever else occupies the card, so the booking takes the larger
-        // figure (ruling 2026-11-01: the engine's word, read at ready).
+        // figure (the engine's word, read at ready).
         let required = match parse_resident_footprint(log) {
             Some(resident) if resident.is_finite() && resident > 0.0 && resident <= total_gib => {
                 required.max(resident)
@@ -2006,7 +2006,7 @@ mod startup_tests {
         );
     }
 
-    /// R2-10-03: the doc promises "a float or a numeric string", so a build
+    /// The doc promises "a float or a numeric string", so a build
     /// that quotes the byte counts must still book — and a string that is not
     /// a non-negative integer must stay absent, never a silent zero.
     #[test]
@@ -2050,7 +2050,7 @@ mod startup_tests {
         assert!(report.required_to_free_gb > 0.0);
     }
 
-    /// Ruling 2026-11-01: the startup record is spoken before the weight stream
+    /// The startup record is spoken before the weight stream
     /// (live: qwen-fp8 reserved 32.0 at startup, installed 44.1 — witness), so
     /// the engine's own post-ready `weights ready`+`runtime` figures raise the
     /// booking. The host-KV lines (8.00 GiB) in the same vector must never join:

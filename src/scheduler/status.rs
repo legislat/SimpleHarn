@@ -59,12 +59,12 @@ pub struct SlotStatus {
     pub need_gib: Option<f64>,
     /// Seconds since the occupant was last used (None when empty; Step 5).
     pub idle_s: Option<u64>,
-    /// The engine's self-reported id, when discovered (F-4).
+    /// The engine's self-reported id, when discovered.
     pub serve_id: Option<String>,
     /// Job currently running for this slot, if any.
     pub loading_job: Option<JobId>,
     /// The slot lifecycle the server derives: `empty`, `loading`, `serving`,
-    /// or `releasing` (operator ruling 2026-11-04). `releasing` names a
+    /// or `releasing`. `releasing` names a
     /// committed release: the occupant is the target of a live unload or
     /// eviction and stays installed until the driver confirms the release, so
     /// the label covers the whole window from accept to confirmation. A
@@ -73,7 +73,7 @@ pub struct SlotStatus {
     /// this value instead of re-deriving the dot.
     pub state: String,
     /// Wall-clock launch of the occupant, server-formatted ISO-8601 UTC
-    /// (Axis-2 ruling 2026-10-29: the operator sees when the model launched; the
+    /// (the operator sees when the model launched; the
     /// page prints this string verbatim — no date math in the browser). Empty slot:
     /// absent.
     pub launched_at: Option<String>,
@@ -92,9 +92,9 @@ pub struct SlotStatus {
     /// never a gate input.
     pub container_reported_gb: Option<f64>,
     /// The host-RAM booking this CPU-resident occupant debits (GiB), straight
-    /// from the actor's `ram_need` — the ledger truth, not a re-derivation
-    /// (W3, operator ruling 2026-11-05). Emitted only when the catalog row's
-    /// ladder figure still agrees with that booking (W3-01): a row that
+    /// from the actor's `ram_need` — the ledger truth, not a re-derivation.
+    /// Emitted only when the catalog row's
+    /// ladder figure still agrees with that booking: a row that
     /// vanished or moved its rung under the resident proves nothing, and all
     /// three RAM fields then stay absent together — never re-labeled, never
     /// guessed. **Absent on every GPU row and every empty slot**

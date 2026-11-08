@@ -26,7 +26,7 @@ pub struct SwapReceipt {
     pub category: CategoryId,
     /// Engine port.
     pub port: u16,
-    /// The engine's self-reported id (F-4); proxy rewriting targets this.
+    /// The engine's self-reported id; proxy rewriting targets this.
     pub serve_id: Option<String>,
 }
 
@@ -191,7 +191,7 @@ pub enum JobKind {
     Unload,
 }
 
-/// The expert-offload RAM reclaim (operator ruling 2026-11-06) planned for a
+/// The expert-offload RAM reclaim planned for a
 /// `cost: greedy` load admitted on an `expert_offload` engine: the CPU-resident
 /// rows queued for drain (largest booked footprint first), the CPU-resident
 /// rows above the threshold that the drain must skip (model, reason), and the
@@ -256,7 +256,7 @@ pub(super) struct Job {
     pub(super) error: Option<SchedulerError>,
     pub(super) need: Option<Gibibytes>,
     /// The resource this row reserves against — derived from the catalog
-    /// entry at registration (operator ruling 2026-11-05), frozen like the
+    /// entry at registration, frozen like the
     /// other derived keys: a reload must not flip a row mid-swap between
     /// ladders.
     pub(super) resource: crate::model::Resource,
@@ -278,15 +278,14 @@ pub(super) struct Job {
     /// was clamped small would skip floor victims after the first release (review
     /// CRITICAL, 2026-10-26). The physical settle gate in
     /// [`ActorState::spawn_settle_task`] compares this same figure plus
-    /// `vram_reserve_gb` against the card, so both halves apply one guard band
-    /// (R2-01-01).
+    /// `vram_reserve_gb` against the card, so both halves apply one guard band.
     pub(super) gate_target: Option<f64>,
     pub(super) free_at_admit: Option<Gibibytes>,
     /// Observed physical free (total - used) at admit; `None` when the witness
     /// was down. The release re-check and the settle gate take the more
     /// conservative figure against this (operator 2026-10-26).
     pub(super) observed_at_admit: Option<f64>,
-    /// Ruling 2026-11-01 (revisable): this same-slot swap already took the
+    /// This same-slot swap already took the
     /// release-first path — it destroyed its victim on the booked credit and
     /// re-gates on the physically re-sampled card instead of dying on paper.
     pub(super) release_first: bool,
@@ -323,7 +322,7 @@ pub(super) struct Job {
     pub(super) released_cost: f64,
     /// The part of [`Self::released_cost`] that came from the non-evicted same-slot
     /// holder. Its booked need is already inside `free_at_admit`, so the ledger leg of
-    /// the release re-check subtracts it and counts it once (R2-03-01). The observed
+    /// the release re-check subtracts it and counts it once. The observed
     /// leg keeps the full figure: a physical reading never held the paper credit.
     pub(super) holder_released_cost: f64,
     /// Ledger need booked for *other* occupants when this engine was admitted. The
@@ -335,8 +334,8 @@ pub(super) struct Job {
     /// Non-fatal observations recorded during the job (serve_model mismatch...).
     pub(super) warnings: Vec<String>,
     pub(super) slot: Option<usize>,
-    /// The model's yaml as it was when this row **queued** (reload-drift Axis 1,
-    /// operator ruling 2026-10-29): the bytes the parked intent was taken on, for
+    /// The model's yaml as it was when this row **queued** (reload-drift guard):
+    /// the bytes the parked intent was taken on, for
     /// [`ActorState::invalidate_queued_loads`] to compare when a rescan lands.
     /// `None` = a synthetic entry, or the stat was unreadable at registration:
     /// nothing to compare, nothing to retire on.

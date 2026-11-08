@@ -1,6 +1,6 @@
-//! The basalt engine adapter (`TASK-BASALT` stage 1, option A).
+//! The basalt engine adapter.
 //!
-//! Same doctrine as strata template mode (operator ruling 2026-11-02 row 19),
+//! Same doctrine as strata template mode,
 //! generalized: the row yaml names the interpreters, the weights and a few
 //! scalars; the harness renders the whole profile itself, stages it
 //! content-addressed into its own custody root (`.simpleharn/basalt-profiles`),
@@ -210,7 +210,7 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<BasaltRow, BasaltRowErr
         let raw = knob(model, "basalt_cwd").ok_or_else(|| missing(model, "basalt_cwd"))?;
         checked_path(model, "basalt_cwd", raw, true)?
     };
-    // Operator ruling 2026-11-04 (`TASK-BASALT-GREEDY`): Basalt is greedy with
+    // Basalt is greedy with
     // dynamic RAM offload - it launches below its nominal footprint because
     // the experts spill to RAM, so the launch floor is the gate, not the
     // size. A `cost: greedy` row may omit `vram_gb`: an unknown nominal is
@@ -364,8 +364,8 @@ fn render_profile(row: &BasaltRow) -> String {
 
 /// The Python child needs a home directory for Basalt's model cache. The
 /// harness scrubs the parent environment, so pass the user home through the
-/// launch spec; `Path.home()` cannot resolve without it (release v1.1.1
-/// manual-test failure).
+/// launch spec; `Path.home()` cannot resolve without it (found in manual
+/// testing).
 fn python_home_env() -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
@@ -437,8 +437,7 @@ impl EngineAdapter for BasaltAdapter {
     }
 }
 
-/// Reads the Basalt `GET /metrics` snapshot into a measured footprint
-/// (`TASK-ENGINE-MEASUREMENT` phase 5, card capture 2026-11-04). The sampler
+/// Reads the Basalt `GET /metrics` snapshot into a measured footprint. The sampler
 /// calls this once at readiness and on every elastic tick. Every refusal
 /// answers `None` — absence, never a guess — and the sampler then takes the
 /// witness-based process-tree fallback (doctrine 4).
@@ -760,7 +759,7 @@ mod tests {
         ));
     }
 
-    /// Operator ruling 2026-11-04 (`TASK-BASALT-GREEDY`): Basalt is greedy
+    /// Basalt is greedy
     /// with dynamic RAM offload, so a `cost: greedy` row builds a spec even
     /// when it keeps the last measured `vram_gb` (a present figure is
     /// display-only under greedy — the booking clamps to the room at admit).
@@ -893,8 +892,7 @@ mod tests {
     /// The exact `GET /metrics` body captured 2026-11-04 from the manual
     /// 8003 serve, trimmed ONLY by dropping the irrelevant top-level `history` member;
     /// every field the parse reads plus the full surrounding shape is kept
-    /// byte-for-byte from
-    /// `handoff/evidence/2026-11-04-engine-measurement/captures/basalt-metrics.txt`.
+    /// byte-for-byte from the capture.
     const CAPTURED_METRICS: &str = r#"{"engine": {"model": "Qwen3.8-Flash-Next UD-Q4_K_XL", "max_context": 262144, "version": "0.2.1", "logit_bias": 248320, "context": 262144, "kv": "int8", "kv_resident": 0, "expert_slots": 20544, "expert_cache_mib": 61363, "expert_slots_primary": 20544, "expert_cache_primary_mib": 61363, "spec": 8, "mtp_max": 8, "lookup": 3, "vram_free_mib": 2948, "cvec": 0, "arena_mib": 20288, "pool_workers": 7, "pcie_frac": "0.55", "conversation_cache_mib": 4096, "conversation_cache_slots": 4, "conversation_cache_min_free_mib": 2560, "conversation_cache_min_tokens": 0, "tail_role_token": -1, "vram_elastic": 0, "quant": "Q4_K_XL", "gpus": "0000:01:00.0", "engine": "0.2.1", "text_prompt": 1, "file_experts_bytes": 0}, "live": {"state": "idle", "load": null, "queued": 0, "slots": {"total": 1, "active": 0, "queue_depth": 0}, "queue": [], "prompt_tokens": null, "generated": null, "elapsed_s": null, "tok_s": null, "prefill_tok_s_mean": null}, "requests": [], "best": {}, "hardware": {"gpus": [], "cpu": 20.7, "ram_used": 77716008960, "ram_total": 102096601088, "disk_read_mb": 0.06732642228091411}, "hardware_static": {"gpus": [], "cpu_name": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD", "cores": 8, "threads": 16, "driver": null, "cuda": null}}"#;
 
     /// The real `GET /status` body (liveness only).

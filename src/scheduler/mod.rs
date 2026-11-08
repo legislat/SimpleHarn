@@ -6,13 +6,13 @@
 //! - the actor never performs engine I/O inline — every step runs as a spawned task
 //!   whose result returns as an `Event`, so control-plane calls (`status`, `cancel`,
 //!   `unload`) never queue behind a load (defect A1);
-//! - a dropped waiter is harmless (F-1) and a second identical load attaches to the
-//!   in-flight job instead of racing it (F-6);
+//! - a dropped waiter is harmless and a second identical load attaches to the
+//!   in-flight job instead of racing it;
 //! - a same-category load with a different model supersedes: the running job is
 //!   cancelled and the new one starts when the slot returns to `Idle` ("rapid A->B
 //!   ends with exactly B", T3.4);
-//! - every exit path installs an occupant or reports an error — never neither (F-6
-//!   funnel) — enforced by walking only [`transition_allowed`] edges.
+//! - every exit path installs an occupant or reports an error — never neither —
+//!   enforced by walking only [`transition_allowed`] edges.
 
 mod admission;
 mod catalog;
@@ -144,7 +144,7 @@ struct Occupant {
     model: String,
     need: Gibibytes,
     /// Host RAM booked by a CPU-resident resident (`Some` exactly for
-    /// [`crate::model::Resource::Ram`] rows, operator ruling 2026-11-05).
+    /// [`crate::model::Resource::Ram`] rows).
     /// The VRAM `need` of such a resident is 0: it holds no VRAM booking,
     /// is never a VRAM ledger summand or victim, and its host RAM enters
     /// only `ram_ledger_sum` and the host's own `ram_used` reading.
@@ -157,8 +157,7 @@ struct Occupant {
     /// minutes before anyone is served, and the operator's question is when this
     /// model became reachable). `Instant` has no wall-clock meaning outside the
     /// process, so the human-facing launch stamp needs `SystemTime`
-    /// (Axis-2 ruling 2026-10-29: "the operator can always see ... launch model
-    /// time").
+    /// (the operator can always see the model's launch time).
     launched_at_wall: std::time::SystemTime,
     /// The model's yaml as this launch came from: the fold anchor's file paired with
     /// its install-time stat — the spawn-side half of the `stale_config` verdict
@@ -172,14 +171,13 @@ struct Occupant {
     /// ([`ActorState::refresh_stale_markers`]) and on the harness's own
     /// [`ActorState::on_model_file_written`] — never anywhere else.
     stale_config: bool,
-    /// The engine's self-reported model id (discovered at readiness, F-4 fix);
+    /// The engine's self-reported model id (discovered at readiness);
     /// proxy rewriting targets this, falling back to the harness name.
     serve_id: Option<String>,
     /// Serving-window witness sampler folding this occupant's total-diff into the
     /// model's measured range; aborted the moment the slot empties (§0.4).
     measure: Option<tokio::task::JoinHandle<()>>,
-    /// The largest VRAM footprint this spawn's own fold witnessed
-    /// (TASK-GREEDY-SWAP-CREDIT, operator ruling 2026-11-06). `None` until this
+    /// The largest VRAM footprint this spawn's own fold witnessed. `None` until this
     /// spawn folds: never seeded from disk, so it can never be a stale pair —
     /// the same-slot release credit may only spend what THIS process proved it
     /// holds (DOCTRINE 12's provenance rule, projected not booked).
@@ -194,8 +192,8 @@ struct ActorState {
     adapters: BTreeMap<String, Arc<dyn EngineAdapter>>,
     runtime: Arc<dyn EngineRuntime>,
     witness: Arc<dyn crate::budget::VramWitness>,
-    /// The host-RAM witness the CPU-resident gate leg is judged against
-    /// (operator ruling 2026-11-05): the RAM ladder's twin of `witness`.
+    /// The host-RAM witness the CPU-resident gate leg is judged against:
+    /// the RAM ladder's twin of `witness`.
     /// A `None` sample refuses fail-closed — there is no ledger-only mode
     /// for RAM.
     ram_witness: Arc<dyn crate::witness::RamWitness>,
@@ -899,8 +897,8 @@ impl ActorState {
             self.slots
                 .iter()
                 .filter_map(|s| s.occupant.as_ref())
-                // A CPU-resident resident books host RAM, not the card
-                // (operator ruling 2026-11-05): it is invisible to every VRAM
+                // A CPU-resident resident books host RAM, not the card:
+                // it is invisible to every VRAM
                 // budget, victim plan, and holder list.
                 .filter(|o| o.ram_need.is_none())
                 .map(|o| o.need.0)
@@ -936,7 +934,7 @@ impl ActorState {
     /// CPU-resident rows never appear: they debit the RAM ladder
     /// ([`Self::ram_in_flight_need`]), never the card — the two ladders spend
     /// separate resources, and one resource's in-flight debit must never
-    /// shrink the other's free (operator ruling 2026-11-05).
+    /// shrink the other's free.
     fn in_flight_need(&self, except: JobId) -> f64 {
         self.jobs
             .iter()
@@ -952,8 +950,8 @@ impl ActorState {
     }
 
     /// GiB of host RAM committed to *other* loads admitted but not yet
-    /// installed — the RAM ladder's debit, read only by the RAM gate leg
-    /// (operator ruling 2026-11-05). The mirror-image rule to
+    /// installed — the RAM ladder's debit, read only by the RAM gate leg.
+    /// The mirror-image rule to
     /// [`Self::in_flight_need`]: a VRAM row never spends RAM bytes here, a
     /// RAM row never spends card bytes there.
     fn ram_in_flight_need(&self, except: JobId) -> f64 {

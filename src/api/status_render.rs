@@ -36,7 +36,7 @@ pub(super) async fn status_document(state: &ApiState) -> Result<Value, ApiError>
 /// already in hand plus the cached witness/config reads — no model-file stat, no
 /// second actor round-trip. Keeping the fs-free shape explicit is what makes
 /// `/har/status`, the SSE build, and `/har/models` stat-free reads by construction
-/// (Axis-2 ruling 2026-10-29's one-stat-per-event rule: `stale_config`'s stats live
+/// (the one-stat-per-event rule: `stale_config`'s stats live
 /// on install, the reload turn, and harness write-backs — pinned by
 /// `the_status_and_models_render_paths_never_touch_the_filesystem` (structural, this
 /// file), `the_snapshot_reads_the_cached_verdict_and_never_stats` (scheduler), and
@@ -53,7 +53,7 @@ pub(super) async fn render_status_document(state: &ApiState, scheduler: &Schedul
                 Some(model) => Value::String(model),
                 None => Value::Null,
             };
-            // Additive display field (ruling 2026-11-05): the effective label is
+            // Additive display field: the effective label is
             // ALWAYS present (the trimmed `label`, else the id), so the page reads
             // one field and never re-derives the fallback. The id next to it
             // stays the wire vocabulary; this value never replaces it anywhere.
@@ -131,7 +131,7 @@ pub(super) async fn render_status_document(state: &ApiState, scheduler: &Schedul
 }
 
 /// The loaded-side facts for one model row, joined server-side from ONE scheduler
-/// snapshot (Axis 2, ruling 2026-10-29): the page reads these fields and derives
+/// snapshot: the page reads these fields and derives
 /// nothing (`stale_config === true` and `launched_at` verbatim are pinned in
 /// `webui`). Same-name occupants (one model serving in two categories) merge
 /// honestly: `launched_at` is the EARLIEST install among them (fixed-width UTC ISO
@@ -182,7 +182,7 @@ pub(super) fn model_json(
     fit_validated: bool,
 ) -> Value {
     // A CPU-resident row books host RAM and no card bytes, so its cost basis
-    // is the RAM ladder's rung (operator ruling 2026-11-05: RAM is its own
+    // is the RAM ladder's rung (RAM is its own
     // resource ladder — a card rung would describe a booking that never
     // happens). GPU rows keep their exact pre-RAM shape: no RAM keys, the
     // VRAM ladder's answer.
@@ -248,7 +248,7 @@ pub(super) fn model_json(
             .raw
             .get("cpu_offload")
             .is_some_and(|v| crate::engine::llama::jinja_on(v)),
-        // The EFFECTIVE served context (operator ruling 2026-11-02): llama's own
+        // The EFFECTIVE served context: llama's own
         // row knob, strata's `--max-context` argv token, ninfer's resolved
         // profile max-context, maya's L1 `--max-context` figure captured at
         // scan; never the inert row key; null when the engine speaks none (the
@@ -362,7 +362,7 @@ pub(super) async fn har_models(
 }
 
 /// The `/har/status` memory block: declared config numbers plus what the witness
-/// actually sees, labeled with its source (F-7 lesson: never present a number
+/// actually sees, labeled with its source (never present a number
 /// without saying whose number it is).
 async fn mem_section(state: &ApiState, scheduler: &crate::scheduler::SchedulerStatus) -> Value {
     // Loads committed but not yet installed: the very set the admission gate debits
@@ -412,7 +412,7 @@ async fn mem_section(state: &ApiState, scheduler: &crate::scheduler::SchedulerSt
         }),
     };
     // A1: host RAM is informational context next to the VRAM bars (§0.4 keeps it
-    // out of admission). Since the RAM ladder landed (operator ruling 2026-11-05)
+    // out of admission). Since the RAM ladder landed
     // the block also states the RAM side of the gate: the reservation the loaded
     // CPU residents debit (the SAME figures the slot rows carry, so bar and rows
     // cannot quote two numbers), the RAM reserve the gate subtracts before

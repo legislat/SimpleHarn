@@ -74,7 +74,7 @@ pub enum Reply {
         category: CategoryId,
         /// Port it serves on.
         port: u16,
-        /// The engine's self-reported id (may rewrite differently, F-4).
+        /// The engine's self-reported id (may rewrite differently).
         serve_id: Option<String>,
     },
     /// The command was accepted with nothing further to report (cancel, reload).
@@ -133,7 +133,7 @@ impl SchedulerHandle {
     /// # Errors
     ///
     /// [`SchedulerError`] variants; a dropped future (client abort) never cancels the
-    /// load — the actor replies into a closed channel and continues (F-1).
+    /// load — the actor replies into a closed channel and continues.
     pub async fn swap(&self, model: &str, category: CategoryId) -> Result<Reply, SchedulerError> {
         self.call(Command::Swap {
             model: model.to_string(),
@@ -167,7 +167,7 @@ impl SchedulerHandle {
     /// the caller's request refused to connect on (the proxy knows it): the
     /// identity of the corpse. A Restart naming a port the slot no longer serves
     /// describes a crash a previous retry already recovered, and is answered
-    /// against the live occupant instead of reaping it (R2-06-01).
+    /// against the live occupant instead of reaping it.
     ///
     /// # Errors
     ///

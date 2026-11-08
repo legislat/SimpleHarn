@@ -1,6 +1,5 @@
 //! The one-shot strata profile migration (`simpleharn import strata
-//! <profile.json>`, operator ruling 2026-11-02 row 19c; `--apply`, ruling
-//! 2026-11-03): read a manual profile, emit the row yaml the harness renders
+//! <profile.json>`; `--apply`): read a manual profile, emit the row yaml the harness renders
 //! from, and — only under `--apply <row.yaml>` — merge that block into the live
 //! row. It is the only sanctioned reader of a `C:\Strata` profile — the serve
 //! path never opens one.
@@ -470,8 +469,8 @@ impl std::fmt::Display for ApplyOutcome {
     }
 }
 
-/// Merges the emitted template block into the live row file (ruling 2026-11-03:
-/// `simpleharn import strata <profile.json> --apply <row.yaml>`).
+/// Merges the emitted template block into the live row file
+/// (`simpleharn import strata <profile.json> --apply <row.yaml>`).
 ///
 /// The merge contract:
 ///
@@ -773,7 +772,7 @@ mod tests {
         }
     }
 
-    /// Ruling 2026-11-02 (FINDINGS-25 [1] settled): `threads` and `min_tokens`
+    /// `threads` and `min_tokens`
     /// are tokens now — a live profile's `vision.threads` imports faithful —
     /// while a nested key the server contract does not carry, and a nested
     /// number of the wrong shape, are still reported one level down.

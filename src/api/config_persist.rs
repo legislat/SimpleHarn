@@ -22,7 +22,7 @@ impl ApiState {
     /// `simpleharn.json` atomically (temp file + rename). Memory applies only
     /// after the bytes landed: a write that never landed leaves the effective
     /// default at its previous value, so the config file stays king between the
-    /// failed call and the next boot (R2-07-03). When `persisted: false` names a
+    /// failed call and the next boot. When `persisted: false` names a
     /// write that never landed, the answer carries the still-effective value.
     ///
     /// A write that lands re-validates the published bytes against the boot schema
@@ -32,7 +32,7 @@ impl ApiState {
     /// the live file. A write that never landed leaves the field alone (the file
     /// still holds the bytes the previous verdict described). A rename that landed
     /// but whose read-back did not confirm the published tree records the verdict of
-    /// the bytes that ARE on disk (R2-07-02): the harness just replaced the boot
+    /// the bytes that ARE on disk: the harness just replaced the boot
     /// file, so keeping the old verdict would re-assert a claim about bytes the file
     /// no longer holds.
     ///
@@ -66,9 +66,9 @@ impl ApiState {
                 }
                 // The rename landed: the live boot file now holds bytes the
                 // read-back refused, so the verdict must describe them even
-                // though the answer stays `persisted: false` (R2-07-02). The
+                // though the answer stays `persisted: false`. The
                 // file is king and it holds the NEW bytes, so memory follows
-                // them (R2-07-03).
+                // them.
                 PersistOutcome::LandedUnverified { verdict } => {
                     self.record_config_errors(verdict);
                     self.default_overrides
@@ -78,7 +78,7 @@ impl ApiState {
                     (owned_model, false)
                 }
                 // The bytes never landed: the file still holds the previous
-                // default, so memory must not move (R2-07-03). The answer
+                // default, so memory must not move. The answer
                 // carries the still-effective value, not the refused edit.
                 PersistOutcome::NotLanded => (self.default_model(category), false),
             },
@@ -103,9 +103,9 @@ impl ApiState {
 /// is reached in practice only by a hand-built `AppConfig`. The harness never writes a
 /// config file other than the one it loaded or [`crate::config::CONFIG_FILE`], unless
 /// the operator explicitly selected another path as `SIMPLEHARN_CONFIG` — an explicit
-/// path is an operator instruction and config file is king (ruling 2026-11-03,
-/// `TASK-DEBT-LEFTOVERS`). The fallback must therefore name [`crate::config::CONFIG_FILE`]:
-/// naming any other file would write a file boot never loads (README review, 2026-10-27).
+/// path is an operator instruction and config file is king. The fallback must
+/// therefore name [`crate::config::CONFIG_FILE`]: naming any other file would
+/// write a file boot never loads.
 pub(super) fn config_write_path(config: &AppConfig) -> std::path::PathBuf {
     config
         .source_path
@@ -119,8 +119,7 @@ pub(super) fn config_write_path(config: &AppConfig) -> std::path::PathBuf {
 /// "this is what the live boot file now says" (`config_errors`). A rename-success/
 /// verify-failure separates them — the file changed while the answer must stay
 /// `persisted: false` — and conflating the two let `/har/status` keep asserting
-/// the previous verdict over a file the harness itself had just replaced
-/// (R2-07-02).
+/// the previous verdict over a file the harness itself had just replaced.
 #[derive(Debug)]
 pub(super) enum PersistOutcome {
     /// The rename landed and the read-back confirmed the published tree;
@@ -130,7 +129,7 @@ pub(super) enum PersistOutcome {
     /// the live file now holds bytes nobody validated. `verdict` is what those
     /// landed bytes say the next boot would refuse — the same authority as a
     /// successful write-back's verdict, recorded even though the answer is
-    /// `persisted: false` (R2-07-02).
+    /// `persisted: false`.
     LandedUnverified { verdict: Vec<ConfigError> },
     /// Nothing reached the live file (pre-rename failure): the previous verdict
     /// still honestly describes it, so the caller must not record anything.
@@ -160,7 +159,7 @@ impl PersistOutcome {
 /// Returns a [`PersistOutcome`]: only the `Landed` leg may answer
 /// `persisted: true`. `LandedUnverified` means the rename landed and the
 /// read-back refused the tree — its verdict describes the bytes that ARE on
-/// disk (R2-07-02). `NotLanded` (the pre-rename failures) left the live file
+/// disk. `NotLanded` (the pre-rename failures) left the live file
 /// untouched, so the previous verdict still describes it and none is returned.
 pub(super) fn persist_default_model(
     config: &AppConfig,
@@ -236,7 +235,7 @@ pub(super) fn persist_default_model(
     // (writeback.rs:605-612, firstrun.rs:158): a rename may never expose a temp
     // whose content the kernel merely buffered, or `persisted: true` can describe
     // bytes the volume was never told to commit and the file that boots can be
-    // zero/partial after a crash in the write->rename window (R2-07-01).
+    // zero/partial after a crash in the write->rename window.
     if let Err(error) = crate::model::writeback::write_synced(&tmp, text.as_bytes()) {
         tracing::error!(error = %error, "cannot persist default_model: write failed");
         return PersistOutcome::NotLanded;
@@ -246,7 +245,7 @@ pub(super) fn persist_default_model(
     // one wrote), so rollback needs the pre-write copy (review, 2026-10-26).
     // The copy goes through the same flushed write as the temp — a rollback reads
     // exactly this file after a bad publish, and the forensic copy in
-    // `model::writeback` is flushed for the same reason (R2-07-01).
+    // `model::writeback` is flushed for the same reason.
     if path.exists() {
         let bak = path.with_extension("json.bak");
         let backup = std::fs::read_to_string(&path)
@@ -286,7 +285,7 @@ pub(super) fn persist_default_model(
         // whether or not they are the published tree. Refusing the answer is not
         // enough — `/har/status` `config_errors` must describe what is actually on
         // disk, or it would keep asserting the previous verdict over a file the
-        // harness itself just replaced (R2-07-02). The verdict is derived with the
+        // harness itself just replaced. The verdict is derived with the
         // same authority as a successful write-back's: the boot's own validator
         // over the landed tree.
         Ok(landed) => {
@@ -466,8 +465,8 @@ pub(super) async fn har_config_default(
 /// next use reloads it into the right listener (v3.3 §-behavior, kept). The reply
 /// keeps `"status":"edited"` for the yaml edit it did and additionally names each
 /// retag follow-up's outcome — `slot_freed` and `default_cleared` (`null` when not
-/// attempted), plus `warnings` when either failed (R2-07-05). A wrong-typed
-/// `category` is refused 400, not treated as absent (R2-07-04).
+/// attempted), plus `warnings` when either failed. A wrong-typed
+/// `category` is refused 400, not treated as absent.
 pub(super) async fn har_config_model(
     State(state): State<Arc<ApiState>>,
     body: Result<Json<Value>, JsonRejection>,
@@ -499,7 +498,7 @@ pub(super) async fn har_config_model(
     // below — a client that asked for two changes got one and an "edited" saying
     // both. The parity rule (07[10]) forbids one field's type bug living one arm
     // from its sibling's fix, so a wrong-typed `category` is a named 400, before
-    // any write (R2-07-04).
+    // any write.
     match body.get("category") {
         Some(Value::String(raw)) => {
             let category: CategoryId = raw
@@ -615,8 +614,8 @@ pub(super) async fn har_config_model(
     // Both follow-ups are part of the change the operator asked for (README: a
     // category change on a loaded model frees the slot), so their outcome belongs
     // in the reply: the old `let _ =` and dropped tuple answered `"edited"` even
-    // when the slot stayed occupied or the default-clear never reached the file
-    // (R2-07-05). The 200 stays an acceptance of the yaml edit — it is honest about
+    // when the slot stayed occupied or the default-clear never reached the file.
+    // The 200 stays an acceptance of the yaml edit — it is honest about
     // what it did — and `null` marks a follow-up that was not attempted.
     let mut slot_freed: Option<bool> = None;
     let mut default_cleared: Option<bool> = None;

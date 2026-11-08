@@ -1,5 +1,4 @@
-//! The strata engine adapter (DESIGN Step 7; strata template mode, operator
-//! ruling 2026-11-02 row 19).
+//! The strata engine adapter, template mode.
 //!
 //! Strata is a Python server (`serve.server`) driven entirely by a profile JSON.
 //! Template mode means the ROW YAML owns the profile's fields and the harness
@@ -183,7 +182,7 @@ fn walk_profile(value: &serde_json::Value, key: &str) -> Option<(String, String)
 /// `X:/`) or a UNC (`\\server\share`), never a relative path (exempt: the engine
 /// resolves those against the profile dir). A trailing `:float` is the llama
 /// control-vector scale and is stripped before the existence check. Shared by
-/// the xolotl adapter's same-shape doors (ruling 2026-11-08).
+/// the xolotl adapter's same-shape doors.
 pub(crate) fn profile_path_candidate(text: &str) -> Option<String> {
     if !is_absolute_shape(text) {
         return None;
@@ -197,7 +196,7 @@ pub(crate) fn profile_path_candidate(text: &str) -> Option<String> {
 }
 
 /// Drive-letter or UNC absolute-path shape (checked bytewise: the grammar is ASCII).
-/// Shared by the xolotl adapter's shape floor (ruling 2026-11-08).
+/// Shared by the xolotl adapter's shape floor.
 pub(crate) fn is_absolute_shape(text: &str) -> bool {
     let bytes = text.as_bytes();
     (bytes.len() >= 3
@@ -208,7 +207,7 @@ pub(crate) fn is_absolute_shape(text: &str) -> bool {
 }
 
 /// The migration sentence for a row that still declares `strata_config`
-/// (operator ruling 2026-11-02 row 19: no compat path — the external profile
+/// (no compat path — the external profile
 /// mode is superseded at once, and the import command is the bridge). One
 /// sentence, two doors: the scan refuses the row with it and the adapter
 /// refuses a hand-built entry the same way.
@@ -254,7 +253,7 @@ fn knob<'a>(model: &'a ModelEntry, key: &str) -> Option<&'a str> {
 /// the render refuses it (one token per entry, FINDINGS-10 [3]) and
 /// [`effective_context`] answers `None` for the same line, so a row that
 /// never loads can never display a context (FINDINGS-17). The xolotl adapter
-/// shares the rule (same comma-tokenized args dialect, ruling 2026-11-08).
+/// shares the rule (same comma-tokenized args dialect).
 pub(crate) fn well_formed_tokens(line: &str) -> Option<Vec<String>> {
     let mut tokens = Vec::new();
     for entry in line.split(',') {
@@ -430,7 +429,7 @@ fn env_map(
 /// key set — `exe`, `mmproj` and `model` are absolute paths (required together,
 /// the vision server cannot start without them), `gpu` is truthy (default on,
 /// as every manual profile has it), `max_tokens`, `min_tokens` and `threads`
-/// unsigned counts (operator ruling 2026-11-02: the set mirrors the vision
+/// unsigned counts — the set mirrors the vision
 /// spawn's full cfg contract in `serve.server` — server.py:1936-1946 — so no
 /// hand-edited engine key can ride the knob unreported). Rendering
 /// the block also appends the engine's `--vision` switch to `args` (server.py
@@ -581,8 +580,8 @@ fn uncensored_switch(
     }
 }
 
-/// Renders the complete strata profile JSON from the row's yaml (operator
-/// ruling 2026-11-02 row 19 — the L3 render of the ninfer idiom: the harness
+/// Renders the complete strata profile JSON from the row's yaml — the L3 render
+/// of the ninfer idiom: the harness
 /// writes the artifact, so the launch is exactly what this function checked).
 /// `host`, `port` and key fields are never emitted: the bind and the port ride
 /// the forced argv (the `--host` loopback literal and the slot `--port`), and
@@ -626,7 +625,7 @@ pub(crate) fn render_profile(model: &ModelEntry, cwd: &Path) -> Result<String, E
         // The ban reads the option token's *name*, not the whole token: the eq
         // form is spawn truth too (server.py splits `--flag=value`, ruling 10[1]),
         // so `--host=0.0.0.0` must not smuggle past a whole-token comparison
-        // (R2-10-02, the ninfer serve-args denylist is the in-repo precedent).
+        // the ninfer serve-args denylist is the in-repo precedent).
         let name = token
             .split_once('=')
             .map_or(token.as_str(), |(name, _)| name);
@@ -915,9 +914,8 @@ impl EngineAdapter for StrataAdapter {
     }
 }
 
-/// Reads the Strata `GET /metrics` snapshot into a measured component sum
-/// (`TASK-ENGINE-MEASUREMENT` phase 5, card capture 2026-11-04). The sampler
-/// calls this once at readiness and on every elastic tick. Every refusal
+/// Reads the Strata `GET /metrics` snapshot into a measured component sum.
+/// The sampler calls this once at readiness and on every elastic tick. Every refusal
 /// answers `None` — absence, never a guess — and the sampler then takes the
 /// witness-based process-tree sum over the engine's full descendant tree
 /// (doctrine 4).
@@ -933,8 +931,7 @@ impl EngineAdapter for StrataAdapter {
 /// set shipping whole, so a snapshot missing one is not the captured shape,
 /// and a missing member never books itself a zero.
 ///
-/// Lower bound, stated exactly against the capture
-/// (`handoff/evidence/2026-11-04-engine-measurement/captures/strata-metrics.txt`):
+/// Lower bound, stated exactly against the capture:
 /// the components sum 59,832 + 1,536 + 0 MiB = 59.9 GiB while the measured
 /// hold was 69.75 GiB (card used while loaded) and the operator's declared
 /// row is 67.8 — the engine does NOT itemize weights or KV, so this figure
@@ -1587,8 +1584,7 @@ mod tests {
     /// The exact `GET /metrics` body captured 2026-11-04 in the freed card
     /// window, trimmed ONLY by dropping the irrelevant top-level `history` member; every
     /// field the parse reads plus the full surrounding shape is kept
-    /// byte-for-byte from
-    /// `handoff/evidence/2026-11-04-engine-measurement/captures/strata-metrics.txt`.
+    /// byte-for-byte from the capture.
     const CAPTURED_METRICS: &str = r#"{"engine": {"model": "qwen3.8-flash-next-fp4local", "max_context": 262144, "images": true, "version": "0.1.55", "logit_bias": 1, "context": 262144, "kv": "int8", "kv_resident": 32768, "expert_slots": 22690, "expert_cache_mib": 59832, "expert_slots_primary": 22690, "expert_cache_primary_mib": 59832, "spec": 8, "mtp_max": 6, "lookup": 3, "vram_free_mib": 1754, "cvec": 0, "arena_mib": 0, "pool_workers": 7, "pcie_frac": "0.25", "spec_min_p": "0.50", "conversation_cache_mib": 1536, "conversation_cache_slots": 4, "conversation_cache_min_free_mib": 2560, "conversation_cache_min_tokens": 0, "tail_role_token": -1, "vram_elastic": 1, "prefill_cap": 4096, "prefill_stages": 1, "stream_all_min": 1024, "prefill_pipe": 0, "engine": "0.1.55", "drafting": "mtp", "drafting_note": ""}, "live": {"state": "idle", "queued": 0, "phase": null, "prompt_tokens": null, "prompt_read": null, "prompt_total": null, "generated": null, "max_tokens": null, "elapsed_s": null, "tok_s": null, "tok_s_mean": null, "prefill_tok_s_mean": null, "tok_s_window_s": null}, "requests": [], "conversation_cache": {"enabled": true, "budget_mib": 1536, "slots": 4, "parked": 0, "bytes": 0, "evictions": 0, "parks": 0, "restores": 0, "last_event": null, "last_tokens": null, "last_at": null, "requests": 0, "requests_reused": 0, "reused_tokens": 0, "prompt_tokens": 0, "last_reused": null, "last_prompt": null}, "requests_kept": 0, "totals": {"since": 1793794939.810331, "requests": 0, "prompt_tokens": 0, "reused": 0, "output_tokens": 0, "prompt_ms": 0.0, "decode_ms": 0.0, "drafts_offered": 0, "drafts_accepted": 0}, "hardware": {"gpu_util": 10, "gpu_mem_used": 75020922880, "gpu_mem_total": 76981207040, "gpu_temp": 50, "gpu_power": 64.856, "gpu_power_limit": 300.0, "gpu_pcie_gen": 5, "gpu_pcie_gen_max": 5, "gpu_pcie_width": 16, "gpu_pcie_rx_mb": 176.19921875, "gpu_pcie_tx_mb": 802.177734375, "cpu": 16.6, "ram_used": 95344689152, "ram_total": 102096601088, "disk_read_mb": 0.11701182933424034, "disk_write_mb": 0.12798168833432538, "tok_s": 0.0, "tok_s_mean": 0, "prefill_tok_s_mean": 0.0}, "hardware_static": {"gpu_name": "NVIDIA RTX PRO 5000 72GB Blackwell", "gpu_vram_total_mib": null, "gpu_count": 1, "gpu_note": null, "cpu_name": "AMD Ryzen 7 7700 8-Core Processor", "cores": 8, "threads": 16, "sockets": 1, "numa_nodes": 1, "psutil": true}, "time": 1793794948.093612}"#;
 
     /// The real `GET /status` body (liveness only).

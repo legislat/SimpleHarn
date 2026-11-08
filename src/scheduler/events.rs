@@ -1,6 +1,6 @@
 //! Actor-side event application: the event dispatch that advances a job through
-//! its swap states, the one install funnel that seats an occupant (the F-6
-//! funnel), and the serve-id re-discovery retry and fold-back (FINDINGS-06 [8]).
+//! its swap states, the one install funnel that seats an occupant, and the
+//! serve-id re-discovery retry and fold-back.
 //! The state, the job ledger, and the actor loop stay owned by `mod.rs`.
 
 use crate::engine::{Probe, Spawned};
@@ -52,7 +52,7 @@ impl ActorState {
                             // The same-slot holder's booked need is already inside
                             // `free_at_admit` (Step 4 credits the bytes this job is
                             // about to reclaim). Crediting the same release there
-                            // again is the double count R2-03-01 filed, so it rides a
+                            // again is a double count, so it rides a
                             // separate accumulator the ledger leg subtracts. The
                             // observed leg keeps the full figure: the physical reading
                             // at admit never held this credit.
@@ -75,7 +75,7 @@ impl ActorState {
                         // free_at_admit was computed with everything still in the
                         // ledger and already carries the same-slot holder's credit, so
                         // the ledger term adds only the cross-category releases
-                        // (R2-03-01: counting the holder twice let the early stop fire
+                        // (counting the holder twice let the early stop fire
                         // on a figure the reserve-aware ledger never reached). The
                         // observed figure is the card as physically sampled at admit —
                         // never credited — plus every confirmed release.
@@ -171,7 +171,7 @@ impl ActorState {
                 tracing::warn!(%job_id, "probe task sent a non-terminal result; ignored");
             }
             (SwapState::Failed, Event::Released(release)) => {
-                // R2-02-02: a release that timed out here was never proven, and this
+                // A release that timed out here was never proven, and this
                 // arm is the last moment anything in the scheduler still knows the
                 // ticket — hand it to the one bounded late watch (option B). A confirmed
                 // release needs no watch, and a job that never spawned owed none.
@@ -203,7 +203,7 @@ impl ActorState {
             (SwapState::CancelRequested, Event::Released(Err(_))) => {
                 // An unconfirmed release leaves the engine possibly alive: the slot
                 // stays installed rather than claiming a death nobody proved.
-                // R2-02-02: this arm covers two shapes and only one of them needs the
+                // This arm covers two shapes and only one of them needs the
                 // watch. The UNINSTALLED spawn (the slot has no occupant, or holds a
                 // different ticket) is the case this arm used to leave silent: after
                 // `finish_cancelled` nothing in the scheduler can name the ticket again,
@@ -231,10 +231,10 @@ impl ActorState {
         }
     }
 
-    /// `Ready -> Install -> Serving`: the one place an occupant is created (F-6 funnel).
-    /// `discovered_id` is the engine's self-reported id (Step 10, F-4 fix).
+    /// `Ready -> Install -> Serving`: the one place an occupant is created.
+    /// `discovered_id` is the engine's self-reported id.
     ///
-    /// Retry contract (FINDINGS-06 [8]): a `None` here is not the occupant's
+    /// Retry contract: a `None` here is not the occupant's
     /// life sentence. The miss is a WARN (the model and what was tried), the
     /// load still succeeds, and the proxy keeps the documented harness-name
     /// fallback — but every later resolve that answers already-serving for
@@ -261,11 +261,11 @@ impl ActorState {
                 },
             )
         };
-        // F-4: a yaml that claims an id the engine never reports becomes a visible
+        // A yaml that claims an id the engine never reports becomes a visible
         // warning at load time, and the engine's real id wins for rewriting. Judged
         // against the spawn-era anchor, never the live catalog: this install runs
         // minutes after `begin_spawn`, and the process being judged was launched from
-        // the bytes that anchor captured (FINDINGS-BATCH-2026-10-28L [L-2]).
+        // the bytes that anchor captured.
         let serve_id = discovered_id;
         if serve_id.is_none() {
             // FINDINGS-06 [8]: a discovery miss used to be invisible — the slot
@@ -310,14 +310,14 @@ impl ActorState {
             if let Some(job) = self.jobs.get_mut(&job_id) {
                 job.other_need_at_admit = others_booked;
             }
-            // Axis 2 (ruling 2026-10-29): capture the yaml this launch came from at
+            // Capture the yaml this launch came from at
             // install — one stat, on the actor, for the one event that creates a
             // resident. The path is the fold anchor's own file (the identity the
             // measured persist writes), so the marker and the fold never drift onto
             // different files; an unreadable stat (or a synthetic row) yields no
             // capture, and the verdict then never accuses. This yaml capture is the
             // whole `stale_config` story: no engine ships a harness-tracked profile
-            // file any more (FINDINGS-25 retired the dormant profile layer).
+            // file any more (the dormant profile layer is retired).
             let spawn_config = self
                 .jobs
                 .get(&job_id)
@@ -370,7 +370,7 @@ impl ActorState {
             }
         });
         // A CPU-resident resident walks the RAM ladder's own sampler instead
-        // of the card witness one (operator ruling 2026-11-05, W2 step 3):
+        // of the card witness one:
         // the card sampler would fold host-RAM growth into the yaml's
         // `measured_gb` — a VRAM figure — so the install branch ends before
         // it ever starts, and the working-set loop takes the handle. Its
@@ -402,8 +402,7 @@ impl ActorState {
                 }
                 // The process engines basalt/strata land their own status
                 // figure (or the process-tree witness sum it falls back to)
-                // right here at readiness (TASK-ENGINE-MEASUREMENT phase 1,
-                // ORCHESTRATION §3). Phase 4 amendment: these rows are ELASTIC
+                // right here at readiness. These rows are ELASTIC
                 // engines — the expert caches keep moving after the first
                 // fold — so instead of ending the sampler the way ninfer's
                 // `engine_report` ends its one-shot (ninfer semantics stay

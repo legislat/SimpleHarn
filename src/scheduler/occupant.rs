@@ -201,8 +201,8 @@ impl ActorState {
         Some(())
     }
 
-    /// The process-engine measurement landing (`TASK-ENGINE-MEASUREMENT`,
-    /// ORCHESTRATION §3) for the non-container engines `basalt`/`strata`,
+    /// The process-engine measurement landing for the non-container engine
+    /// `basalt`/`strata`,
     /// mirroring [`Self::report_container`]: fetch the engine's own metrics
     /// snapshot once at readiness (both engines read their real surface,
     /// `GET /metrics` — the capture 2026-11-04 proved `/status` is liveness
@@ -317,7 +317,7 @@ impl ActorState {
         Some(rounded)
     }
 
-    /// The elastic refresh loop (`TASK-ENGINE-MEASUREMENT` phase 4): a
+    /// The elastic refresh loop: a
     /// `basalt`/`strata` row whose metrics figure landed keeps its sampler
     /// alive instead of ending it, because an elastic engine's footprint
     /// MOVES after load — the Strata expert cache (`--vram-elastic`) and the
@@ -433,8 +433,7 @@ impl ActorState {
     /// band, so a re-book needs a real working-set move, not a rounding step.
     const ELASTIC_FALL_RELATIVE: f64 = 0.01;
 
-    /// The CPU-resident re-book band in GiB (`TASK-CPU-LLAMA-EVICTION` W2
-    /// step 3): the smallest working-set move worth a fold, a persist, and a
+    /// The CPU-resident re-book band in GiB: the smallest working-set move worth a fold, a persist, and a
     /// re-book. One GiB matches the elastic card ladder's floor step — page
     /// churn below it must not oscillate the booking or rewrite the yaml —
     /// and unlike [`ActorState::elastic_refresh`]'s asymmetric rule (rise
@@ -534,7 +533,7 @@ impl ActorState {
         total.map(Self::working_set_to_gib)
     }
 
-    /// The CPU-resident refresh loop (`TASK-CPU-LLAMA-EVICTION` W2 step 3):
+    /// The CPU-resident refresh loop:
     /// the twin of [`ActorState::elastic_refresh`] for the RAM ladder, with
     /// the engine's metrics endpoint replaced by the process-tree working-set
     /// probe and the asymmetric band replaced by the symmetric

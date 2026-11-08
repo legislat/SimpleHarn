@@ -393,7 +393,7 @@ mod tests {
         let dir = crate::testutil::temp_dir("b8-sel-rel");
         let model = seed(&dir, "weights.gguf", b"weights");
         // A relative `model:` joins the yaml dir — the one resolver the scan,
-        // the booking, and the launch share (R2-09-02).
+        // the booking, and the launch share.
         let entry = row(&dir, &[("model", "weights.gguf")]);
         assert_eq!(prefetch_targets(&entry), vec![model]);
     }

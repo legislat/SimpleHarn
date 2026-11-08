@@ -44,7 +44,7 @@ impl Drop for JobHandle {
 pub(super) const DESCENDANT_CAP: usize = 4_096;
 
 /// ALL descendants of `root`, at every depth, from ONE Toolhelp32 process
-/// snapshot (`TASK-ENGINE-MEASUREMENT` phase 5, card capture 2026-11-04):
+/// snapshot:
 /// both engines sit TWO levels below the harness child — python launcher ->
 /// python server -> engine, plus the engine's own vision child — so a
 /// one-generation sum misses the very process that holds the card. The
@@ -120,7 +120,7 @@ pub(super) fn descendant_pids_of(root: u32) -> Vec<u32> {
 }
 
 /// Working-set bytes of `pid`, read with `GetProcessMemoryInfo`
-/// (`K32GetProcessMemoryInfo`, `TASK-CPU-LLAMA-EVICTION` W2 step 3): the RAM
+/// (`K32GetProcessMemoryInfo`): the RAM
 /// twin of the Toolhelp walk above — unlike WDDM per-PID VRAM (box-wide
 /// `[N/A]`), this query always answers for a live pid, so `None` means the
 /// process is gone or unreadable and nothing else. Every failure path — open
@@ -174,8 +174,7 @@ impl SingleInstanceGuard {
         // Safety: CreateMutexW with no security attributes and automatic ownership
         // reclaim; we only inspect the last error, never wait on the handle.
         unsafe {
-            // The mutex name carries the product name (TASK-NAMING-CLEANUP,
-            // operator ruling 2026-11-05): the pre-rename compatibility shim
+            // The mutex name carries the product name: the pre-rename compatibility shim
             // is retired, exactly as the rename decision is complete — a
             // pre-rename binary no longer shares this lock, and none is
             // expected to run beside the current harness.
@@ -239,8 +238,8 @@ pub(super) unsafe fn assign_to_job(
         .map_err(|e| format!("AssignProcessToJobObject: {e}"))
 }
 
-/// Resumes the primary thread of a process created with `CREATE_SUSPENDED`
-/// (R2-08-04): the engine spawn seals the child into its kill job while no
+/// Resumes the primary thread of a process created with `CREATE_SUSPENDED`:
+/// the engine spawn seals the child into its kill job while no
 /// instruction has run, then resumes it exactly once. A suspended process has
 /// precisely one thread — its primary — so the Toolhelp entry whose owner pid
 /// matches is that thread, and it cannot exit while suspended. This helper
@@ -313,9 +312,9 @@ pub(super) unsafe fn terminate_job(job: windows::Win32::Foundation::HANDLE) {
 
 #[cfg(test)]
 mod tests {
-    /// TASK-NAMING-CLEANUP pin (c, mutex half): the single-instance mutex name
+    /// Pin: the single-instance mutex name
     /// carries the current product spelling. The pre-rename compatibility shim
-    /// is retired by the operator ruling of 2026-11-05; a drift back to the
+    /// is retired; a drift back to the
     /// pre-rename name would silently split the lock into two namespaces and
     /// break the single-instance rule for one of them. Falsifier: restore the
     /// pre-rename shim name — the first assert drops the new literal, the

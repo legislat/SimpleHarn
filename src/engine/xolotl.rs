@@ -1,4 +1,4 @@
-//! The xolotl engine adapter (TASK-XOLOTL-ADAPTER, operator rulings 2026-11-08).
+//! The xolotl engine adapter.
 //!
 //! Xolotl's DeepSeek-V4.1-Flash serve is the engine binary `ds41_generate.exe`
 //! driven behind the operator's `serve_ds41.py` shim: the shim reads the same

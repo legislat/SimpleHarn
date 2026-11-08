@@ -196,7 +196,7 @@ mod tests {
         assert!(matches!(resolve("not-a-model", &models), Resolution::None));
     }
 
-    /// R2-11-04 pin: the header promises only the file name and its stem as
+    /// The header promises only the file name and its stem as
     /// aliases, so a query carrying any directory component equals neither alias
     /// and resolves `None` (the v3.3 full-path alias is not kept).
     /// Falsifier: implement a full-path alias arm and this resolves Found.

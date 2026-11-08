@@ -133,10 +133,10 @@ mod tests {
         );
     }
 
-    /// Axis 2 (operator ruling 2026-10-29): the row dot's amber reads the SERVER's
+    /// The row dot's amber reads the SERVER's
     /// boolean directly (`model.stale_config === true`, the exact-compare the K-round
     /// listener-verdict rule demands — `undefined` must not slip through as truthy),
-    /// carries the ruling's tooltip wording, and prints `model.launched_at` verbatim
+    /// carries the agreed tooltip wording, and prints `model.launched_at` verbatim
     /// with no client-side date math (the only `new Date(` the page may keep is the
     /// log panel's pre-existing `entry.ts_ms` formatting — asserted scoped, not
     /// blanket-absent). The amber rule's existence in the served stylesheet is pinned
@@ -265,7 +265,7 @@ mod tests {
         );
     }
 
-    /// The `releasing` slot state (operator ruling 2026-11-04): both the tab
+    /// The `releasing` slot state: both the tab
     /// pill and the model row read the server's `slots[].state` string
     /// directly — the page never re-derives the release (same rule as the
     /// stale amber and the fault dot) — and `releasing` gets its own
@@ -400,11 +400,11 @@ mod tests {
         );
     }
 
-    /// The unload entity and its amber (operator ruling 2026-11-05): the three
+    /// The unload entity and its amber: the three
     /// unload gestures — tab-side, row Unload, Unload all — carry the one
     /// `sh-unload` class in the served page bytes, the served stylesheet
     /// carries the amber class rule and the warm-parchment light palette the
-    /// ruling names, and no rule may repaint the joined side when its tab is
+    /// design names, and no rule may repaint the joined side when its tab is
     /// selected: the shape joins, the amber action stays amber. Rule
     /// existence is pinned byte-level like the amber tones before it; the
     /// matte-olive accent (bright #2ea043 retired), the table-cell actions

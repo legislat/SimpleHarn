@@ -1,4 +1,4 @@
-//! The Project Maya engine adapter (`TASK-MAYA`).
+//! The Project Maya engine adapter.
 //!
 //! Maya 1.1.x is a Python HTTP server (`serve/server.py`) in front of a native
 //! engine. The harness launches that server directly, never the `maya.py`

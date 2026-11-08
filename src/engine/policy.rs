@@ -25,7 +25,7 @@ use super::llama::LLAMA_ENGINE_HOST;
 /// The in-distro directory a harness-rendered autostart script is staged into.
 /// Deliberately outside every model directory and outside the operator's script
 /// tree: a staged file can never shadow or be confused with a hand-written one
-/// (template adoption, operator ruling 2026-10-31). This is the ninfer row's
+/// (template adoption). This is the ninfer row's
 /// executed-path custody root: the location the harness itself writes and runs.
 pub(crate) const NINFER_STAGED_SCRIPTS_ROOT: &str = ".simpleharn/autostart";
 
@@ -40,7 +40,7 @@ pub(crate) const NINFER_KEYS_ROOT: &str = "$HOME/.simpleharn/keys";
 
 /// The Windows directory harness-rendered strata profiles stage into, as the
 /// tail below the executable's own directory — beside the strata custody
-/// sidecar (operator ruling 2026-11-02 row 19). Like the ninfer staged-scripts
+/// sidecar. Like the ninfer staged-scripts
 /// root, it is outside every engine home: the rendered copy can never shadow or
 /// be confused with a manual `C:\Strata` profile, and the spawn rewrites
 /// `--config` to exactly the staged file, so the child reads only what the
@@ -52,12 +52,12 @@ pub(crate) const STRATA_RENDERED_PROFILES_ROOT: &str = ".simpleharn/strata-profi
 /// tail below the executable's own directory — the same exe-adjacent custody
 /// posture as [`STRATA_RENDERED_PROFILES_ROOT`], one directory per engine so a
 /// basalt launch can never stage into strata's pool or the reverse
-/// (`TASK-BASALT` stage 1; `process::rendered_profiles_dir` resolves it).
+/// (`process::rendered_profiles_dir` resolves it).
 pub(crate) const BASALT_RENDERED_PROFILES_ROOT: &str = ".simpleharn/basalt-profiles";
 
 /// The Windows directory harness-rendered Maya configs stage into, as the tail
 /// below the executable's own directory — the same exe-adjacent custody posture
-/// as the strata and basalt roots, one directory per engine (`TASK-MAYA`). The
+/// as the strata and basalt roots, one directory per engine. The
 /// operator's JSON config is the L1 artifact: the adapter strips `host`, `port`,
 /// `api_key`, `idle_unload_s` and `cors_origins`, forces `model_management`
 /// off, and stages the scrubbed bytes here, and the
@@ -65,7 +65,7 @@ pub(crate) const BASALT_RENDERED_PROFILES_ROOT: &str = ".simpleharn/basalt-profi
 pub(crate) const MAYA_RENDERED_PROFILES_ROOT: &str = ".simpleharn/maya-profiles";
 
 /// The Windows directory harness-rendered xolotl serve profiles stage into,
-/// as the tail of `TASK-XOLOTL-ADAPTER` (operator ruling 2026-11-08): the
+/// as the tail below the executable's own directory: the
 /// xolotl launch can never stage into strata's or basalt's pool and the
 /// reverse, and the spawn rewrites `--config` to exactly that file
 /// (`process::rendered_profiles_dir` resolves it).
@@ -612,7 +612,7 @@ const STRATA_KNOBS: &[&str] = &[
     "strata_config",
     "strata_python",
     "strata_cwd",
-    // Template mode (operator ruling 2026-11-02 row 19): the row yaml owns the
+    // Template mode: the row yaml owns the
     // profile's fields and the harness renders the JSON at every load.
     "strata_exe",
     "strata_args",
@@ -637,7 +637,7 @@ const BASALT_KNOBS: &[&str] = &[
 
 const MAYA_KNOBS: &[&str] = &["maya_python", "maya_cwd", "maya_config"];
 
-/// The xolotl row's knob surface (ruling 2026-11-08): the strata shape
+/// The xolotl row's knob surface: the strata shape
 /// mirrored onto the `serve_ds41.py` shim's dialect — required launch paths,
 /// the open args/env knobs, and the two profile keys strata does not spell
 /// today (`aliases`, `reasoning_budget_tokens`).
@@ -704,7 +704,7 @@ pub(crate) fn fit_capable(engine: &str) -> bool {
 
 /// Whether the row for `engine` offloads expert layers to host RAM (the
 /// `expert_offload` cell is the single answer — the victim planner asks this
-/// instead of matching engine ids, operator ruling 2026-11-06). An unknown
+/// instead of matching engine ids). An unknown
 /// engine id (no row) never expert-offloads.
 #[must_use]
 pub(crate) fn expert_offload_engine(engine: &str) -> bool {
@@ -712,8 +712,8 @@ pub(crate) fn expert_offload_engine(engine: &str) -> bool {
 }
 
 /// The canonical ninfer autostart script the harness renders and stages for
-/// every ninfer launch (operator ruling 2026-10-31: "we create a valid template
-/// we can control and adopt for each ninfer start"). The staged copy is what
+/// every ninfer launch: a valid template the harness can control and adopt for
+/// each ninfer start. The staged copy is what
 /// runs — the operator's hand-written scripts are no longer on the launch path
 /// — so the launch is exactly what [`crate::process`] staged and verified.
 /// Placeholders are filled by `ninfer::render_canonical` from validated yaml
@@ -895,8 +895,8 @@ pub(crate) struct EnginePolicy {
     /// ladder and the scheduler ask this cell instead of matching engine names
     /// (row-scoped, no new match-arm sprawl).
     pub supports_fit: bool,
-    /// Whether this engine offloads expert layers to host RAM (operator
-    /// ruling 2026-11-06): a `cost: greedy` load admitted on such an engine
+    /// Whether this engine offloads expert layers to host RAM: a `cost: greedy`
+    /// load admitted on such an engine
     /// may reclaim host RAM from large CPU residents before spawn. The
     /// victim planner asks this cell instead of matching engine ids (the
     /// same row-scoped posture as [`Self::supports_fit`]).
@@ -1988,7 +1988,7 @@ mod tests {
         }
     }
 
-    /// TASK-RAM-RECLAIM (operator ruling 2026-11-06): the `expert_offload`
+    /// The `expert_offload`
     /// cell is the single answer for "offloads experts to host RAM" —
     /// strata, basalt, maya and xolotl carry it; llama, ninfer and mock
     /// never do, so the victim planner never has to match an engine name. An
