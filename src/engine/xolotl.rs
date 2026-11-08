@@ -621,6 +621,9 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<XolotlRow, XolotlRowErr
     }
     // The engine binary and tokenizer the profile names (existence here so
     // the refusal names the yaml key; the walk re-checks the rendered copy).
+    // The tested 256K config passes the tokenizer as a DIRECTORY
+    // (vocab.json, merges.txt, chat_template.jinja), so either kind is valid
+    // there; the executable must be a file.
     for key in ["xolotl_exe", "xolotl_tokenizer"] {
         let Some(value) = knob(model, key) else {
             return Err(missing(key));
@@ -631,7 +634,13 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<XolotlRow, XolotlRowErr
                 format!("must be an absolute path (drive-letter or UNC): {value}"),
             ));
         }
-        if !Path::new(value).is_file() {
+        let path = Path::new(value);
+        let exists = if key == "xolotl_tokenizer" {
+            path.is_file() || path.is_dir()
+        } else {
+            path.is_file()
+        };
+        if !exists {
             return Err(missing_path(key, value));
         }
     }
