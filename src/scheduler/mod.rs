@@ -556,6 +556,14 @@ impl ActorState {
                 self.on_restart(model, category, port, reply);
                 self.publish();
             }
+            Command::ReportDeadEngine {
+                model,
+                category,
+                port,
+            } => {
+                self.on_report_dead_engine(model, category, port, reply);
+                self.publish();
+            }
             Command::Reload => {
                 // FINDINGS-13 [6]: dispatch the scan off-thread and park the
                 // waiter; the actor keeps answering ticks, events and every other

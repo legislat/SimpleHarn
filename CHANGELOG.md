@@ -46,6 +46,25 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   supported posture. The key defaults to `false`; loopback boots and
   token-guarded boots are unchanged.
 
+### Fixed
+
+- A load that misses its readiness deadline now answers its own code,
+  `readiness_timeout` (HTTP 502), and names the deadline in the message — for
+  example `readiness deadline 300 s exceeded; the engine did not answer the
+  health probe`. The probe's own text — the engine URL, the reqwest error, the
+  container publish annotation — stays in the harness log, like every other
+  harness failure class. Every other load failure keeps its current class: an
+  engine that never becomes ready for another reason, a live-but-slow engine,
+  and a forward whose connection merely closed all stay `upstream`.
+- A proxied request that witnesses its serving engine's port refuse two
+  connections (the crash-retry's reload then refuses too) now terminalizes
+  what it witnessed: the slot frees through the standard confirmed release,
+  the owning load row leaves `Serving`, and `/har/status` and the ledger stop
+  claiming a dead resident — the release row names the cause `engine died`.
+  The first refusal still takes the T10.1 crash-retry unchanged; timeouts and
+  plain forward failures still never reap, and the report names exactly one
+  model, category and refused port, so no other resident is touched.
+
 ## v1.4.0 - 2026-11-07
 
 ### Added

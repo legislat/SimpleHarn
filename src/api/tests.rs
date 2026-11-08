@@ -4286,3 +4286,592 @@ async fn a_valid_log_limit_still_clamps_to_the_ring_capacity() {
         "the answer can never exceed the ring capacity"
     );
 }
+
+/// RC-01/RC-02 live harness: the scripted engine answers readiness immediately
+/// (`probe_ready`), never invents an id, records every reap and confirms every
+/// release — a dead engine's refused port is the harness's own release
+/// evidence. Spawn and probe record only; any other runtime call reaching
+/// here is a test bug.
+#[derive(Default)]
+struct ScriptedEngine {
+    spawns: std::sync::atomic::AtomicUsize,
+    killed: std::sync::Mutex<Vec<(u16, u64)>>,
+    probe_ready: std::sync::atomic::AtomicBool,
+}
+
+impl ScriptedEngine {
+    fn spawn_count(&self) -> usize {
+        self.spawns.load(std::sync::atomic::Ordering::Acquire)
+    }
+    fn killed(&self) -> Vec<(u16, u64)> {
+        self.killed.lock().expect("killed lock").clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::engine::EngineRuntime for ScriptedEngine {
+    async fn spawn(
+        &self,
+        _spec: &crate::engine::LaunchSpec,
+        ticket: crate::ownership::SpawnTicket,
+    ) -> Result<crate::engine::Spawned, crate::engine::SpawnError> {
+        let n = self
+            .spawns
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
+            + 1;
+        Ok(crate::engine::Spawned {
+            port: ticket.port,
+            pid: 7_000 + n as u32,
+        })
+    }
+    async fn kill(
+        &self,
+        ticket: &crate::ownership::SpawnTicket,
+    ) -> Result<(), crate::engine::SpawnError> {
+        self.killed
+            .lock()
+            .expect("killed lock")
+            .push((ticket.port, ticket.generation));
+        Ok(())
+    }
+    async fn release_confirmed(
+        &self,
+        _ticket: &crate::ownership::SpawnTicket,
+    ) -> Result<bool, crate::engine::SpawnError> {
+        Ok(true)
+    }
+    async fn probe(
+        &self,
+        _port: u16,
+        _readiness: &crate::engine::ReadinessSpec,
+    ) -> crate::engine::Probe {
+        if self.probe_ready.load(std::sync::atomic::Ordering::Acquire) {
+            crate::engine::Probe::Ready
+        } else {
+            crate::engine::Probe::NotYet {
+                reason: "no answer yet: error sending request for url \
+                         (http://127.0.0.1:18111/health)"
+                    .to_string(),
+            }
+        }
+    }
+    async fn discover_model_id(&self, _port: u16) -> Option<String> {
+        None
+    }
+}
+
+/// AUX config on its own reserved ephemeral engine ports, never the operator's
+/// 18109 plan and never a protected port. The sockets bind-then-drop: the
+/// harness plans the ports, nothing binds them.
+fn aux_config_on_reserved_ports(slots: usize, load_timeout_s: u64) -> AppConfig {
+    let mut config = AppConfig {
+        load_timeout_s,
+        ..Default::default()
+    };
+    let mut probes = Vec::new();
+    let mut ports = Vec::new();
+    for _ in 0..slots {
+        let sock = std::net::TcpListener::bind("127.0.0.1:0").expect("reserved port");
+        ports.push(sock.local_addr().expect("addr").port());
+        probes.push(sock);
+    }
+    drop(probes);
+    let aux = config
+        .category_mut(CategoryId::Aux)
+        .expect("AUX is configured");
+    aux.max_models = slots;
+    aux.engine_ports = ports;
+    config
+}
+
+/// A live actor with the scripted engine and a seeded catalog dir.
+fn scripted_live_state(
+    config: AppConfig,
+    rows: &[(&str, &str)],
+) -> (Arc<ApiState>, Arc<ScriptedEngine>) {
+    let dir = crate::testutil::temp_dir("api-rc0102");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("catalog dir");
+    for (name, body) in rows {
+        std::fs::write(dir.join(format!("{name}.yaml")), *body).expect("seed row");
+    }
+    let runtime = Arc::new(ScriptedEngine {
+        probe_ready: std::sync::atomic::AtomicBool::new(true),
+        ..Default::default()
+    });
+    let mut adapters: BTreeMap<String, Arc<dyn crate::engine::EngineAdapter>> = BTreeMap::new();
+    adapters.insert(
+        "mock".to_string(),
+        Arc::new(crate::engine::mock::MockAdapter) as Arc<dyn crate::engine::EngineAdapter>,
+    );
+    let scheduler = crate::scheduler::Scheduler::start(
+        config.clone(),
+        dir,
+        adapters,
+        Arc::clone(&runtime) as Arc<dyn crate::engine::EngineRuntime>,
+        Arc::new(crate::budget::LedgerOnlyWitness),
+    );
+    let api = Arc::new(ApiState::new(
+        config,
+        scheduler,
+        crate::listeners::ListenerRegistry::new(),
+        Arc::new(crate::budget::LedgerOnlyWitness),
+        BootTimings::default(),
+    ));
+    (api, runtime)
+}
+
+async fn post_control(api: &Arc<ApiState>, path: &str, payload: Value) -> (StatusCode, Value) {
+    let response = control_router(Arc::clone(api))
+        .oneshot(
+            Request::post(path)
+                .header("host", "127.0.0.1:8708")
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(payload.to_string()))
+                .expect("control request"),
+        )
+        .await
+        .expect("in-process control request");
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("control body");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("control json"),
+    )
+}
+
+async fn get_control(api: &Arc<ApiState>, path: &str) -> (StatusCode, Value) {
+    let response = control_router(Arc::clone(api))
+        .oneshot(
+            Request::get(path)
+                .header("host", "127.0.0.1:8708")
+                .body(Body::empty())
+                .expect("control request"),
+        )
+        .await
+        .expect("in-process control request");
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), 4 * 1024 * 1024)
+        .await
+        .expect("control body");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("control json"),
+    )
+}
+
+async fn post_aux_chat(api: &Arc<ApiState>, payload: Value) -> (StatusCode, Value) {
+    let response = category_router(Arc::clone(api), CategoryId::Aux)
+        .oneshot(
+            Request::post("/v1/chat/completions")
+                .header("host", "127.0.0.1:8710")
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(payload.to_string()))
+                .expect("chat request"),
+        )
+        .await
+        .expect("in-process chat request");
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .expect("chat body");
+    (status, serde_json::from_slice(&bytes).expect("chat json"))
+}
+
+/// A chat body naming `model` with one user turn.
+fn chat_body(model: &str) -> Value {
+    json!({ "model": model, "messages": [{ "role": "user", "content": "hi" }] })
+}
+
+/// RC-01: a load that misses its readiness deadline answers its own named
+/// code `readiness_timeout`, names the deadline, and sanitizes the probe's
+/// text; every neighboring class keeps its current code. Legs: the composed
+/// `spawn_probe_task` shape maps with the URL/OS text stripped (also with the
+/// container publish annotation appended), a `health answered` outcome keeps
+/// only the status, a container annotation after it never reaches the wire;
+/// an unrelated `EngineFailed`/`Spawn` reason stays `upstream`; a live-but-
+/// slow engine (real reqwest timeout against a hanging listener) stays the
+/// plain `upstream` timeout sentence and never a readiness code. Falsifiers:
+/// map every `EngineFailed` to the new code and the neighbor legs fail; drop
+/// the URL leg's leak asserts and a raw-reason pass-through returns; cut only
+/// the prefix (not the separator) and the negative shapes fail.
+#[tokio::test]
+async fn a_readiness_deadline_answers_its_own_code_and_the_other_classes_keep_theirs() {
+    // (a) the shape `spawn_probe_task` composes: deadline + refused-URL probe.
+    let reason = "readiness deadline 300s exceeded; last: no answer yet: \
+                  error sending request for url (http://127.0.0.1:18110/health)";
+    let mapped = ApiError::from(crate::scheduler::SchedulerError::EngineFailed(
+        reason.to_string(),
+    ));
+    assert_eq!(mapped.code(), "readiness_timeout");
+    assert_eq!(mapped.status(), StatusCode::BAD_GATEWAY);
+    let body = error_body(&mapped);
+    assert_eq!(body["code"], json!("readiness_timeout"));
+    assert_eq!(body["error"]["code"], json!("readiness_timeout"));
+    assert_eq!(
+        body["message"],
+        json!("readiness deadline 300 s exceeded; the engine did not answer the health probe")
+    );
+    let wire = body.to_string();
+    for leak in [
+        "127.0.0.1",
+        "18110",
+        "error sending request",
+        "os error",
+        "/health",
+    ] {
+        assert!(
+            !wire.contains(leak),
+            "the client body must not carry the probe's OS detail {leak:?}: {wire}"
+        );
+    }
+    // (b) the same shape with the container publish annotation appended: the
+    // generic arm already collapses it, and a `health answered` outcome with
+    // the same annotation must keep only the status.
+    let annotated = "readiness deadline 600s exceeded; last: health answered 503 Service \
+                     Unavailable; container ninfer-a is published on 127.0.0.1:55999";
+    let mapped = ApiError::from(crate::scheduler::SchedulerError::EngineFailed(
+        annotated.to_string(),
+    ));
+    assert_eq!(mapped.code(), "readiness_timeout");
+    let body = error_body(&mapped).to_string();
+    assert!(
+        body.contains("the engine health endpoint answered 503 Service Unavailable"),
+        "the health status stays human-readable: {body}"
+    );
+    for leak in ["127.0.0.1", "55999", "ninfer-a", "published"] {
+        assert!(
+            !body.contains(leak),
+            "the publish annotation must stay in the log, not the wire: {leak:?} in {body}"
+        );
+    }
+    // (c) reasons that are NOT this shape keep the generic class.
+    for other in [
+        "engine process exited early (exit code 1)",
+        "engine died: readiness deadline 5s exceeded; last: no answer yet: x",
+        "readiness deadline 300s but the probe never answered at all",
+        "spawn failed: the engine binary refused to start",
+    ] {
+        assert_eq!(
+            ApiError::from(crate::scheduler::SchedulerError::EngineFailed(
+                other.to_string()
+            ))
+            .code(),
+            "upstream",
+            "not the composed shape, not the readiness code: {other}"
+        );
+    }
+    assert_eq!(
+        ApiError::from(crate::scheduler::SchedulerError::Spawn(
+            "no adapter registered for engine `ghost`".to_string()
+        ))
+        .code(),
+        "upstream"
+    );
+    // (d) live-but-slow: a REAL reqwest timeout against an engine that accepted
+    // the connection and never answers is the plain upstream class, never
+    // `readiness_timeout` and never death.
+    let engine = std::net::TcpListener::bind("127.0.0.1:0").expect("hanging engine");
+    let port = engine.local_addr().expect("addr").port();
+    let hang = std::thread::spawn(move || {
+        let held = engine.accept().expect("one connection");
+        // Hold the established connection open past the client deadline: a
+        // refused or immediately closed socket would be a different class.
+        std::thread::sleep(Duration::from_secs(1));
+        drop(held);
+    });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(300))
+        .build()
+        .expect("client");
+    let error = client
+        .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
+        .json(&json!({ "model": "slow" }))
+        .send()
+        .await
+        .expect_err("the hanging engine never answers within 300 ms");
+    let classified = classify_send_failure(&error, port).expect_err("a timeout is never a restart");
+    assert_eq!(classified.code(), "upstream");
+    assert!(
+        !matches!(classified, ApiError::ReadinessTimeout { .. }),
+        "a live-but-slow engine never takes the readiness class"
+    );
+    let _ = hang;
+}
+
+/// RC-01's negative-shape guard: `readiness_timeout_answer` recognizes ONLY
+/// the exact composed shape — a reason that merely mentions the words, or
+/// carries the shape without the prefix, must answer `None` so it keeps its
+/// current class. Falsifier: matching on `contains("readiness deadline")`
+/// instead of prefix+separator sends these reasons into the new code.
+#[test]
+fn only_the_exact_deadline_shape_maps_to_the_readiness_answer() {
+    for not_a_shape in [
+        "",
+        "readiness deadline 5s exceeded",
+        "prefix noise readiness deadline 5s exceeded; last: no answer yet: x",
+        "readiness deadline  exceeded; last: no answer yet: x",
+    ] {
+        if not_a_shape == "readiness deadline  exceeded; last: no answer yet: x" {
+            // Degenerate-but-shape-matching: the figure stays verbatim, the
+            // sentence stays honest, and nothing crashes or leaks.
+            let answer = readiness_timeout_answer(not_a_shape).expect("shape matches");
+            assert!(
+                answer.starts_with("readiness deadline  exceeded;"),
+                "{answer}"
+            );
+            assert!(!answer.contains("no answer yet"), "{answer}");
+            continue;
+        }
+        assert!(
+            readiness_timeout_answer(not_a_shape).is_none(),
+            "not the exact shape: {not_a_shape:?}"
+        );
+    }
+}
+
+/// RC-01 over the wire: `/har/load` of a model whose readiness probe never
+/// lands (deadline 1 s) answers the named code through the real router —
+/// 502 `readiness_timeout`, the deadline figure named, the probe's engine URL
+/// and reqwest text absent from the body. Falsifier: revert the `From`
+/// mapping to a blanket `Upstream` and the `code` leg answers `upstream`.
+#[tokio::test]
+async fn a_load_that_misses_its_readiness_deadline_answers_the_named_code() {
+    let (api, runtime) = scripted_live_state(
+        aux_config_on_reserved_ports(1, 1),
+        &[("rc01-slow", "engine: mock\ncategory: aux\nvram_gb: 3\n")],
+    );
+    runtime
+        .probe_ready
+        .store(false, std::sync::atomic::Ordering::Release);
+    let (status, body) = post_control(&api, "/har/load", json!({ "model": "rc01-slow" })).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
+    assert_eq!(body["code"], json!("readiness_timeout"), "{body}");
+    assert_eq!(
+        body["message"],
+        json!("readiness deadline 1 s exceeded; the engine did not answer the health probe")
+    );
+    let wire = body.to_string();
+    for leak in [
+        "127.0.0.1",
+        "18111",
+        "no answer yet",
+        "error sending request",
+    ] {
+        assert!(
+            !wire.contains(leak),
+            "the /har/load refusal carries no probe OS detail {leak:?}: {wire}"
+        );
+    }
+    // The failed load left no resident behind: its slot is empty again.
+    let (status, doc) = get_control(&api, "/har/status").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        doc["slots"]
+            .as_array()
+            .expect("slots")
+            .iter()
+            .all(|slot| slot["model"] != json!("rc01-slow")),
+        "a load that never reached readiness may not occupy a slot: {doc}"
+    );
+}
+
+/// RC-02 over the wire: a proxied request that witnesses its engine's port
+/// refuse TWO connections terminalizes what it witnessed. The first refusal
+/// still takes the T10.1 crash-retry (reap + reload + one retry, unchanged);
+/// the successor's refusal answers an honest typed 502 AND leaves `/har/status`
+/// with no serving slot, no Serving row and an `engine died` ledger line for
+/// the dead model — while the category's OTHER resident keeps serving
+/// untouched. Falsifiers: drop the death report from the exhausted arm and
+/// the doomed model still reads `serving` after the loop settles; report on
+/// the FIRST refusal and the 200-after-retry contract (and this pin's spawn
+/// count of three) goes red; name the wrong port and the sibling's slot dies.
+#[tokio::test]
+async fn a_proxy_request_that_witnessed_its_engine_death_terminalizes_it() {
+    let (api, runtime) = scripted_live_state(
+        aux_config_on_reserved_ports(2, 120),
+        &[
+            ("rc02-doomed", "engine: mock\ncategory: aux\nvram_gb: 3\n"),
+            ("rc02-alive", "engine: mock\ncategory: aux\nvram_gb: 3\n"),
+        ],
+    );
+    for model in ["rc02-doomed", "rc02-alive"] {
+        let (status, body) = post_control(&api, "/har/load", json!({ "model": model })).await;
+        assert_eq!(status, StatusCode::OK, "load {model}: {body}");
+    }
+    assert_eq!(runtime.spawn_count(), 2, "exactly one engine per load");
+    // Nothing listens on the planned engine ports: every forward refuses.
+    let (status, body) = post_aux_chat(&api, chat_body("rc02-doomed")).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
+    assert_eq!(body["code"], json!("upstream"), "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("upstream failure"),
+        "the exhausted crash-retry answers the honest upstream sentence: {body}"
+    );
+    assert_eq!(runtime.spawn_count(), 3, "exactly one reload, no more");
+    // The witnessed death: two reaps of the doomed slot's own port — the
+    // crash-retry's corpse and the reported successor — and never the
+    // sibling's port.
+    let killed = runtime.killed();
+    assert_eq!(
+        killed.len(),
+        2,
+        "corpse + successor, both under the doomed slot: {killed:?}"
+    );
+    assert_eq!(killed[0].0, killed[1].0, "one slot, one port: {killed:?}");
+    assert_ne!(
+        killed[0].1, killed[1].1,
+        "two generations of the same slot: {killed:?}"
+    );
+    // Settle: the status stops claiming a dead resident.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let doc = loop {
+        let (status, doc) = get_control(&api, "/har/status").await;
+        assert_eq!(status, StatusCode::OK);
+        let doomed_serving = doc["slots"]
+            .as_array()
+            .expect("slots")
+            .iter()
+            .any(|slot| slot["model"] == json!("rc02-doomed"));
+        let doomed_live_row = doc["jobs"].as_array().expect("jobs").iter().any(|row| {
+            row["model"] == json!("rc02-doomed") && !row["terminal"].as_bool().unwrap_or(false)
+        });
+        if !doomed_serving && !doomed_live_row {
+            break doc;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the death report never reached /har/status: {doc}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    let jobs = doc["jobs"].as_array().expect("jobs");
+    assert!(
+        jobs.iter()
+            .filter(|row| row["model"] == json!("rc02-doomed") && row["kind"] == json!("Load"))
+            .all(|row| row["state"] != json!("Serving")),
+        "no load row of the dead resident may still claim Serving: {doc}"
+    );
+    assert!(
+        jobs.iter().any(|row| row["model"] == json!("rc02-doomed")
+            && row["kind"] == json!("Unload")
+            && row["outcome"] == json!("engine died")),
+        "the ledger names the witnessed death: {doc}"
+    );
+    // The sibling is untouched: still serving, its engine never reaped.
+    let alive_slot = doc["slots"]
+        .as_array()
+        .expect("slots")
+        .iter()
+        .find(|slot| slot["model"] == json!("rc02-alive"))
+        .expect("the sibling keeps serving");
+    assert_eq!(alive_slot["state"], json!("serving"));
+    let alive_port = alive_slot["port"].as_u64().expect("alive port");
+    assert!(
+        killed.iter().all(|(port, _)| *port as u64 != alive_port),
+        "the death report never touched the sibling's port: {killed:?} vs {alive_port}"
+    );
+    assert!(
+        jobs.iter()
+            .filter(|row| row["model"] == json!("rc02-alive") && row["kind"] == json!("Load"))
+            .any(|row| row["state"] == json!("Serving") && row["outcome"] == json!("loaded")),
+        "the sibling's row still honestly serves: {doc}"
+    );
+}
+
+/// RC-02's never-death leg: an engine that ACCEPTS the connection and drops
+/// it before any response head is a plain forward failure — the `Other` class.
+/// It answers 502 and NOTHING is terminalized: the resident stays serving,
+/// nothing is reaped, nothing reloads, and the ledger gains no unload row.
+/// Together with the timeout leg in
+/// [`a_readiness_deadline_answers_its_own_code_and_the_other_classes_keep_theirs`]
+/// (live-but-slow never restarts) this pins that only witnessed refused-
+/// connects terminalize. Falsifier: classify a connection-reset before the
+/// head as death (or report on any 502) and the resident here goes red.
+#[tokio::test]
+async fn an_engine_that_drops_the_connection_serves_502_but_stays_serving() {
+    let engine = std::net::TcpListener::bind("127.0.0.1:0").expect("closed-before-answer engine");
+    let port = engine.local_addr().expect("addr").port();
+    std::thread::spawn(move || {
+        // The `Other` class engine: accepts, then drops the socket before any
+        // response head — a reset/closed connection, never a refused connect.
+        while engine.accept().is_ok() {}
+    });
+    let mut config = aux_config_on_reserved_ports(1, 120);
+    config
+        .category_mut(CategoryId::Aux)
+        .expect("AUX is configured")
+        .engine_ports = vec![port];
+    let (api, runtime) = scripted_live_state(
+        config,
+        &[("rc02-closed", "engine: mock\ncategory: aux\nvram_gb: 3\n")],
+    );
+    let (status, body) = post_control(&api, "/har/load", json!({ "model": "rc02-closed" })).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = post_aux_chat(&api, chat_body("rc02-closed")).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
+    assert_eq!(body["code"], json!("upstream"), "{body}");
+    let (doc_status, doc) = get_control(&api, "/har/status").await;
+    assert_eq!(doc_status, StatusCode::OK);
+    let serving = doc["slots"]
+        .as_array()
+        .expect("slots")
+        .iter()
+        .any(|slot| slot["model"] == json!("rc02-closed") && slot["state"] == json!("serving"));
+    assert!(
+        serving,
+        "a dropped connection before the head is not a witnessed death: {doc}"
+    );
+    assert!(runtime.killed().is_empty(), "nothing was reaped");
+    assert_eq!(runtime.spawn_count(), 1, "nothing was reloaded");
+    assert!(
+        doc["jobs"]
+            .as_array()
+            .expect("jobs")
+            .iter()
+            .all(|row| !(row["model"] == json!("rc02-closed") && row["kind"] == json!("Unload"))),
+        "the Other class arms no unload: {doc}"
+    );
+}
+
+/// The structural seam of RC-02 (the repo's established `include_str!`
+/// pattern): the death command is reachable ONLY after the crash-retry is
+/// exhausted — classification first, one restart, and only the second refused
+/// connect reports. Falsifier: move the `report_dead_engine` call above the
+/// restart arm (death on the first refusal) and the order pin fails; call it
+/// twice and the count pin fails.
+#[test]
+fn the_death_report_is_reachable_only_from_the_exhausted_crash_retry() {
+    let source = include_str!("proxy.rs");
+    let at = |needle: &str| {
+        source
+            .find(needle)
+            .unwrap_or_else(|| panic!("the proxy loop no longer contains {needle:?}"))
+    };
+    let classify = at("classify_send_failure(&error, port)?;");
+    let bump = at("attempts += 1;");
+    let exhausted = at("if attempts >= 2");
+    let report = at(".report_dead_engine(");
+    let answer = at("unreachable after crash-retry");
+    let restart = at(".restart(&model, listener.category, port)");
+    assert!(
+        classify < bump
+            && bump < exhausted
+            && exhausted < report
+            && report < answer
+            && answer < restart,
+        "classify → count → exhaustion → report → typed 502, restart only for the \
+         first refusal: classify={classify} bump={bump} exhausted={exhausted} \
+         report={report} answer={answer} restart={restart}"
+    );
+    assert_eq!(
+        source.matches(".report_dead_engine(").count(),
+        1,
+        "exactly one death witness in the proxy loop"
+    );
+}

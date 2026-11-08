@@ -206,7 +206,9 @@ scanner would refuse to publish), `method_not_allowed` (405),
 `unsupported_media_type` (415),
 `unavailable` (503, admission refused with the numbers and blockers),
 `below_launch_floor` (503, refused before spawn), `witness_unavailable`
-(503, card unreadable), `upstream` (502), `not_implemented` (501),
+(503, card unreadable), `upstream` (502), `readiness_timeout` (502, the engine
+missed its readiness deadline; the message names the deadline and a sanitized
+probe outcome, the probe detail stays in the log), `not_implemented` (501),
 `internal` (500). A refusal that carries numbers puts them in `message` and
 in the job ledger, never in a bare status.
 

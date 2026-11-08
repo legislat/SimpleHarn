@@ -162,6 +162,19 @@ including the self-reported-id rewrite in `model`.
   `crash_retry_falls_back_to_the_harness_name_when_the_successor_is_silent`.
 - A timeout on a live engine answers 502 and never reaps. Test
   `timeout_class_is_502_and_never_restarts`.
+- When the crash-retry's reload also refuses connections, the request
+  terminalizes what it witnessed: the slot frees through the standard
+  confirmed release, the load row leaves `Serving` with the cause `engine died`,
+  and the client still gets a typed `upstream` 502. A connection that closes
+  before the head once, and every timeout, leaves the resident serving. Tests
+  `a_proxy_request_that_witnessed_its_engine_death_terminalizes_it`,
+  `an_engine_that_drops_the_connection_serves_502_but_stays_serving`, and
+  `the_death_report_is_reachable_only_from_the_exhausted_crash_retry`.
+- A load that misses its readiness deadline answers `readiness_timeout` (502)
+  and names the deadline; every other spawn or forward failure keeps
+  `upstream`. Tests
+  `a_readiness_deadline_answers_its_own_code_and_the_other_classes_keep_theirs`
+  and `a_load_that_misses_its_readiness_deadline_answers_the_named_code`.
 - A death mid-stream surfaces inside the body stream, past the retry loop.
   Evidence: the T10.1 note in `proxy` (`src/api/mod.rs`). A wire test for a
   mid-stream death: untested.

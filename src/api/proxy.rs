@@ -333,7 +333,11 @@ async fn proxy(
     // reports `is_connect()` — means a live engine is still thinking, and reaping
     // it discards a healthy KV cache. A genuine upstream HTTP status is never
     // retried, and a death mid-stream surfaces in the body stream, past this
-    // loop.
+    // loop. When even the crash-retry's successor refuses connections, the
+    // resident the request witnessed is gone by two independent refusals: the
+    // actor terminalizes its slot and owning load row (RC-02) so the page and
+    // the ledger stop claiming a dead resident, and the next load replaces it.
+    // The request itself still answers an honest typed `502`.
     let mut port = port;
     let mut attempts = 0;
     let upstream = loop {
@@ -344,6 +348,26 @@ async fn proxy(
                 classify_send_failure(&error, port)?;
                 attempts += 1;
                 if attempts >= 2 {
+                    // RC-02: the death this request witnessed twice is not a
+                    // resident `/har/status` may keep reporting as serving. The
+                    // report names exactly this model, category and refused
+                    // port — the actor's reap runs under that occupant's own
+                    // ticket and no other resident is touched. A failed report
+                    // (a gone actor) never changes the client's answer.
+                    if let Err(report_error) = listener
+                        .api
+                        .scheduler
+                        .report_dead_engine(&model, listener.category, port)
+                        .await
+                    {
+                        tracing::warn!(
+                            model = %model,
+                            port,
+                            error = %report_error,
+                            "the death report for an unreachable engine could not reach \
+                             the actor"
+                        );
+                    }
                     return Err(ApiError::Upstream {
                         reason: format!("engine on :{port} unreachable after crash-retry: {error}"),
                     });

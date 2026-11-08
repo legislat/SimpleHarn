@@ -151,6 +151,14 @@ pub enum ApiError {
     /// The engine could not be started or never became ready — `502`.
     #[error("upstream failure: {reason}")]
     Upstream { reason: String },
+    /// A load whose engine never answered readiness inside `load_timeout_s` —
+    /// `502` with a distinct code (RC-01), so a caller can tell "the engine
+    /// never came up" from a generic forward failure. The client-facing message
+    /// names the deadline and a sanitized description of the last probe
+    /// outcome; the probe's OS/URL text stays in the harness log through
+    /// [`error_body`], exactly like the other two detail-carrying classes.
+    #[error("readiness timeout: {reason}")]
+    ReadinessTimeout { reason: String },
     /// The request conflicts with live state (cancelled, superseded, holder on port).
     #[error("conflict: {reason}")]
     Conflict { reason: String },
@@ -191,6 +199,7 @@ impl ApiError {
             ApiError::BelowLaunchFloor { .. } => "below_launch_floor",
             ApiError::WitnessUnavailable { .. } => "witness_unavailable",
             ApiError::Upstream { .. } => "upstream",
+            ApiError::ReadinessTimeout { .. } => "readiness_timeout",
             ApiError::Conflict { .. } => "conflict",
             ApiError::Unauthorized { .. } => "unauthorized",
             ApiError::Forbidden { .. } => "forbidden",
@@ -209,7 +218,9 @@ impl ApiError {
             ApiError::Unavailable { .. }
             | ApiError::BelowLaunchFloor { .. }
             | ApiError::WitnessUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
-            ApiError::Upstream { .. } => StatusCode::BAD_GATEWAY,
+            ApiError::Upstream { .. } | ApiError::ReadinessTimeout { .. } => {
+                StatusCode::BAD_GATEWAY
+            }
             ApiError::Conflict { .. } => StatusCode::CONFLICT,
             ApiError::Unauthorized { .. } => StatusCode::UNAUTHORIZED,
             ApiError::Forbidden { .. } => StatusCode::FORBIDDEN,
@@ -294,6 +305,44 @@ fn router_error_body(code: &'static str, message: String) -> Value {
     })
 }
 
+/// The client-facing answer for a readiness-deadline load failure (RC-01): the
+/// deadline figure and a sanitized description of the last probe outcome. It
+/// recognizes exactly the shape the spawn path composes in
+/// `crate::scheduler::spawn::ActorState::spawn_probe_task`
+/// (`readiness deadline <d>s exceeded; last: <outcome>`); every other reason is
+/// not a readiness timeout and answers `None`, so it keeps its current class.
+/// The probe's own text — the reqwest error with its engine URL, a body-decode
+/// error, the container publish annotation — never reaches the client: the
+/// health-probe classes that carry no OS text pass through, everything else
+/// collapses to one honest sentence, and the full reason rides the harness log
+/// through [`error_body`].
+pub(crate) fn readiness_timeout_answer(reason: &str) -> Option<String> {
+    let rest = reason.strip_prefix("readiness deadline ")?;
+    let (deadline, last) = rest.split_once(" exceeded; last: ")?;
+    let figure = match deadline
+        .strip_suffix('s')
+        .unwrap_or(deadline)
+        .parse::<u64>()
+    {
+        Ok(seconds) => format!("{seconds} s"),
+        Err(_) => deadline.to_string(),
+    };
+    let outcome = if let Some(status) = last.strip_prefix("health answered ") {
+        // A container-backed spawn appends `; <publish evidence>` to a decided
+        // failure — container name and local publish address. The health
+        // status never carries a `;` itself, so the first one opens the
+        // evidence and never belongs to the client's answer.
+        let status = status.split(';').next().unwrap_or(status);
+        format!("the engine health endpoint answered {status}")
+    } else if let Some(report) = last.strip_prefix("engine reports ") {
+        let report = report.split(';').next().unwrap_or(report);
+        format!("the engine health check still reports {report}")
+    } else {
+        "the engine did not answer the health probe".to_string()
+    };
+    Some(format!("readiness deadline {figure} exceeded; {outcome}"))
+}
+
 /// The single JSON error body (A2): SE-native flat `code`/`message` plus the
 /// OpenAI-compatible `error` envelope with the same values.
 ///
@@ -316,6 +365,13 @@ fn error_body(error: &ApiError) -> Value {
             tracing::error!(detail = %reason, code = %error.code(), "engine failure; OS detail stays in the harness log");
             "upstream failure: the engine could not complete this operation; the full reason is in the harness log"
                 .to_string()
+        }
+        ApiError::ReadinessTimeout { reason } => {
+            tracing::error!(detail = %reason, code = %error.code(), "engine readiness failure; the probe's OS detail stays in the harness log");
+            readiness_timeout_answer(reason).unwrap_or_else(|| {
+                "readiness deadline exceeded; the engine did not answer the health probe"
+                    .to_string()
+            })
         }
         other => other.to_string(),
     };
@@ -402,6 +458,16 @@ impl From<SchedulerError> for ApiError {
                 reason: reason.to_string(),
                 wait_hint: None,
             },
+            // A readiness deadline the engine start path missed (RC-01) answers
+            // its own named code with the deadline and a sanitized probe
+            // outcome; the probe's OS/URL text reaches the log, not the client.
+            // Every other spawn/readiness failure keeps the generic `upstream`
+            // class untouched.
+            SchedulerError::Spawn(reason) | SchedulerError::EngineFailed(reason)
+                if readiness_timeout_answer(&reason).is_some() =>
+            {
+                ApiError::ReadinessTimeout { reason }
+            }
             SchedulerError::Spawn(reason) | SchedulerError::EngineFailed(reason) => {
                 ApiError::Upstream { reason }
             }

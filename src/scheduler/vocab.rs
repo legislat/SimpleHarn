@@ -35,6 +35,23 @@ pub enum Command {
         category: CategoryId,
         port: u16,
     },
+    /// Terminalize a resident the proxy witnessed dead (RC-02): the forward
+    /// refused a SECOND connection on `port` — after the `Restart` reload had
+    /// already installed a successor — so nobody can reach that engine any
+    /// more. The actor arms the standard confirmed-release path on the slot
+    /// matching `model` + `category` + the occupant's own `port` and no live
+    /// job: the corpse is reaped under its own ticket, the slot frees on the
+    /// driver-confirmed release, and the owning load row terminalizes at the
+    /// same commit point (EVID-01). A report naming a port the slot no longer
+    /// serves, or a slot a live job owns, moves nothing: the successor and the
+    /// in-flight job are not this death, and no other resident is ever
+    /// touched. The reply reports what the command actually armed, like every
+    /// unload-class command (FINDINGS-07 [5]).
+    ReportDeadEngine {
+        model: String,
+        category: CategoryId,
+        port: u16,
+    },
     /// Cooperative cancel: observed inside the current step, then cleanup completes
     /// (Step 3 — never a dropped task).
     Cancel { job: JobId },

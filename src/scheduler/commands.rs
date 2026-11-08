@@ -254,6 +254,74 @@ impl ActorState {
         }
     }
 
+    /// RC-02: terminalize a resident the proxy witnessed dead. The caller is
+    /// the proxy's exhausted crash-retry arm — the port refused a second
+    /// connection after the reload had already installed a successor, so the
+    /// slot's occupant is a corpse by witness. The command arms the one
+    /// standard release path for that slot (`begin_unload_slot`, note
+    /// `engine died`): the reap runs under the occupant's own ticket, the slot
+    /// frees at the driver-confirmed release, and the victim's owning load row
+    /// terminalizes at the same commit point ([`ActorState::commit_victim_release`],
+    /// EVID-01) — so `/har/status` never goes on reporting a resident nobody
+    /// can reach, and the next load replaces it.
+    ///
+    /// The match is the identity the witness carries — `model` + `category` +
+    /// the occupant's own `port`, and a slot no live job owns: a slot behind an
+    /// in-flight job belongs to that job (the second-generation posture), a different
+    /// port is a different generation, and no other resident is ever touched.
+    /// The reply is the acceptance ledger every unload-class command gives
+    /// (FINDINGS-07 [5]): what the actor actually armed, never a blanket
+    /// acceptance while nothing moved.
+    pub(super) fn on_report_dead_engine(
+        &mut self,
+        model: String,
+        category: CategoryId,
+        dead_port: u16,
+        reply: Waiter,
+    ) {
+        let slot = self.slots.iter().position(|s| {
+            s.category == category
+                && s.job.is_none()
+                && s.occupant
+                    .as_ref()
+                    .is_some_and(|o| o.model == model && o.port == dead_port)
+        });
+        match slot {
+            Some(slot) => {
+                tracing::warn!(
+                    %model,
+                    ?category,
+                    port = dead_port,
+                    slot = self.slots[slot].index,
+                    "the proxy's forward refused a second connection to this resident: \
+                     terminalizing the dead engine"
+                );
+                self.begin_unload_slot(slot, "engine died");
+                let _ = reply.send(Ok(Reply::Unloaded {
+                    unloading: 1,
+                    jobs_cancelled: 0,
+                }));
+            }
+            None => {
+                // The witness is stale or the slot moved on: a successor on
+                // another port, a job already replacing this one, or a slot
+                // already empty. None of those is this command's to reap;
+                // answering `Done`-honestly keeps the report idempotent.
+                tracing::info!(
+                    %model,
+                    ?category,
+                    port = dead_port,
+                    "a death report for a port no job-free slot of this category serves: \
+                     nothing to terminalize"
+                );
+                let _ = reply.send(Ok(Reply::Unloaded {
+                    unloading: 0,
+                    jobs_cancelled: 0,
+                }));
+            }
+        }
+    }
+
     pub(super) fn on_unload(&mut self, category: CategoryId, reply: Waiter) {
         let targets: Vec<usize> = self
             .slots

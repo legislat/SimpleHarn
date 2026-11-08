@@ -186,6 +186,33 @@ impl SchedulerHandle {
         .await
     }
 
+    /// Reports a witnessed engine death for terminalization (RC-02): the proxy
+    /// calls this when its forward refused a SECOND connection on `port` after
+    /// the crash-retry reload — the resident there is a corpse by witness. The
+    /// actor arms the standard confirmed-release path on the matching slot: the
+    /// corpse is reaped under its own ticket, the slot frees on the confirmed
+    /// release, and the owning load row terminalizes at the same commit point,
+    /// so the next load can replace it. Idempotent: a report for a port no
+    /// job-free slot of `category` serves arms nothing, and no other resident
+    /// is touched.
+    ///
+    /// # Errors
+    ///
+    /// [`SchedulerError::ActorGone`] when the actor is no longer running.
+    pub async fn report_dead_engine(
+        &self,
+        model: &str,
+        category: CategoryId,
+        port: u16,
+    ) -> Result<Reply, SchedulerError> {
+        self.call(Command::ReportDeadEngine {
+            model: model.to_string(),
+            category,
+            port,
+        })
+        .await
+    }
+
     /// Unloads one model's slot (T12.1). A loading swap for it is cancelled
     /// first (cleanup still completes, Step 3).
     ///
