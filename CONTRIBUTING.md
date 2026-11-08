@@ -22,16 +22,17 @@ This file is a pointer. It owns no rules. Read `README.md` for the product.
 | Gate and evidence | `docs/process/VERIFICATION.md` |
 | Git, commits, and release | `docs/process/GIT_WORKFLOW.md` |
 
-## Local-only state
+## Private handoff state
 
-The live queue, the handoff snapshot, open findings, traps, and evidence are
-machine-local and gitignored. They live in `HANDOFF.md` and `handoff/`. Ask the
-operator if you need them.
+The live queue, the handoff snapshot, open findings, traps, and evidence live in
+the private repository `legislat/SimpleHarn_handoff`. The code repository reaches
+that root through `SIMPLEHARN_HANDOFF` (see `docs/process/HANDOFF.md`). Ask the
+operator if you need access.
 
 ## External contributors
 
-You do not need `HANDOFF.md` or `handoff/`. They are gitignored and absent
-from a fresh clone.
+You do not need the handoff repository. It is private and absent from a public
+clone.
 
 1. Read `README.md`, `docs/process/ENGINEERING.md`,
    `docs/process/VERIFICATION.md`, and `docs/process/GIT_WORKFLOW.md`.
@@ -42,10 +43,10 @@ from a fresh clone.
 
 ## First task path (operator and agent sessions)
 
-This path needs the local-only layer in Local-only state above.
+This path needs the private handoff layer in Private handoff state above.
 
 1. Read `README.md` and `docs/process/TASKS.md`.
-2. Create a task file under `handoff/tasks/`.
+2. Create a task file under the handoff repo's `tasks/`.
 3. Implement inside the task scope and run the gate
    (`docs/process/VERIFICATION.md`).
 4. Request a review (`docs/process/REVIEW.md`).

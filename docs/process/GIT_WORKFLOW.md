@@ -121,7 +121,7 @@ A release is a task with acceptance criteria. Run the steps in this order:
 3. Write the dated `CHANGELOG.md` entry. Use the Keep a Changelog structure and record
    user-visible changes only. Public release notes carry no machine paths, no operator
    instructions, and no local staging or rollback references. Internal runbook steps stay
-   in `handoff/`.
+   in the private handoff repository.
 4. Update the README release claim. It names the tag, never HEAD.
 5. Run `scripts/release-check.ps1 -Prepare` and require PASS. It checks the version, tag,
    changelog, README claim, known stale phrases, `cargo doc` warnings, the webui fixture
@@ -162,7 +162,7 @@ The operator rule (2026-11-06):
   under the inference root (old test builds and older release copies) once the new
   latest is verified.
 
-The exact machine paths live in `HANDOFF.md` (local-only).
+The exact machine paths live in the handoff repo's `HANDOFF.md`.
 
 ## Conflict resolution
 

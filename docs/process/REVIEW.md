@@ -125,7 +125,7 @@ Do not pad. A chunk that finds nothing in a category says so.
   `docs/process/TASKS.md` requires it.
 - A finding that needs multi-session work gets a task. The task and the finding
   cite each other by ID.
-- Open findings live in `handoff/FINDINGS-OPEN.md` (local-only). A fix or a
+- Open findings live in `handoff/FINDINGS-OPEN.md` (private handoff repo). A fix or a
   ruling moves the finding out of it.
 
 ## Evidence retention

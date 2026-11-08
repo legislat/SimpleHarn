@@ -32,15 +32,17 @@ pointed to, never copied here.
 Every session, including a resumed one:
 
 1. `AGENTS.md` (this file)
-2. `HANDOFF.md` (local-only snapshot and next task)
-3. `handoff/PENDING_CHECKLIST.md` (local-only queue index)
-4. `handoff/tasks/<ID>.md` (local-only task file, if present)
+2. Resolve the handoff root (`SIMPLEHARN_HANDOFF`, then `..\SimpleHarn_handoff`, then a
+   legacy `handoff\`); read `<root>/HANDOFF.md` (live snapshot and next task)
+3. `<root>/PENDING_CHECKLIST.md` (queue index)
+4. `<root>/tasks/<ID>.md` (task file, if present)
 5. `docs/architecture/DOCTRINE.md` (binding invariant card)
 6. Task-specific docs from the reading matrix in Section 5.
 
-If the task file is absent, create or request one before editing shared state. On a fresh
-clone the local-only layer is absent; create it from `docs/process/HANDOFF.md` and
-`docs/process/TASKS.md` before the first edit.
+If the task file is absent, create or request one before editing shared state. The
+handoff layer is a separate private repository: below, `handoff/` names its root. A
+public clone has no queue or snapshot; create the root by cloning that repository
+(`docs/process/HANDOFF.md`).
 
 ## 3. Precedence
 
@@ -122,7 +124,8 @@ Routine code changes never require `DESIGN.md`.
   Never stop, restart, or replace it, never kill its engine children, never start a second
   harness.
 - Protected ports: never bind, stop, or unload a listener on the protected ports named in
-  `HANDOFF.md`. Harness test runs use only the dedicated test port set named there.
+  the handoff repo's `HANDOFF.md`. Harness test runs use only the dedicated test port set
+  named there.
 - Card window: model loads and card tests happen only in an operator-freed window, never
   in a served session. Cardless work (fmt, clippy, `cargo test`, DOM stub) stays allowed.
 - Single instance: exactly one harness instance per machine.
@@ -141,8 +144,8 @@ A task is done only when all hold:
       Durable documentation follows `docs/process/ENGINEERING.md`, including ASD-STE100.
 - [ ] Review findings closed by a named commit or accepted by a named ruling
       (`docs/process/REVIEW.md`).
-- [ ] The task file and `HANDOFF.md` snapshot are current; no unrelated changes remain
-      uncommitted.
+- [ ] The task file and the handoff repo's `HANDOFF.md` snapshot are current; no unrelated
+      changes remain uncommitted.
 
 ## 8. References
 
@@ -154,7 +157,7 @@ Pointers only. The named file owns the content.
 | Gate and evidence | `docs/process/VERIFICATION.md` |
 | Git and release | `docs/process/GIT_WORKFLOW.md` |
 | Task lifecycle and schema | `docs/process/TASKS.md` |
-| Handoff protocol | `docs/process/HANDOFF.md`; live snapshot in `HANDOFF.md` |
+| Handoff protocol | `docs/process/HANDOFF.md`; live snapshot in the handoff repo's `HANDOFF.md` |
 | Review method | `docs/process/REVIEW.md` |
 | Publication scrub | `docs/process/PUBLICATION.md` |
 | Binding invariants | `docs/architecture/DOCTRINE.md` |

@@ -177,9 +177,10 @@ A task is done only when all of these hold:
 ## External contributor path
 
 External work starts from a GitHub issue or pull request, not from this page's
-queue. `handoff/PENDING_CHECKLIST.md` and `handoff/tasks/` are gitignored and
-absent from a fresh clone, so external tasks do not use the local queue. The
-maintainer creates the local task file and queue row when the work needs one.
+queue. `handoff/PENDING_CHECKLIST.md` and `handoff/tasks/` live in the private
+handoff repository and are absent from a public clone, so external tasks do not
+use that queue. The maintainer creates the task file and queue row when the work
+needs one.
 The walkthrough below is for operator and agent sessions on the operator's
 machine.
 

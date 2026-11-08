@@ -7,10 +7,11 @@
 # Local model configs (absolute machine paths), same local-only rationale.
 /ModelConf
 # Durable documentation is tracked with the code.
-# Live state and machine-specific artifacts stay local:
-#   HANDOFF.md, handoff/, ModelConf/, .kilo/, archive/, base-archive/
+# Live state and machine-specific artifacts stay out of this repository:
+#   the handoff layer (private repo), ModelConf/, .kilo/, archive/, base-archive/
 /HANDOFF.md
-# Agent handoff briefs: they quote live state and name machine paths.
+# Legacy fallback: the handoff layer's clone root is normally a sibling directory
+# resolved through SIMPLEHARN_HANDOFF (see docs/process/HANDOFF.md).
 /handoff
 # Kilo agent config (skills, worktrees, session state) is local-only.
 /.kilo

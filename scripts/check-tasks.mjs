@@ -1,6 +1,8 @@
-// Task file checker for handoff/tasks/*.md. Node, no external dependencies.
-// Schema: docs/process/TASKS.md. An absent or empty task directory is valid:
-// the queue can legitimately hold no task files.
+// Task file checker for the private handoff repository's tasks/*.md. Node, no
+// external dependencies. Schema: docs/process/TASKS.md. The handoff root is
+// resolved by scripts/lib/handoff-root.mjs (see that file for the order). An
+// absent root or an empty task directory is valid: a public clone has no
+// private layer, and the queue can legitimately hold no task files.
 //
 // Required per task file:
 //   - an H1 beginning "# TASK-";
@@ -13,10 +15,16 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { handoffRoot } from "./lib/handoff-root.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const TASK_DIR = join(ROOT, "handoff", "tasks");
+const HANDOFF = handoffRoot(ROOT);
+if (!HANDOFF) {
+  console.log("check-tasks: SKIP - handoff root not found (set SIMPLEHARN_HANDOFF or clone the private repo beside this one)");
+  process.exit(0);
+}
+const TASK_DIR = join(HANDOFF, "tasks");
 
 const TABLE_FIELDS = ["Class", "Priority", "Readiness", "Owner"];
 const TEXT_FIELDS = ["Goal", "Scope", "Non-goals", "Acceptance criteria",
@@ -29,12 +37,12 @@ const failures = [];
 const fail = (name, line, message) => failures.push(`${name}:${line}: ${message}`);
 
 if (!existsSync(TASK_DIR)) {
-  console.log("check-tasks: handoff/tasks/ does not exist; no task files to check");
+  console.log(`check-tasks: ${TASK_DIR} does not exist; no task files to check`);
   process.exit(0);
 }
 const names = readdirSync(TASK_DIR).filter((n) => n.endsWith(".md")).sort();
 if (names.length === 0) {
-  console.log("check-tasks: handoff/tasks/ is empty; no task files to check");
+  console.log(`check-tasks: ${TASK_DIR} is empty; no task files to check`);
   process.exit(0);
 }
 
@@ -64,7 +72,7 @@ function checkEnum(rel, entry, field, value, allowed) {
 }
 
 for (const name of names) {
-  const rel = `handoff/tasks/${name}`;
+  const rel = `tasks/${name}`;
   const lines = readFileSync(join(TASK_DIR, name), "utf8").split(/\r?\n/);
 
   const h1Index = lines.findIndex((l) => /^#\s+\S/.test(l));

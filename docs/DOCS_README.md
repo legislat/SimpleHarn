@@ -35,28 +35,28 @@ this file is the table of contents; other documents link to it.
 | Add or change code | [docs/process/ENGINEERING.md](process/ENGINEERING.md) |
 | Run the gate | [docs/process/VERIFICATION.md](process/VERIFICATION.md) |
 | Commit, branch, or release | [docs/process/GIT_WORKFLOW.md](process/GIT_WORKFLOW.md) |
-| Pick up a task | `HANDOFF.md` -> `handoff/PENDING_CHECKLIST.md` -> task file (local-only) |
+| Pick up a task | `HANDOFF.md` -> `handoff/PENDING_CHECKLIST.md` -> task file (private handoff repo) |
 | Hand off work | [docs/process/HANDOFF.md](process/HANDOFF.md) |
 | Review code | [docs/process/REVIEW.md](process/REVIEW.md) |
-| Find a trap | [docs/process/GOTCHAS.md](process/GOTCHAS.md) (machine-specific traps stay local-only) |
+| Find a trap | [docs/process/GOTCHAS.md](process/GOTCHAS.md) (machine-specific traps stay in the private handoff repo) |
 | See what changed | [CHANGELOG.md](../CHANGELOG.md) |
 
-Paths in plain text do not exist yet (they are planned) or are local-only.
-Markdown links point only at existing files.
+Paths in plain text do not exist yet (they are planned) or live in the private
+handoff repository. Markdown links point only at existing files.
 
 ## 2. Layers: durable, live, evidence, archive
 
 | Layer | Purpose | Versioned | Lifetime |
 |---|---|---|---|
 | Durable | Rules, process, doctrine, architecture, user docs, history | Yes | Indefinite |
-| Live | Current task state, open findings, pending questions, traps, handoff snapshot | No (backed up) | Days to weeks |
-| Evidence | Logs, run results, review findings, research | No (backed up) | Until archived |
+| Live | Current task state, open findings, pending questions, traps, handoff snapshot | Private repo (backed up) | Days to weeks |
+| Evidence | Logs, run results, review findings, research | Private repo (backed up) | Until archived |
 | Archive | Closed live state and superseded durable revisions | No | Indefinite, compressed |
 
-Local-only (never tracked, machine-specific, backed up separately):
-`HANDOFF.md`, `handoff/`, `ModelConf/`, `.kilo/`, `archive/`,
-`base-archive/`. If a fact would still be true on another machine, it is
-durable and belongs in this tree.
+Outside this repository (private or machine-specific, backed up separately):
+the handoff repository (`HANDOFF.md`, `handoff/`), `ModelConf/`, `.kilo/`,
+`archive/`, `base-archive/`. If a fact would still be true on another machine, it
+is durable and belongs in this tree.
 
 ## 3. Document list
 
@@ -174,8 +174,9 @@ style.
   allowed; paths under a user profile are not.
 - Link only existing files; planned paths stay plain text until created.
 - A repo-relative path written as inline code must resolve (`check-docs` rule
-  7). The local-only layer (`handoff/`, `ModelConf/`, `archive/`,
-  `base-archive/`, `.kilo/`, `HANDOFF.md`) is exempt; a trailing `:line` range
-  keeps its base file. `src/`, `tests/` and `scripts/` are also tried as roots.
+  7). The exempt layer (`handoff/` and `HANDOFF.md` in the private repository,
+  `ModelConf/`, `archive/`, `base-archive/`, `.kilo/`) is exempt; a trailing
+  `:line` range keeps its base file. `src/`, `tests/` and `scripts/` are also
+  tried as roots.
 - Durable docs state commands and invariants, not volatile counts or file
   line numbers; dated numbers live in evidence.

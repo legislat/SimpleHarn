@@ -58,9 +58,9 @@ Remove or replace every occurrence of:
   the commit body.
 - Durable docs contain no machine paths. A machine path in a durable doc is a
   defect.
-- Local evidence stays local. `HANDOFF.md`, `handoff/`, and `ModelConf/` are
-  gitignored and backed up separately. Promote content out of them only after a
-  scrub.
+- Local evidence stays private. `HANDOFF.md`, `handoff/`, and `ModelConf/` live
+  in the private handoff repository or on the machine and are backed up
+  separately. Promote content out of them only after a scrub.
 - Secrets never enter durable files, logs, or screenshots. The coding-side rule
   lives in `docs/process/ENGINEERING.md`.
 

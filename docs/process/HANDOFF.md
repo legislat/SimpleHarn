@@ -13,7 +13,10 @@ review_trigger: behavior-change, release, quarterly
 Up: `docs/DOCS_README.md`. This file is the single home of the handoff protocol. It
 contains the protocol only. It holds no live state.
 
-The root `HANDOFF.md` is the live snapshot. It stays local-only and gitignored.
+The live layer is the private repository `legislat/SimpleHarn_handoff`. Below,
+`handoff/` names its root; the code repository reaches it through the
+`SIMPLEHARN_HANDOFF` variable, then the sibling `..\SimpleHarn_handoff`, then a
+legacy `handoff\`. The root `HANDOFF.md` is the live snapshot.
 `docs/process/TASKS.md` owns the task lifecycle and the task file template. The
 gate lives in `docs/process/VERIFICATION.md`. This file points to them and does
 not repeat them.
@@ -35,8 +38,8 @@ Run the handoff checkpoint at each of these points:
 - One task file per active task: `handoff/tasks/<TASK-ID>.md`. The schema and
   template live in `docs/process/TASKS.md`. The queue row links to the task
   file.
-- The root `HANDOFF.md` holds the snapshot, machine safety facts, and pointers.
-  It carries no item detail. Its budget is 120 lines.
+- The handoff repo's root `HANDOFF.md` holds the snapshot, machine safety facts, and
+  pointers. It carries no item detail. Its budget is 120 lines.
 
 ## Required fields
 
@@ -101,29 +104,30 @@ own task file.
 
 ## Backup and restore
 
-The live layer is local-only. Back it up to a separate physical drive or network share. Do
-not use the same physical device as the working tree.
+The live layer is private, versioned state: the handoff repository clone plus the
+machine's own config. Back it up to a separate physical drive or network share. Do not
+use the same physical device as the working tree.
 
-- Back up `HANDOFF.md`, `handoff/`, `ModelConf/`, and the active config file
+- Back up the handoff repository clone, `ModelConf/`, and the active config file
   (`simpleharn.json`).
-- Exclude `target/`, `logs/`, build artifacts, and the frozen `archive/` and
-  `base-archive/` trees. The frozen trees are backed up once or preserved in Git history.
+- Exclude `target/`, `logs/`, and build artifacts. The frozen `archive/` and
+  `base-archive/` trees are preserved in Git.
 - Cadence: at each handoff checkpoint: before ending a session, before a card window, and
   before a release.
 - Retention: keep the 14 newest dated snapshots. At each checkpoint, prune older snapshots
   only after the new backup succeeds.
 - Restore test: quarterly. Restore the newest retained snapshot to a temp directory. Run
   `scripts/check-docs.mjs`, `scripts/check-instructions.mjs`, and `scripts/check-tasks.mjs`
-  on the restored tree. Verify `HANDOFF.md` and every task file have the required fields.
+  on the restored trees. Verify `HANDOFF.md` and every task file have the required fields.
   The test verifies the retained set. Record the evidence under
   `handoff/evidence/<YYYY-MM-DD>-restore-test/`. Do not start an engine during the test.
 
-The live `HANDOFF.md` snapshot names the current backup medium and the latest backup path.
-The policy is the rule; the snapshot is the current fact.
+The handoff repo's `HANDOFF.md` snapshot names the current backup medium and the latest
+backup path. The policy is the rule; the snapshot is the current fact.
 
 ## Snapshot template
 
-The root `HANDOFF.md` uses this shape. Budget: 120 lines.
+The handoff repo's root `HANDOFF.md` uses this shape. Budget: 120 lines.
 
 ```markdown
 # Handoff

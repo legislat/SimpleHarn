@@ -6,6 +6,10 @@
 #   4. Gate failures: the final gate verdict in the newest gate evidence.
 #   5. Worktree age: worktrees untouched for more than 7 days.
 #
+# The queue, tasks, and evidence live in the private handoff repository; this
+# script resolves its root through scripts/lib/handoff-root.ps1 and fails when
+# that root is missing.
+#
 # It never writes, creates an issue, or changes state. It exits 1 when run outside
 # the repository root, otherwise 0.
 
@@ -13,6 +17,13 @@ $ErrorActionPreference = 'Continue'
 
 if (-not (Test-Path -LiteralPath 'AGENTS.md')) {
   Write-Output "PROCESS HEALTH REPORT FAIL: run this script from the repository root."
+  exit 1
+}
+
+. (Join-Path $PSScriptRoot 'lib\handoff-root.ps1')
+$handoff = Get-HandoffRoot
+if (-not $handoff) {
+  Write-Output "PROCESS HEALTH REPORT FAIL: handoff root not found. Set SIMPLEHARN_HANDOFF or clone the private repo beside this one."
   exit 1
 }
 
@@ -55,7 +66,7 @@ foreach ($item in $undated) { Write-Output ("   - " + $item) }
 Write-Output ""
 
 # 2 and 3. Queue age and active-row age.
-$queuePath = "handoff/PENDING_CHECKLIST.md"
+$queuePath = Join-Path $handoff 'PENDING_CHECKLIST.md'
 $openRows = @()
 $nowRows = @()
 if (Test-Path -LiteralPath $queuePath) {
@@ -64,7 +75,7 @@ if (Test-Path -LiteralPath $queuePath) {
     if ($line -match '^##\s+(Now|Next|Later)\s*$') { $section = $Matches[1]; continue }
     if ($line -match '^-\s+\[\s\]\s+(TASK-[A-Za-z0-9-]+)') {
       $taskId = $Matches[1]
-      $taskPath = Join-Path "handoff/tasks" ($taskId + ".md")
+      $taskPath = Join-Path (Join-Path $handoff 'tasks') ($taskId + ".md")
       $created = $null
       if (Test-Path -LiteralPath $taskPath) {
         $createdMatch = Select-String -LiteralPath $taskPath -Pattern '^\|\s*Created\s*\|\s*(\d{4}-\d{2}-\d{2})' -List
@@ -91,7 +102,7 @@ if ($oldestNow) {
 Write-Output ""
 
 # 4. Latest gate evidence.
-$gateLog = Get-ChildItem -LiteralPath "handoff/evidence" -Recurse -Filter "gate*.txt" -File -ErrorAction SilentlyContinue |
+$gateLog = Get-ChildItem -LiteralPath (Join-Path $handoff 'evidence') -Recurse -Filter "gate*.txt" -File -ErrorAction SilentlyContinue |
   Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($gateLog) {
   $verdicts = Select-String -LiteralPath $gateLog.FullName -Pattern 'GATE (PASS|FAIL) \(cardless\)'
