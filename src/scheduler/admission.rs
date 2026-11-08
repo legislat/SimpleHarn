@@ -22,7 +22,7 @@ pub(super) const RELEASE_SAMPLE_CAP: usize = 32;
 /// Rolling ring of the harness's own measured release durations, in seconds
 /// (accept to driver-confirmed). Memory-only by ruling: nothing is persisted,
 /// so a fresh process has no sample and quotes no estimate — the honest
-/// starting state, not a missing cache (operator ruling 2026-11-04).
+/// starting state, not a missing cache.
 pub(super) struct ReleaseSamples {
     pub(super) seconds: std::collections::VecDeque<f64>,
 }
@@ -77,7 +77,7 @@ impl ActorState {
     ///
     /// * `slot` - the slot the load is queued on (its `pending` place).
     /// * `entry` - the catalog entry, whose keys pre-fill the booking fields.
-    /// * `waiters` - the callers attached to this load (F-6: duplicates share one row).
+    /// * `waiters` - the callers attached to this load (duplicates share one row).
     ///
     /// # Returns
     ///
@@ -147,9 +147,9 @@ impl ActorState {
     /// column reads the same one, so the two cannot drift. The figure follows
     /// the decision, not the key that happens to exist: a Measured source books
     /// the measured figure - including the guarded engine_report that OVERSHADOWS
-    /// a smaller declared `vram_gb` (operator ruling 2026-11-01: reserve what the
-    /// container itself reserves), and so does a Fit projection (R11, the same
-    /// max truth). Greedy keeps nominal semantics: a post-spill measurement is
+    /// a smaller declared `vram_gb` — reserve what the
+    /// container itself reserves, and so does a Fit projection, the same
+    /// max truth. Greedy keeps nominal semantics: a post-spill measurement is
     /// not a nominal size and must not shrink the booking (review, 2026-10-26);
     /// `may_book_measured` keeps it off Measured anyway — but a greedy row with
     /// a fit figure floors its booking at what the engine says it will reserve:
@@ -191,7 +191,7 @@ impl ActorState {
         }
     }
 
-    /// The CPU-resident booking ladder (operator ruling 2026-11-05): the
+    /// The CPU-resident booking ladder: the
     /// floor first — declared `ram_gb`, else the GGUF-size estimate
     /// `gguf_size_gb * 1.0 + 2.0` GiB, the weights page in, not the card's
     /// `x 1.15 + 2` KV multiplier, because an offloaded row holds the file
@@ -227,7 +227,7 @@ impl ActorState {
         // ladder now and fires the probe fire-and-forget (never parking the
         // admit behind a volume). The version epoch rides every llama admit.
         // A CPU-resident row is skipped: the VRAM calculator answers a
-        // question this row's gate never asks (operator ruling 2026-11-05).
+        // question this row's gate never asks.
         if entry.resource() == crate::model::Resource::Gpu {
             self.refresh_fit_on_admit(&mut entry);
         }
@@ -247,7 +247,7 @@ impl ActorState {
             }
         }
         // The gate's figure, by the one decision the page also reads. The
-        // two ladders answer separately (operator ruling 2026-11-05): a
+        // two ladders answer separately: a
         // CPU-resident row books host RAM and zero VRAM; a VRAM row books
         // exactly as before and holds no RAM figure.
         let (booking, ram_booking) = if entry.resource() == crate::model::Resource::Ram {
@@ -281,7 +281,7 @@ impl ActorState {
         // the bytes this release frees in the resource the drain is planning. A
         // Ram row drains the RAM ledger, so its own-slot figure is the holder's
         // RAM booking — credited once (the drain re-check subtracts the holder leg
-        // from the ledger term, R2-03-01, and the physical reading already held
+        // from the ledger term once, and the physical reading already held
         // it at sample time), and 0.0 for a GPU holder: its host RAM is real but
         // unbooked, so the RAM settle witness reads the freed bytes instead of a
         // credit this gate cannot honestly state. A VRAM row keeps the card
@@ -304,10 +304,10 @@ impl ActorState {
         }
         self.slots[slot].job = Some(job_id);
         self.step(job_id, SwapState::Admit);
-        // Step 4 (as amended 2026-10-26): the gate is evaluated against the card's own
+        // The gate is evaluated against the card's own
         // reading, sampled on a task — never inline in the actor, which must not stall
-        // behind a witness call. The two ladders sample their own witness (operator
-        // ruling 2026-11-05): a CPU-resident row never reads the card (not even to
+        // behind a witness call. The two ladders sample their own witness: a
+        // CPU-resident row never reads the card (not even to
         // waste a cached sample on it), and a VRAM row never spends the host reading.
         let witness = Arc::clone(&self.witness);
         let ram_witness = Arc::clone(&self.ram_witness);
@@ -332,8 +332,8 @@ impl ActorState {
     /// is the budget (operator 2026-10-26): `total - reserve - observed_used`,
     /// credited for the occupant this job is about to release and debited for what
     /// other loads have already committed. The same-slot credit is the larger of
-    /// that occupant's booking and the VRAM footprint its own spawn folded
-    /// (operator ruling 2026-11-06) — a projection, never a booking: the settle
+    /// that occupant's booking and the VRAM footprint its own spawn folded —
+    /// a projection, never a booking: the settle
     /// window re-gates against the physically re-sampled card before spawn, so
     /// that re-gate stays the physical truth and a wrong projection cannot
     /// overcommit. The ledger survives only as the `budget` figure a refusal
@@ -341,7 +341,7 @@ impl ActorState {
     ///
     /// The two ladders decide here and share one admitted tail: a RAM row is
     /// dispatched to [`Self::finish_admit_ram`] and the card is never consulted
-    /// for it (operator ruling 2026-11-05); the VRAM leg below is unchanged.
+    /// for it; the VRAM leg below is unchanged.
     pub(super) fn finish_admit(
         &mut self,
         job_id: JobId,
@@ -356,7 +356,7 @@ impl ActorState {
         // dispatcher forgot the reading — named, never silently waved through.
         let sample = card.unwrap_or_else(|| Err("no card sample was dispatched".to_string()));
         // A real witness that cannot answer is a refusal, never a fallback onto a
-        // bookkeeping guess (F-3/F-7: this is exactly how v3.3 over-committed).
+        // bookkeeping guess — that fallback is exactly how the harness over-commits.
         if sample.is_err() && !self.witness.ledger_only() {
             let reason = sample
                 .as_ref()
@@ -446,9 +446,8 @@ impl ActorState {
         };
         // Launch floor: the model's numeric key, else the global greedy
         // default — a greedy quant spawned onto a card already busy with
-        // foreign processes thrashes RAM/SSD for minutes before serving
-        // (operator note 2026-10-26). `whole` REPLACES this leg (operator
-        // ruling 2026-11-04): the auto floor below is the whole-machine gate
+        // foreign processes thrashes RAM/SSD for minutes before serving.
+        // `whole` REPLACES this leg: the auto floor below is the whole-machine gate
         // expressed in this leg's own units — `free` already nets the
         // reserve, so "the card holds nothing beyond the reserve and the
         // credited same-slot replacement" reads as `free >= total -
@@ -487,7 +486,7 @@ impl ActorState {
             self.finish(job_id, Err(error), "under-specified");
             return;
         }
-        // The whole-machine leg (operator ruling 2026-11-04): a WAIT posture
+        // The whole-machine leg: a WAIT posture
         // on top of the auto floor — refuse naming every holder, never evict
         // to get there. The numeric-deficit machinery below is never reached
         // while the card is not fully free, so the planner is never asked for
@@ -561,8 +560,7 @@ impl ActorState {
             // victims before refusing — cheapest sufficient set, hard filters.
             // A `whole` row that stands here has already passed the whole-
             // machine leg, so the planner provably has no candidate to find —
-            // and must never be asked: the whole gate never evicts (operator
-            // ruling 2026-11-04).
+            // and must never be asked: the whole gate never evicts.
             let planned = if whole {
                 Err((Vec::new(), Vec::new()))
             } else {
@@ -704,7 +702,7 @@ impl ActorState {
                 job.need = Some(Gibibytes(booked));
             }
         }
-        // Expert-offload RAM reclaim (operator ruling 2026-11-06): the gate
+        // Expert-offload RAM reclaim: the gate
         // said yes to a greedy load on an expert-offload engine, so the large
         // CPU residents go first — no RAM deficit is required, the rule is
         // the posture. A refusal above returned before this point; a load the
@@ -782,7 +780,7 @@ impl ActorState {
         self.step(job_id, SwapState::Dispose);
         // Ensure a release target: the same-slot replacement first, else the first
         // queued cross-category victim, else the first queued reclaim victim
-        // (operator ruling 2026-11-06: reclaim drains after the deficit queue).
+        // (reclaim drains after the deficit queue).
         if self.jobs[&job_id].victim.is_none() && !self.dequeue_victim(job_id) {
             self.dequeue_reclaim_victim(job_id);
         }
@@ -797,7 +795,7 @@ impl ActorState {
         }
     }
 
-    /// The Admit decision of the RAM ladder (operator ruling 2026-11-05). The
+    /// The Admit decision of the RAM ladder. The
     /// host reading is the budget, with the card's arithmetic and the card's
     /// honesty rules: `ram_total - ram_reserve - observed ram_used`, credited
     /// once for the same-slot RAM resident this job is about to release and
@@ -867,8 +865,8 @@ impl ActorState {
             job.gate_target = Some(gate_target);
         }
         if free.0 < need.0 {
-            // The same Step 6 planner as the card leg, over Ram residents
-            // only (W2 ruling 2026-11-05): a host-RAM shortage evicts Ram
+            // The same victim planner as the card leg, over Ram residents
+            // only: a host-RAM shortage evicts Ram
             // residents through the unchanged release path, never a GPU
             // resident — its host RAM rides the reading, uncontrolled.
             match self.plan_victims(job_id, need.0 - free.0) {
@@ -994,8 +992,7 @@ impl ActorState {
     /// a slot other than the load's own, and every other non-terminal load
     /// that has booked room (`SwapState::reserves_vram`). The request's own
     /// slot is deliberately not a holder there: an explicit same-slot load of
-    /// a whole row IS a replacement of that occupant (pinned behavior,
-    /// operator ruling 2026-11-04 — replacing the named target of the request
+    /// a whole row IS a replacement of that occupant: replacing the named target of the request
     /// is the request itself, never an eviction to get room; its booked need
     /// is already credited in the compared figure). Each holder rides
     /// [`AdmissionError::WholeMachineBusy`] as a named blocker with the
@@ -1118,7 +1115,7 @@ impl ActorState {
             let figure = occupant.ram_need.map_or(occupant.need.0, |need| need.0);
             let allowed_list = evictable_by(slot.category);
             if allowed_list.contains(&load_category) {
-                // `min_turn` juggle guard (operator ruling 2026-11-04): a holder
+                // `min_turn` juggle guard: a holder
                 // whose current turn is younger than the row's knob is a named
                 // blocker, never a candidate, so an A-B-A-B ping-pong cannot
                 // spend a measured 14-45 s swap on every hop. The knob is read
@@ -1265,7 +1262,7 @@ impl ActorState {
     }
 
     /// Moves the next queued expert-offload reclaim victim into the release
-    /// slot (operator ruling 2026-11-06); `false` when the queue is empty.
+    /// slot; `false` when the queue is empty.
     /// One at a time, like the deficit queue: every release runs the unchanged
     /// confirmed-release path, and the settle window still closes the drain
     /// before the spawn.
@@ -1281,7 +1278,7 @@ impl ActorState {
         true
     }
 
-    /// Expert-offload RAM reclaim (operator ruling 2026-11-06): on admission
+    /// Expert-offload RAM reclaim: on admission
     /// of a `cost: greedy` row on an engine carrying the `expert_offload`
     /// cell, queue every CPU-resident row whose booked host RAM is strictly
     /// greater than `expert_offload_evict_cpu_above_gb`, largest first, for

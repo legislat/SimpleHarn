@@ -9,17 +9,17 @@
 //! any stale container of the same name — a harness crash can orphan one until the
 //! model loads again.
 //! Spawns are hidden (`CREATE_NO_WINDOW`); engine children additionally start
-//! suspended and run only after the kill job has claimed them (R2-08-04), so no
+//! suspended and run only after the kill job has claimed them, so no
 //! engine descendant can be born outside the job. stdout/stderr are captured to
 //! `logs/<slug>-<epoch>.log`, the stem sanitized by `sanitize_slug` — the one
-//! forensic pool key shared with the container snapshots (R2-08-03). Engine
+//! forensic pool key shared with the container snapshots. Engine
 //! children receive exactly an OS baseline plus
-//! `LaunchSpec.env` (§5, E3): harness secrets (`SIMPLEHARN_TOKEN`) and Python
+//! `LaunchSpec.env`: harness secrets (`SIMPLEHARN_TOKEN`) and Python
 //! import-hijack vars (`PYTHONPATH`, `VIRTUAL_ENV`) never leak into them. The
 //! harness-internal control commands spawned here (`wsl.exe` docker teardown and
 //! `docker ps`) are scrubbed the same way, because they execute *inside the
 //! operator's distro*: inheriting there would carry the plaintext token across that
-//! very boundary (FINDINGS2-0910 \[4], closing the asymmetry E3 left). Control
+//! very boundary, closing the asymmetry the earlier fix left. Control
 //! commands owned by other modules (`netsh` in `main.rs`, the `nvidia-smi` fallback
 //! in `witness.rs`, the Web UI opener in `tray.rs`) still inherit — none of them
 //! crosses into WSL — and are the smaller remaining half of that rule.
@@ -42,7 +42,7 @@ pub(crate) use staging::{
 };
 
 /// The per-pid working-set reader the CPU-resident sampler drives
-/// (`TASK-CPU-LLAMA-EVICTION` W2 step 3): the RAM twin of the witness seams.
+/// the RAM twin of the witness seams.
 /// The live impl answers with one `GetProcessMemoryInfo` per pid
 /// ([`win32::working_set_bytes_of`]); tests inject their own reader, so the
 /// cardless gate never touches the real API. `None` is absence — the process
@@ -152,11 +152,11 @@ struct EngineProc {
     /// the child has been reaped, so the release-time custody bookkeeping cannot
     /// ask the child again — the value must ride on the entry.
     pid: u32,
-    /// The custody sidecar token written at spawn for a custodied launch
-    /// (chunk 10 slice 10b); `release_confirmed` may only clear the entry
+    /// The custody sidecar token written at spawn for a custodied launch;
+    /// `release_confirmed` may only clear the entry
     /// bearing this token, never one a later launch wrote under the same pid.
     custody_token: Option<u64>,
-    /// The verdict of `kill`'s one-shot container reap duty (R2-08-02): a
+    /// The verdict of `kill`'s one-shot container reap duty: a
     /// container-backed entry may only end its table slot and ownership claim
     /// on a *confirmed* `docker rm -f` — a refusing port alone does not prove
     /// the detached container is gone. Process engines never reap and never
@@ -176,7 +176,7 @@ pub struct ProcessRuntime {
     /// lifetime, the same single-authority rule as the claim ledger.
     custody: Arc<Mutex<CustodyLedger>>,
     /// Test seam: per-engine overrides of the rendered-profile staging roots
-    /// (`TASK-BASALT` stage 1 generalized the strata-only root of ruling 19;
+    /// (generalized from a strata-only root;
     /// production always resolves the compiled-in row per launch).
     #[cfg(test)]
     profiles_root_overrides: BTreeMap<&'static str, PathBuf>,
@@ -186,8 +186,8 @@ pub struct ProcessRuntime {
     wsl_user: String,
     /// Test seam: fails the job-object step *after* `command.spawn()` succeeded, so
     /// the post-spawn failure path — the one that must leave no ownership evidence
-    /// behind (FINDINGS2-0910 [3]; since R2-08-04 it never has any, because the
-    /// claim and custody writes happen only after the job seal succeeds) — is
+    /// behind; it never has any, because the
+    /// claim and custody writes happen only after the job seal succeeds — is
     /// reachable without a wedged Win32 API.
     #[cfg(test)]
     fail_job_after_spawn: bool,
@@ -286,7 +286,7 @@ impl ProcessRuntime {
 
     /// Points this runtime's rendered-profile root for `engine` at `path`.
     /// Test-only, the rule [`Self::with_profiles_root`] states, generalized to
-    /// the per-engine roots of `TASK-BASALT` stage 1.
+    /// per-engine roots.
     #[cfg(test)]
     #[must_use]
     pub fn with_rendered_profiles_root(
@@ -542,7 +542,7 @@ impl Default for ProcessRuntime {
 #[async_trait]
 impl EngineRuntime for ProcessRuntime {
     async fn spawn(&self, spec: &LaunchSpec, ticket: SpawnTicket) -> Result<Spawned, SpawnError> {
-        // Template adoption (operator ruling 2026-10-31): a spec carrying a rendered
+        // Template adoption: a spec carrying a rendered
         // script runs THAT, never whatever file argv names — the bytes are staged
         // content-addressed, verified on disk, and the script position in argv is
         // rewritten to the staged path before anything spawns. A failed staging is a
@@ -579,8 +579,7 @@ impl EngineRuntime for ProcessRuntime {
                 })
             }
         };
-        // Rendered-profile mode (operator ruling 2026-11-02 row 19; per-engine
-        // roots in `TASK-BASALT` stage 1): a spec carrying a rendered profile
+        // Rendered-profile mode (per-engine roots): a spec carrying a rendered profile
         // reads THAT file — the bytes stage into the harness's own root for
         // the tag's engine, the placeholder in the `--config` slot is rewritten
         // to the staged absolute path, and the name's content address is
@@ -661,7 +660,7 @@ impl EngineRuntime for ProcessRuntime {
                 reason: format!("cannot create {}: {error}", self.logs_dir.display()),
             });
         }
-        // One forensic naming rule for the whole pool (R2-08-03): the client
+        // One forensic naming rule for the whole pool: the client
         // capture and the container snapshot share one key — `sanitize_slug`,
         // the same slug rule the staged profiles use (`prune_staged_profiles`).
         // `spec.log_name` stays RAW as the custody/instance identity; only the
@@ -687,7 +686,7 @@ impl EngineRuntime for ProcessRuntime {
                 reason: format!("cannot duplicate log handle: {e}"),
             })?)
             .stderr(log_file)
-            // R2-08-04: hidden AND suspended. The primary thread runs no
+            // Hidden AND suspended. The primary thread runs no
             // instruction until the seal below has put this child in its kill
             // job and resumed it, so no engine thread can ever run — and no
             // grandchild ever be born — outside the job.
@@ -704,7 +703,7 @@ impl EngineRuntime for ProcessRuntime {
         let mut child = command.spawn().map_err(|e| SpawnError::SpawnFailed {
             reason: format!("cannot spawn {program}: {e}"),
         })?;
-        // R2-08-04 (the escape window, doctrine: no engine descendant may ever
+        // The escape window (doctrine: no engine descendant may ever
         // escape the job): a grandchild created between `CreateProcess` and
         // `AssignProcessToJobObject` escapes `KILL_ON_JOB_CLOSE` forever, and the
         // claim/custody writes used to sit inside that window and widen it. The
@@ -879,7 +878,7 @@ impl EngineRuntime for ProcessRuntime {
         match action {
             ReapAction::Reap(name) => {
                 let reaped = self.run_reap_duty(&name).await;
-                // R2-08-02: the reap verdict is the evidence `release_confirmed`
+                // The reap verdict is the evidence `release_confirmed`
                 // needs before it may end the claim, so it rides on the entry.
                 // Generation-guarded: a successor that inherited this port
                 // while docker deliberated owns the entry now, and no reap of
@@ -942,7 +941,7 @@ impl EngineRuntime for ProcessRuntime {
         let port_closed = tokio::net::TcpStream::connect(("127.0.0.1", ticket.port))
             .await
             .is_err();
-        // R2-08-01 pin seam (test-only, inert in production): park this task in
+        // Pin seam (test-only, inert in production): park this task in
         // the await gap between reading the verdict and re-judging it under the
         // final table lock — the window this function must survive.
         #[cfg(test)]
@@ -954,11 +953,11 @@ impl EngineRuntime for ProcessRuntime {
             // The verdict above was read under the lock, but the lock was
             // dropped for the TCP await. Two live jobs can poll the SAME victim
             // ticket (the eviction job's victim and a same-slot reload's own
-            // reaper — board REV6-03); a sibling poller that completed its
+            // reaper); a sibling poller that completed its
             // removal in this window lets the Dispose->Spawn gate insert the
             // successor before this line runs. Re-judge under the final lock
-            // (R2-08-01): only the entry still bearing OUR generation may be
-            // removed, and — R2-08-02 — a container entry only on its recorded
+            // only the entry still bearing OUR generation may be
+            // removed, and a container entry only on its recorded
             // reap verdict. The bookkeeping below then uses the REMOVED entry,
             // never a capture from before the gap.
             enum ReleaseOutcome {
@@ -1037,8 +1036,8 @@ impl EngineRuntime for ProcessRuntime {
                     // The custody entry ends with the same evidence, on the
                     // REMOVED entry's own pid and token: token-guarded, so a
                     // release can never erase a later launch's record written
-                    // under the same pid (slice 10b) — and a ticket that
-                    // removed nothing clears nobody's record (R2-08-01).
+                    // under the same pid — and a ticket that
+                    // removed nothing clears nobody's record.
                     self.forget_custody(engine.pid, engine.custody_token);
                     // `engine` drops here: `JobHandle::drop` closes the
                     // handle exactly once.
@@ -1056,7 +1055,7 @@ impl EngineRuntime for ProcessRuntime {
                     return Ok(true);
                 }
                 ReleaseOutcome::ReapUnconfirmed(container) => {
-                    // R2-08-02: for a detached container the client's exit and
+                    // For a detached container the client's exit and
                     // a refusing port prove nothing about the container itself
                     // — `kill`'s `docker rm -f` is that evidence, and it
                     // failed. Stay unconfirmed: the release timeout keeps the
@@ -1087,7 +1086,7 @@ impl EngineRuntime for ProcessRuntime {
         // loopback GET, JSON in, `None` for any failure. Engine-blind by
         // contract — the per-engine parse lives in the adapter and the
         // sampler decides what absence means (witness fallback, never a
-        // guess; TASK-ENGINE-MEASUREMENT ORCHESTRATION §1).
+        // guess).
         let url = format!("http://127.0.0.1:{port}{path}");
         let response = self.client.get(&url).send().await.ok()?;
         response.json::<serde_json::Value>().await.ok()
@@ -1188,7 +1187,7 @@ impl EngineRuntime for ProcessRuntime {
             return;
         }
         // One naming rule, the same `sanitize_slug` the capture mint uses at
-        // `spawn` and the staged profiles use (R2-08-03): adapters hand
+        // `spawn` and the staged profiles use: adapters hand
         // `log_name` RAW as the instance identity, so BOTH forensic classes are
         // keyed under the sanitized stem and one per-model keep-N bounds the
         // pair. Names that sanitize identically share one pool by design, the

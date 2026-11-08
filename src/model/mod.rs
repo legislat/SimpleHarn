@@ -94,8 +94,8 @@ pub enum CostClass {
 }
 
 /// The VRAM admission gate one row selects with
-/// `launch_only_with_at_least_vram_free:` — one key, two value shapes
-/// (operator ruling 2026-11-04). A number is the launch floor in GiB:
+/// `launch_only_with_at_least_vram_free:` — one key, two value shapes.
+/// A number is the launch floor in GiB:
 /// the load is refused before spawn unless free VRAM reaches it. The keyword
 /// `whole` (any case) selects the whole-machine gate: the row is admitted
 /// only while the card is fully free; the request waits and never evicts to
@@ -179,8 +179,7 @@ pub enum MeasuredAttribution {
     EngineReport,
     /// The process engine's own status endpoint stated the footprint (basalt
     /// `/v1/status`, strata `/status`): the process-engine analog of
-    /// `EngineReport` and it books, above the declared value as max truth
-    /// (`TASK-ENGINE-MEASUREMENT`, operator ruling 2026-11-04). A
+    /// `EngineReport` and it books, above the declared value as max truth. A
     /// process-engine source: bound to no ninfer profile, so it is valid
     /// without a profile stamp and voids on a ninfer row.
     EngineStatus,
@@ -246,7 +245,7 @@ pub struct ModelEntry {
     /// GGUF-size formula.
     pub vram_gb: Option<f64>,
     /// Declared host-RAM footprint in GiB (`ram_gb:`) — the booking figure
-    /// for a CPU-resident row (operator ruling 2026-11-05). Booking-
+    /// for a CPU-resident row. Booking-
     /// relevant only for rows whose [`Self::resource`] is [`Resource::Ram`];
     /// on any other row it is inert, and it never changes a VRAM booking.
     pub ram_gb: Option<f64>,
@@ -271,7 +270,7 @@ pub struct ModelEntry {
     /// evict this model from another model's request until it has served this
     /// long; `None` means no guard. A same-slot request never consults it. A
     /// measured swap runs 14-45 s, so a fresh holder must earn its eviction cost
-    /// (A-B-A-B ping-pong guard, operator ruling 2026-11-04).
+    /// (the A-B-A-B ping-pong guard).
     pub min_turn_s: Option<u64>,
     /// High end of the engine footprint measured by the harness while this model
     /// served (`measured_gb:`, written back after Install; see
@@ -323,8 +322,7 @@ pub struct ModelEntry {
     /// Informational for managed models; used for stem/path aliases (Step 10).
     pub model_ref: Option<String>,
     /// The id the yaml claims the engine reports (`serve_model:`); verified by
-    /// discovery at readiness — a mismatch is a recorded warning, never trusted
-    /// (F-4 fix, Step 10).
+    /// discovery at readiness — a mismatch is a recorded warning, never trusted.
     pub serve_model: Option<String>,
     /// The R11 Fit projection in GiB — the engine's own pre-spawn word from
     /// `llama-fit-params --fit-print on` (rule 2026-11-01). **In-process
@@ -353,9 +351,9 @@ pub(crate) fn truthy(value: &str) -> bool {
 }
 
 /// The moved-or-not answer for one file: the pair a reload compares against what a
-/// load queued on. Reload-drift Axis 1 (operator ruling 2026-10-29) captures it at
-/// row registration and re-stats when a rescan lands; Axis 2 (the `stale_config`
-/// companion round) reuses the same primitive at spawn. Typed on purpose: one
+/// load queued on. Reload-drift captures it at row registration and re-stats when
+/// a rescan lands; the `stale_config` companion round reuses the same primitive at
+/// spawn. Typed on purpose: one
 /// helper, no stringly timestamps on the job rows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileFingerprint {
@@ -476,8 +474,8 @@ pub fn scan_fingerprint(yaml: &Path, model_ref: &str) -> Option<FileFingerprint>
 }
 
 /// Renders a wall-clock instant as the fixed-width UTC second form the page prints
-/// verbatim (`2026-10-29T03:55:12Z`, Axis-2 ruling 2026-10-29: the server owns the
-/// format, no date math in the browser — the K-round page-must-not-derive rule, and
+/// verbatim (like `2026-10-29T03:55:12Z`): the server owns the format, no date
+/// math in the browser (the page-must-not-derive rule), and
 /// fixed-width UTC also sorts lexicographically by time, which `/har/models`' merge
 /// relies on). Civil date from days via Hinnant's `civil_from_days`; sub-second is
 /// truncated, which is what a launch stamp means to an operator. An instant before
@@ -627,7 +625,7 @@ fn read_measured(engine: &str, keys: &BTreeMap<String, String>) -> Result<Measur
     // row claiming per_process is the same impossibility seen from the other
     // side (a container has no harness child), and so is one claiming
     // engine_status: the harness reads `ninfer` through `docker logs`, never
-    // through a status endpoint (ruling 2026-11-04: `EngineReport` => !ninfer
+    // through a status endpoint (`EngineReport` => !ninfer
     // keeps, `EngineStatus` => ninfer voids — it is a process-engine source).
     // The profile-comparability leg above never fires for an `engine_status`
     // figure: the profile identity is ninfer's alone (ORCHESTRATION §2), so a
@@ -883,12 +881,12 @@ impl ModelEntry {
     /// Whether the engine's own guarded report outranks the declared `vram_gb`:
     /// the container certified reserving MORE than the operator declared, and
     /// `read_measured` still certifies the report against the current profile
-    /// stamp; since the 2026-11-04 ruling the same max truth covers a process
+    /// stamp; the same max truth also covers a process
     /// engine's guarded `engine_status` figure (its own status endpoint spoke,
     /// and `read_measured` keeps it off ninfer rows), no profile stamp being
-    /// demanded there. Operator ruling 2026-11-01 (amends the declared-always-wins
-    /// leg of the 2026-10-30 R9 design): the booking is the max truth — what
-    /// admission must keep free is what the engine actually holds. A declared
+    /// demanded there. The booking is the max truth, superseding the earlier
+    /// declared-always-wins leg: what admission must keep free is what the
+    /// engine actually holds. A declared
     /// value at or above the report stays the operator's chosen floor. The name
     /// predates the extension (`DECISIONS` 2026-11-01 records it); it now answers
     /// for both engine-spoken report provenances.
@@ -1097,7 +1095,7 @@ impl ModelEntry {
             }
             None => None,
         };
-        // The RAM twin of `vram_gb` (operator ruling 2026-11-05): parsed by the
+        // The RAM twin of `vram_gb`: parsed by the
         // one GiB parser like every size-valued key, and a declared 0 is refused
         // for the same reason — a footprint no model has. Booking reads it only
         // through [`Self::resource`] == Ram; on a GPU row it stays inert config
@@ -1239,7 +1237,7 @@ impl ModelEntry {
             // so a copied-back v3.3 yaml cannot keep advertising a meaning nothing has,
             // and cannot resurrect it through the raw passthrough on write-back. The
             // forensic `bak:` key joins `external` in never reaching the raw map
-            // (operator ruling 2026-10-28, "forensic manual only"): its value can
+            // (forensic-manual-only): its value can
             // neither surface on the page nor be re-emitted by write-back. The
             // operator's file bytes are left alone — only the parsed entry drops it.
             // R11's `fit_gb:` drops for the same reason run deeper: the figure is
@@ -1279,7 +1277,7 @@ mod tests {
         assert_eq!(entry.model_ref.as_deref(), Some("F:/m.gguf"));
     }
 
-    /// The v3.3 boolean truth table pinned in its own home (R2-12-01): the four
+    /// The boolean truth table pinned in its own home: the four
     /// accepted words hold under ASCII case mixing and surrounding whitespace,
     /// and everything else — `0`/`false`/`no`/`off`, mixed-case negatives, empty,
     /// blank, inner whitespace, arbitrary text — reads false, never a guess.
@@ -1305,7 +1303,7 @@ mod tests {
         }
     }
 
-    /// The RAM twin of the GiB-key pins (operator ruling 2026-11-05): the
+    /// The RAM twin of the GiB-key pins: the
     /// one parser accepts a plain size and refuses a non-positive or
     /// nonsense figure naming `ram_gb` — `nan`/`inf`/`1e400` included, or
     /// every gate comparison against it would be false and read as "fits".
@@ -1325,7 +1323,7 @@ mod tests {
         }
     }
 
-    /// The `cpu_resident` composition (operator ruling 2026-11-05): the knob
+    /// The `cpu_resident` composition: the knob
     /// table answers *whether the engine reads the key*, `jinja_on` answers
     /// whether the row's value is truthy — the engine's case-SENSITIVE set
     /// (`true`|`1`|`on`), NOT the generic `truthy`. `mock` impersonates
@@ -1453,7 +1451,7 @@ mod tests {
         );
     }
 
-    /// The server-owned format of the launch stamp (Axis 2, ruling 2026-10-29):
+    /// The server-owned format of the launch stamp:
     /// the page prints these bytes verbatim, so fixed-width fields, UTC, second
     /// truncation and the leap/century boundaries are all this side's contract.
     /// The vectors were generated against an independent oracle
@@ -1686,9 +1684,9 @@ mod tests {
         );
     }
 
-    /// Ruling 2026-11-04 (`TASK-ENGINE-MEASUREMENT`): a process engine's own
+    /// A process engine's own
     /// status figure above the declared `vram_gb` books instead of it — the same
-    /// amended-15(ii) max truth as the container's reservation. The live case:
+    /// max truth as the container's reservation. The live case:
     /// Basalt declared 65, measured 67.4, and the stale declaration refused the
     /// readmission the evidence recorded.
     #[test]
@@ -1730,7 +1728,7 @@ mod tests {
         );
     }
 
-    /// Ruling 2026-11-04: the profile stamp stays ninfer-only, so an
+    /// The profile stamp stays ninfer-only, so an
     /// `engine_status` figure is VALID without one — no profile key may void
     /// what never had a profile to compare against.
     #[test]
@@ -1755,7 +1753,7 @@ mod tests {
         assert_eq!(kept.measured_profile, None);
     }
 
-    /// Ruling 2026-11-04: an `engine_status` stamp describes a process engine's
+    /// An `engine_status` stamp describes a process engine's
     /// status endpoint, so an `engine:` flip onto the container engine voids the
     /// figure the same way `engine_report` voids when flipped OFF it — the
     /// stamp survives the void as evidence of how the figure was taken.
@@ -1789,7 +1787,7 @@ mod tests {
         );
     }
 
-    /// Ruling 2026-11-04: `exact` demands a real source, and the engine's own
+    /// `exact` demands a real source, and the engine's own
     /// status answer is one (`self_reported`); a `total_diff` stand-in on the
     /// very same row stays refused — provenance decides, never the number.
     #[test]
@@ -1973,7 +1971,7 @@ mod tests {
         }
     }
 
-    /// M1 (`TASK-CPU-LLAMA-EVICTION` W2 step 3): the RAM pair reader obeys the
+    /// The RAM pair reader obeys the
     /// same shape rules as its VRAM twin — a lone low end, an inverted pair,
     /// and a sub-quantum figure are all refused; a clean pair lands on the new
     /// fields and nowhere else. Falsifier: dropping the orphan/inverted/quantum
@@ -2313,7 +2311,7 @@ mod tests {
             );
         }
         // A declared value at or above the report is the operator's floor and
-        // stands (ruling 2026-11-01 amends only the OVERSHADOWED leg below).
+        // stands (only the OVERSHADOWED leg below is amended).
         let declared_wins = ModelEntry::from_flat(
             &flat(&[
                 ("name", "m"),
@@ -2332,7 +2330,7 @@ mod tests {
             CostSource::Declared,
             "a report smaller than the declared floor must not shrink the booking"
         );
-        // The amendment (operator ruling 2026-11-01): a guarded engine_report that
+        // The amendment: a guarded engine_report that
         // EXCEEDS the declared value books — admission must keep free what the
         // container itself reserved. Only the engine's own word, still certified by
         // its profile stamp, gets to overshadow; a witness `per_process` figure
@@ -2411,7 +2409,7 @@ mod tests {
 
     #[test]
     fn reserved_silent_bak_key_is_skipped_from_the_raw_map() {
-        // `bak:` is forensic-manual-only (operator ruling 2026-10-28): stripped
+        // `bak:` is forensic-manual-only: stripped
         // from the parsed raw map like the retired `external`, so its value can
         // never reach the page or be re-emitted by write-back. Every other key
         // still passes through.
@@ -2628,7 +2626,7 @@ mod tests {
         assert_eq!(full.cost_source(), CostSource::Declared);
     }
 
-    /// The `whole` keyword of the same key (operator ruling 2026-11-04):
+    /// The `whole` keyword of the same key:
     /// case-insensitive, whitespace-tolerant, and the raw map keeps the
     /// verbatim line so write-back never rewrites the operator's bytes
     /// (the same round-trip leg `min_turn_parses_and_bounds` pins). A value

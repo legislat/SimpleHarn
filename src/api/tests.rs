@@ -603,7 +603,7 @@ fn error_body_renders_the_wait_hint_as_flat_fields_only() {
     assert!(body.get("expected_release_s").is_none(), "{body}");
 }
 
-/// The `whole` refusal's wire shape (ruling 2026-11-04): it rides the
+/// The `whole` refusal's wire shape: it rides the
 /// existing `unavailable` wait posture — no new code, no `min_free`
 /// figure — and the B2 hint fields behave exactly as on `Insufficient`.
 /// Falsifier: map it to `below_launch_floor` instead and the code pin
@@ -761,7 +761,7 @@ fn scheduler_errors_map_to_typed_statuses() {
 }
 
 /// The RAM refusal is a plain over-commit wait on its own resource
-/// (operator ruling 2026-11-05): `unavailable` (503), the numbers in
+/// (over-commit on host RAM): `unavailable` (503), the numbers in
 /// the message, the decision's wait hint on the typed error — the same
 /// shape `Insufficient` has, judged on host RAM.
 #[test]
@@ -868,7 +868,7 @@ async fn the_state_pump_builds_once_and_publishes_to_every_subscriber() {
     );
 }
 
-/// Axis 2 (ruling 2026-10-29): the loaded row's two new facts are server-computed
+/// The loaded row's two new facts are server-computed
 /// and **absent when not loaded** (never null — not-loaded is a state, not an
 /// empty value), and the same-name merge is honest: earliest launch (fixed-width
 /// UTC ISO sorts as it compares), any-of stale. Falsifier: emitting nulls for
@@ -1199,7 +1199,7 @@ async fn status_document_carries_stranded_containers_only_when_reported() {
     );
 }
 
-/// Operator ruling 2026-11-05: every `/har/status` category row carries an
+/// Every `/har/status` category row carries an
 /// additive `label` — the trimmed `label`, or the id when it is absent or
 /// blank — always present, beside the unchanged `id` and every pre-existing
 /// key. The label is display-only; the id stays the wire vocabulary.
@@ -1796,8 +1796,7 @@ const CAPTURE_WARM_UP_ATTEMPTS: usize = 8;
 ///
 /// Guard-reporting pins no longer call this by hand: `guard_capture_session`
 /// performs the warm-up as part of installing the capture, so subscribing
-/// without warming is not a shape a guard pin can write
-/// (TASK-TRAP-RETIREMENT T3, D9 retired structurally).
+/// without warming is not a shape a guard pin can write.
 async fn warm_capture_lines<F, Fut>(wanted: &[&'static str], mut emit: F)
 where
     F: FnMut() -> Fut,
@@ -1843,8 +1842,7 @@ fn warm_state(token: Option<&str>) -> Arc<ApiState> {
 /// `Fold` arms and `note_guard_recovery`'s summary. No guard pin calls this by
 /// hand anymore: [`guard_capture_session`] warms through this before it
 /// subscribes, so the structural install — pinned by
-/// `the_guard_capture_install_warms_before_it_subscribes` — is the guarantee
-/// (D9, retired structurally by TASK-TRAP-RETIREMENT T3).
+/// `the_guard_capture_install_warms_before_it_subscribes` — is the guarantee.
 async fn warm_guard_reporting_callsites() {
     warm_capture_lines(
         &[
@@ -1894,8 +1892,7 @@ async fn warm_guard_reporting_callsites() {
 /// `Session::start` after — a current-thread runtime keeps polling the future
 /// here), and the warm-up is idempotent: each run uses a fresh throwaway
 /// state, so it never spends the budget or fold tallies a pin measures.
-/// Subscribing without warming is thereby not expressible for guard pins
-/// (D9 retired structurally, TASK-TRAP-RETIREMENT T3);
+/// Subscribing without warming is thereby not expressible for guard pins;
 /// `the_guard_capture_install_warms_before_it_subscribes` pins the order and
 /// `a_guard_capture_installs_warmed_with_no_by_hand_warm_up` shows the line
 /// arriving in a capture that warmed nothing itself.
@@ -1980,15 +1977,15 @@ async fn a_refused_token_is_counted_once_and_never_carries_the_token() {
     );
 }
 
-/// TASK-TRAP-RETIREMENT T3: the observable property of the structural install.
-/// This pin names no warm-up yet still sees the guard line after the D9
-/// hazard is re-created on purpose: one refusal is reported with no capture
+/// The observable property of the structural install.
+/// This pin names no warm-up yet still sees the guard line after the
+/// capture-less first-touch hazard is re-created on purpose: one refusal is reported with no capture
 /// installed on this thread (the capture-less first touch of the original
 /// flake), and only then does [`guard_capture_session`] subscribe. What makes
 /// it red: a tracing-core regression that revives the swallow — a first touch
 /// with no subscriber caching an interest no later capture can undo. As
-/// measured on the locked deps (tracing-core 0.1.36, tracing-subscriber
-/// 0.3.23, scratch binary plus this pin under the dropped-warm falsifier) the
+/// measured on the locked tracing dependencies (scratch binary plus this pin
+/// under the dropped-warm falsifier) the
 /// current version no longer swallows in any shape a test can reach, so
 /// deleting the warm from `guard_capture_session` passes this pin; the order
 /// itself is falsified by `the_guard_capture_install_warms_before_it_subscribes`,
@@ -2028,12 +2025,11 @@ async fn a_guard_capture_installs_warmed_with_no_by_hand_warm_up() {
     );
 }
 
-/// TASK-TRAP-RETIREMENT T3: the behavioral pin above can only watch the order
+/// The behavioral pin above can only watch the order
 /// it is run in, so the order itself is pinned at the source (the repo's
 /// established `include_str!` seam): inside `guard_capture_session`'s body the
 /// warm-up token must appear before the subscribe token. Comments are stripped
-/// before the match, so prose cannot satisfy the order
-/// (FINDINGS-BATCH-2026-10-28C [5] discipline). Falsifier: move
+/// before the match, so prose cannot satisfy the order. Falsifier: move
 /// `Session::start()` above the warm-up and the order assert fires; delete the
 /// warm-up call and the expect fires. A guard pin that bypasses the helper is
 /// caught here the same way once it warms inside its own install, or leaves
@@ -2293,12 +2289,12 @@ async fn a_distinct_path_flood_costs_a_constant_number_of_lines() {
     );
 }
 
-/// R2-05-01: the window re-armed on ANY unauthenticated success, and every
+/// The guard window re-armed on ANY unauthenticated success, and every
 /// `PUBLIC_PATHS` member answers 200 without a token in both postures — so an attacker
 /// alternating refused POSTs with free `GET /` packets got one `guard refused`
 /// line plus one `guard refusals cleared` line per two packets, turning the ring
 /// over at request rate: the exact eviction flood the cardinality cap
-/// (FINDINGS-BATCH-2026-10-28M [2]) was built to end. A page or asset is not a
+/// was built to end. A page or asset is not a
 /// command. Falsifier: drop the `PUBLIC_PATHS` leg of the guard's re-arm
 /// condition and the origin-line count fails with one line per packet, the
 /// fold tally never accumulates, and the no-cleared-lines leg fails with a
@@ -2429,7 +2425,7 @@ fn captured_reason(line: &str) -> &str {
     &rest[..end]
 }
 
-/// R2-05-02: the logged refusal `reason` embedded the attacker's own path,
+/// The logged refusal `reason` embedded the attacker's own path,
 /// `Host` or `Origin` at full size — hyper's head bound alone lets one request
 /// carry ~408 KiB of them into each of the 500 ring lines — while the
 /// `GUARD_TRACKED_PATH_CHARS` doc says the line and the key are capped
@@ -2606,16 +2602,16 @@ async fn structural_refusals_are_answered_before_the_token_is_consulted() {
     );
 }
 
-/// FINDINGS-05 [4] + FINDINGS-16 N[1]/N[2]: the Host gate must be exactly as
-/// tight as its doc. The authority/port split is pinned directly (brackets
-/// required for IPv6, unparseable ports refused), and the gate accepts IP
-/// literals that are loopback — or any address on the only non-loopback bind
-/// boot validation allows (`0.0.0.0`) — plus `localhost`, each only on one of
-/// the harness's own configured ports. Pre-batch every IP literal passed
-/// (`203.0.113.9`, `0.0.0.0`) and `rsplit_once(':')` threw the port away, so
-/// the routable-address and wrong-port legs read red against it; the
-/// publish-bind accept leg reads red against the dead equality-against-
-/// `internal_host` leg the batch shipped (FINDINGS-16 N[1]).
+/// The Host gate must be exactly as tight as its doc. The authority/port split
+/// is pinned directly (brackets required for IPv6, unparseable ports refused),
+/// and the gate accepts IP literals that are loopback — or any address on the
+/// only non-loopback bind boot validation allows (`0.0.0.0`, the wildcard
+/// bind) — plus `localhost`, each only on one of the harness's own configured
+/// ports. Before the fix every IP literal passed, including a routable
+/// test-net address and the wildcard bind, and `rsplit_once(':')` threw the
+/// port away, so the routable-address and wrong-port legs read red against it;
+/// the publish-bind accept leg read red against the dead equality-against-
+/// `internal_host` check that shipped first.
 #[test]
 fn the_host_gate_accepts_loopback_published_binds_and_our_own_ports() {
     for (host, authority, port) in [
@@ -2771,7 +2767,7 @@ fn the_token_wall_is_constant_time_and_scheme_case_insensitive() {
     );
 }
 
-/// TASK-NAMING-CLEANUP pin (c, wiring half): the guard's only env read is
+/// Pin (wiring half): the guard's only env read is
 /// `crate::config::token_from_env` — the single `SIMPLEHARN_TOKEN` name is
 /// pinned in `config`; a direct `std::env::var` here would drift from the
 /// centralized reader while the guard stays green. Falsifier: revert this line
@@ -2796,7 +2792,7 @@ fn the_control_token_reads_env_only_through_the_centralized_reader() {
     );
 }
 
-/// TASK-NAMING-CLEANUP pin (b, gated-route half): the old token name grants
+/// Pin (gated-route half): the old token name grants
 /// nothing. The harness is configured with a file token while the legacy
 /// variable carries a sentinel; the sentinel must NOT be the credential the
 /// gate honours (401), and the file token must keep working beside it (200).
@@ -3010,7 +3006,7 @@ async fn client_request_ids_are_capped_and_sanitized_before_echo_and_log() {
 /// checked; or replace the comparison with an always-true `Ok(_) => Ok(())` and the
 /// same leg fails while every other pin stays green — which is exactly the
 /// rubber-stamp the seam used to be unable to detect. The leg's outcome is
-/// `LandedUnverified` with the verdict of the LANDED bytes (R2-07-02): the rename
+/// `LandedUnverified` with the verdict of the LANDED bytes: the rename
 /// succeeded, so the live file holds them and `/har/status` must describe them.
 #[test]
 fn config_persistence_is_answered_only_after_the_bytes_read_back() {
@@ -3117,9 +3113,9 @@ fn config_persistence_is_answered_only_after_the_bytes_read_back() {
     );
 }
 
-/// R2-07-01 flush-before-publish tripwire — **a pin by inspection, not a
+/// The flush-before-publish tripwire — **a pin by inspection, not a
 /// power-loss falsifier** (the same honesty label `model::writeback` puts on
-/// its own tripwire: a crash rig is card-window material, FINDINGS-07 [1]).
+/// its own tripwire: a crash rig is card-window material).
 /// What it holds is the shape the durability line is made of:
 /// [`persist_default_model`] — the only runtime writer of the file the harness
 /// re-reads at boot under `deny_unknown_fields` — publishes its temp and its
@@ -3255,7 +3251,7 @@ fn a_swap_that_names_no_port_is_refused_rather_than_forwarded_to_zero() {
     );
 }
 
-/// "Reads never wake" as a table (operator ruling 2026-11-04, Variant A):
+/// "Reads never wake" as a table:
 /// `wakes_slot` answers `true` for exactly the three inference POSTs and
 /// `false` for every other method/path pair the listeners and a curious
 /// client can produce — reads, admin routes, and non-POST variants of the
@@ -3658,7 +3654,7 @@ async fn timeout_of_a_live_engine_never_restarts() {
 
 #[test]
 fn timeout_precedes_connect_when_both_flags_are_true() {
-    // R2-18-06 falsifier: the both-true row is RED under the old
+    // Falsifier: the both-true row is RED under the old
     // connect-first order. The table pins the decision on the flags alone.
     assert_eq!(
         classify_send_failure_flags(false, false),
@@ -3902,7 +3898,7 @@ fn a_landed_write_back_validates_the_published_boot_file_per_field() {
     );
 }
 
-/// Ruling 2026-11-05: `label` is a KNOWN key of a category entry, so the
+/// `label` is a KNOWN key of a category entry, so the
 /// read-patch-write that persists a page `Default` edit carries it through as
 /// `Value` passthrough and the landed tree still parses clean — while an
 /// unknown key next to it keeps warning exactly as FINDINGS-07 [11] pinned.
@@ -4078,7 +4074,7 @@ async fn a_write_back_that_lands_a_boot_invalid_file_names_it_in_config_errors()
     );
 }
 
-/// R2-07-02 end-to-end: the test arm lands a rename whose read-back refuses the
+/// End-to-end: the test arm lands a rename whose read-back refuses the
 /// tree, so the live boot file holds bytes nobody validated. `/har/status`
 /// `config_errors` must then describe THOSE bytes — the same authority a
 /// successful write-back's verdict has — because the previous (empty) verdict
@@ -4151,10 +4147,10 @@ async fn a_landed_but_unverified_write_restates_the_recorded_config_verdict() {
     );
 }
 
-/// FR-05: a `limit` the handler cannot parse is a request-shape refusal —
+/// A `limit` the handler cannot parse is a request-shape refusal —
 /// `400 bad_request` in the project dual envelope (flat + OpenAI `error`),
 /// never the default-100 the old `.ok()` silently swallowed it into, and
-/// never axum text/plain (R2-05-03's envelope rule). The malformed legs:
+/// never axum text/plain (the project envelope rule). The malformed legs:
 /// `abc`, empty, negative. Falsifiers: restore `.parse().ok().unwrap_or(100)`
 /// and the 400 legs answer 200; answer `text/plain` and the content-type and
 /// envelope legs fail; the `%zz` leg (no `limit` key at all) must STAY 200 —
@@ -4209,7 +4205,7 @@ async fn a_malformed_log_limit_answers_400_in_the_project_envelope() {
         }
     }
     // The lenient-decode legs that are NOT limit errors stay inside the ring
-    // document (the R2-05-03 posture for inputs without a `limit` key).
+    // document (the envelope posture for inputs without a `limit` key).
     let response = control_router(api)
         .oneshot(
             Request::get("/har/log?%zz")

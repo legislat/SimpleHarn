@@ -1938,8 +1938,7 @@ fn scripted_sample(processes: Vec<(u32, f64)>) -> ScriptedWitness {
     })
 }
 
-/// Phase-1 pin, kept honest by the metric parse (`TASK-ENGINE-MEASUREMENT`,
-/// ORCHESTRATION §3): the fake metrics server answers with a body the
+/// Pin, kept honest by the metric parse: the fake metrics server answers with a body the
 /// Basalt parse MUST refuse — `vram` is a scalar riding a foreign
 /// wrapper, and the parse requires `engine.expert_cache_mib` from the
 /// captured `/metrics` engine block (pinned in
@@ -2098,7 +2097,7 @@ async fn the_tree_fallback_sums_the_engine_and_its_direct_children() {
     );
 }
 
-/// Ruling 2026-11-04 (`TASK-ENGINE-MEASUREMENT`): a process engine's
+/// A process engine's
 /// `EngineStatus` figure books with `EngineReport`-class trust — it REPLACES
 /// the spawn's persisted range (no averaging: a status figure is static for
 /// the launch) and, as max truth, overrides the declared `vram_gb` it
@@ -2689,7 +2688,7 @@ async fn a_vanished_row_fails_the_fold_closed_and_retires_the_sampler() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The Axis 1 predicate table (ruling 2026-10-29), including the
+/// The fingerprint-change predicate table, including the
 /// unreadable-stat windows the actor path cannot race into existence
 /// deterministically (the scan that publishes the bytes rides the same read
 /// the stat does), so the `None` legs are manufactured here directly: a
@@ -2996,7 +2995,7 @@ fn the_yaml_fingerprint_alone_ambers_the_resident_on_a_changed_row() {
     );
 }
 
-/// Axis 2 = B (ruling 2026-10-29), reload leg: an edit only ambers when a rescan
+/// Reload leg: an edit only ambers when a rescan
 /// lands — between the edit and the rescan the status path must not notice
 /// (one-stat-per-event: the snapshot never stats). Falsifier: removing
 /// `refresh_stale_markers` from `apply_catalog` fails the amber assert; moving
@@ -3198,8 +3197,8 @@ fn the_harness_own_write_rebaselines_a_clean_resident_captured_spawn_side() {
 }
 
 // ---------------------------------------------------------------------
-// Phase 4 (`TASK-ENGINE-MEASUREMENT`): the booking policy that removes
-// the 2026-11-04 manual-reload trap. Two seams: a process measurement
+// The booking policy that removes
+// the manual-reload trap. Two seams: a process measurement
 // that folds re-books its slot occupant, and a rescan that moved ONLY
 // cost figures re-books (or invalidates) the resident without a reload.
 // ---------------------------------------------------------------------
@@ -4247,7 +4246,7 @@ async fn a_rebooked_row_lets_the_strata_replacement_in_without_touching_the_resi
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// T5 (the greedy resident, `TASK-BASALT-GREEDY` phase 4): a `cost: greedy`
+/// The greedy resident: a `cost: greedy`
 /// Basalt occupant holds the card (70.4) while its booking stays the room
 /// it grabbed at admit (50) - a measured pair may never re-book a greedy
 /// row (DOCTRINE 12), so this stale-looking credit is the honest one. A
@@ -4339,7 +4338,7 @@ async fn a_greedy_basalt_resident_credits_only_its_room_at_admit() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// T6-a (TASK-GREEDY-SWAP-CREDIT, the field falsifier of 2026-11-06): a greedy
+/// The greedy swap-credit falsifier: a greedy
 /// Strata books its nominal 12.0 while ITS OWN spawn's fold witnessed 68.4 GiB
 /// on the card (driven here through the real `fold` entry with a Vram FoldPlan
 /// for the installed ticket). The card holds 71.1 of the helper's 72 GiB
@@ -4892,7 +4891,7 @@ fn a_stale_reap_target_does_not_abort_the_rest() {
     );
 }
 
-// --- R2-02-02 option B: the one bounded late-release watch ---------------------
+// --- The one bounded late-release watch ---------------------
 
 /// Whether the late-release watch has spent its bound. The boundary is the whole
 /// contract (option B: one `release_timeout_s`, never a second unbounded task), so
@@ -4979,14 +4978,14 @@ enum LateAnswer {
 }
 
 /// Which terminalizing arm a pin drives: the failure funnel's `Failed` or a
-/// cancel's `CancelRequested` — the two arms R2-02-02 names.
+/// cancel's `CancelRequested` — the two terminalizing arms.
 #[derive(Clone, Copy)]
 enum Arm {
     Failed,
     CancelRequested,
 }
 
-/// Test double for the R2-02-02 late-release watch. `kill` is recorded and answers
+/// Test double for the bounded late-release watch. `kill` is recorded and answers
 /// `Ok` (the terminate was issued); `release_confirmed` answers `false` while the
 /// job's own reap window runs — the state that produces the unconfirmed terminal —
 /// and then exactly what the test scripts for the late window. Every answer is
@@ -5211,7 +5210,7 @@ fn seat_spawn_row(
     job_id
 }
 
-/// The R2-02-02 shape: a `Ready` load row that owns a spawn while its slot holds NO
+/// The late-release watch shape: a `Ready` load row that owns a spawn while its slot holds NO
 /// occupant — the engine started, readiness never landed, so nothing was installed
 /// and the slot reads empty while the ticket is still live.
 fn uninstalled_spawn_row(state: &mut ActorState, name: &str, ticket: &SpawnTicket) -> JobId {
@@ -5294,7 +5293,7 @@ async fn drive_to_unproven_terminal(
 }
 
 /// Waits for the detached watch to record its polls — the only honest seam to a
-/// task the actor does not own (that is the point of R2-02-02 option B).
+/// task the actor does not own (that is the point of the bounded late-release watch).
 async fn await_late_polls(
     runtime: &LateWatchRuntime,
     want: impl Fn(usize) -> bool,
@@ -5376,7 +5375,7 @@ async fn every_late_release_wording_is_warmed_and_delivered() {
 /// release terminalizes as it always did, and its ticket gets exactly one bounded
 /// late watch that records the confirmation the reap missed and says so once.
 /// Falsifier: drop the hook from the `Failed` arm and the late-window poll count
-/// stays 0 (the R2-02-02 silent case); re-kill in the watch and the kill count is 2.
+/// stays 0 (the silent-watch case); re-kill in the watch and the kill count is 2.
 #[tokio::test]
 async fn a_failure_the_reap_could_not_prove_watches_its_ticket_late() {
     let capture = install_warn_capture();
@@ -5560,11 +5559,11 @@ async fn a_cancel_of_an_installed_occupant_arms_no_late_watch() {
     }
 }
 
-/// The other half of the REV8-01 scope: an occupant that is NOT this ticket — a
+/// The other half of the watch scope: an occupant that is NOT this ticket — a
 /// restart's predecessor still installed while its replacement died — must not blind
 /// the watch. The engine the slot reports is a different spawn; this orphan is still
 /// nobody's to reap. Falsifier: blind the watch on ANY occupant and the late poll
-/// count here stays 0, which is the R2-02-02 silence again.
+/// count here stays 0, which is the silent-watch case again.
 #[tokio::test]
 async fn a_slot_holding_another_generation_still_arms_the_late_watch() {
     let capture = install_warn_capture();
@@ -5989,8 +5988,8 @@ async fn a_floor_no_release_can_reach_refuses_before_the_victim_dies() {
 }
 
 /// The other half: the guard guards the FLOOR only. A `need`-short swap with a
-/// same-slot victim still takes the release-first path (ruling 2026-11-01,
-/// REVISABLE): the settle window re-gates it against the physical card.
+/// same-slot victim still takes the release-first path: the settle window
+/// re-gates it against the physical card.
 #[tokio::test]
 async fn a_need_short_swap_still_takes_the_release_first_path() {
     let dir = crate::testutil::temp_dir("r10-release-first");
@@ -6319,7 +6318,7 @@ fn the_admission_path_log_line_names_the_rung_field() {
     );
 }
 
-/// A `whole` row (operator ruling 2026-11-04): admits on a fully-free
+/// A `whole` row admits on a fully-free
 /// card — here the card holds exactly the driver baseline and that
 /// baseline sits inside the reserve band, so the credited reading reaches
 /// the whole budget minus the reserve (68 = 72 - 2 * 2). The settle twin
@@ -6390,7 +6389,7 @@ async fn a_whole_row_admits_on_a_fully_free_card() {
     );
 }
 
-/// The wait posture (operator ruling 2026-11-04): any other holder and
+/// The wait posture: any other holder and
 /// the `whole` row refuses, naming it with the reason
 /// "whole machine requested" — and evicts nothing: no victim was planned
 /// (the planner is never asked on this path), no unload job is minted,
@@ -6576,8 +6575,8 @@ async fn a_whole_row_waits_for_every_other_holder_and_evicts_nothing() {
     );
 }
 
-/// The pinned same-slot behavior (operator ruling 2026-11-04, decided
-/// for B5): an explicit same-slot load of a `whole` row IS a replacement
+/// The pinned same-slot behavior: an explicit same-slot load of a `whole` row
+/// IS a replacement
 /// of its own slot's occupant — the request named that target, and the
 /// occupant is never an eviction "to get there". It admits when the rest
 /// of the card is free; the moment ANY other slot holds something the
@@ -6724,7 +6723,7 @@ async fn a_whole_row_replaces_its_own_slot_and_waits_for_the_rest() {
 }
 
 /// `whole` on a greedy row is legal and REPLACES the greedy floor leg
-/// (ruling 2026-11-04, documented in MODELS.md): the global
+/// (documented in MODELS.md): the global
 /// `greedy_launch_min_free_gb` never applies to it. Leg 1 pins the
 /// stricter verdict that replacement buys — a driver baseline above the
 /// reserve denies the launch although the numeric greedy floor (6) would
@@ -7026,7 +7025,7 @@ fn seed_fit_tools(dir: &std::path::Path) {
 }
 
 // ---------------------------------------------------------------------------
-// The RAM ladder (operator ruling 2026-11-05): CPU-resident rows admit on
+// The RAM ladder: CPU-resident rows admit on
 // host RAM and never touch the card; the two ledgers keep their rows apart.
 // ---------------------------------------------------------------------------
 
@@ -7076,7 +7075,7 @@ fn write_cpu_row_yaml(dir: &std::path::Path, name: &str, ram_gb: &str) -> std::p
 
 /// Falsifier (1): a CPU-resident row with ample host RAM admits on its own
 /// ladder, books ZERO VRAM, and the next GPU admit sees the card exactly as
-/// if it had never been asked (operator ruling 2026-11-05).
+/// if it had never been asked.
 /// Falsifier: route a Ram row through the VRAM leg (need 10, booked as VRAM)
 /// and the second leg's `free_at_admit` drops by 10 — pin goes red.
 #[tokio::test]
@@ -7256,8 +7255,7 @@ async fn a_cpu_row_over_the_ram_floor_refuses_naming_its_numbers() {
 /// Falsifier (3/4, the VRAM side): the card's victim planner never considers
 /// — and never even blames — a RAM resident, even when its category would
 /// be evictable by the requesting one. A RAM occupant holds no VRAM to take;
-/// the refusal is a plain shortage with an empty candidate set (operator
-/// ruling 2026-11-05).
+/// the refusal is a plain shortage with an empty candidate set.
 #[tokio::test]
 async fn the_vram_planner_never_considers_or_blames_a_ram_occupant() {
     use super::{AdmissionError, SchedulerError};
@@ -7349,7 +7347,7 @@ async fn the_vram_planner_never_considers_or_blames_a_ram_occupant() {
 
 /// Falsifier (5): a `whole` GPU request is never blocked by a RAM resident,
 /// and a RAM resident never enters its holder list — the whole-machine gate
-/// is a card posture (operator ruling 2026-11-05). The W1-03 closure legs
+/// is a card posture. The closure legs
 /// add the in-flight half: an admitted-not-installed RAM row is likewise
 /// neither a blocker nor a holder — and when a real card holder forces the
 /// refusal, the holder list names the GPU resident only, in-flight RAM row
@@ -7473,7 +7471,7 @@ async fn a_whole_gpu_row_never_sees_a_ram_resident_as_a_holder() {
 /// Falsifier (8): the whole dispatched path fails closed when the host
 /// witness never answers — the Admit task sends no card sample for a RAM row
 /// at all, a silent host witness answers `None`, and the gate refuses
-/// without guessing (DOCTRINE 4, operator ruling 2026-11-05).
+/// without guessing (DOCTRINE 4).
 #[tokio::test]
 async fn a_cpu_row_refuses_closed_when_the_host_witness_is_silent() {
     use super::{AdmissionError, SchedulerError};
@@ -7533,7 +7531,7 @@ async fn a_cpu_row_refuses_closed_when_the_host_witness_is_silent() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// --- W2 step 2: the RAM settle window (operator ruling 2026-11-05) ----------
+// --- The RAM settle window
 
 /// Host witness for the settle pins: one scripted shape behind a flip.
 /// `held` answers the state during the window (free 20.0 of 64.0), the flip
@@ -7772,12 +7770,12 @@ async fn next_ram_event(
     }
 }
 
-/// W2 step 2, the window itself (operator ruling 2026-11-05): a confirmed Ram
+/// The RAM settle window itself: a confirmed Ram
 /// release does not spawn into a host that has not proven the bytes back —
 /// the spawn waits for a host witness reading past the release inside the
 /// `settle_timeout_s` window, on the RAM ladder's own figures. The release is
 /// the window's entry ticket, never its substitute.
-/// Falsifier: hand the RAM leg back the W1 skip (spawn on release evidence
+/// Falsifier: hand the RAM leg back the skip (spawn on release evidence
 /// alone) and the `spawns == 0` waits below go red while the witness is held.
 #[tokio::test]
 async fn the_ram_settle_waits_for_the_witness_before_the_spawn() {
@@ -7956,11 +7954,11 @@ async fn a_ram_settle_timeout_fails_the_incoming_load_never_the_victim() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Falsifier 6 (operator ruling 2026-11-05): a RAM eviction whose release is
+/// Falsifier 6: a RAM eviction whose release is
 /// never confirmed installs nothing and keeps the debit — the slot stays
 /// occupied, the RAM ledger still books the holder, and the settle window
 /// never opens: the host witness spends only its admit reading. The settle
-/// window exists after proven release and nowhere else (§0.3, DOCTRINE 5).
+/// window exists after proven release and nowhere else (DOCTRINE 5).
 /// Falsifier: treat the reap timeout as a release (map the kill-confirm
 /// timeout to `Ok`) and the debit and occupant asserts go red; let the RAM
 /// settle start on an unproven release and the witness-reads assert goes red.
@@ -8197,7 +8195,7 @@ async fn the_same_slot_release_under_a_ram_row_credits_the_ram_booking_once() {
 
 /// Falsifier (10): the two ledgers keep their rows apart — the VRAM sum
 /// never counts a RAM resident or a RAM row's booking, and the RAM sums
-/// never count a GPU resident or a GPU row's (operator ruling 2026-11-05).
+/// never count a GPU resident or a GPU row's.
 #[test]
 fn the_two_ledgers_keep_their_rows_apart() {
     let dir = crate::testutil::temp_dir("two-ledgers");
@@ -8292,8 +8290,8 @@ fn the_two_ledgers_keep_their_rows_apart() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The same-slot RAM credit and the in-flight RAM debit, each counted once
-/// (operator ruling 2026-11-05): raw free 64 - 8 - 22 = 34, +10 the resident
+/// The same-slot RAM credit and the in-flight RAM debit, each counted once:
+/// raw free 64 - 8 - 22 = 34, +10 the resident
 /// this very replacement releases, -5 a RAM load already admitted elsewhere
 /// — a row needing exactly 39 admits on the line, and the same host reading
 /// refuses a row needing 40.
@@ -8395,12 +8393,12 @@ async fn a_ram_replacement_credits_its_own_slot_once_and_pays_other_ram_loads() 
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Falsifier (3, W2): RAM short with an evictable Ram resident in a
+/// Falsifier (3): RAM short with an evictable Ram resident in a
 /// category the load's own may evict. The RAM planner selects it, the
 /// planned victim rides the row with the resident's own release ticket (the
 /// unchanged evidence-based release path), and the load admits on the Drain
-/// rung (operator ruling 2026-11-05).
-/// Falsifier: on the pre-fix (wave-1) tree the RAM gate never planned, so
+/// rung.
+/// Falsifier: before the RAM planner existed the RAM gate never planned, so
 /// this row reads a terminal `InsufficientRam` refusal and no victim exists.
 #[tokio::test]
 async fn a_ram_short_admission_evicts_the_yielding_ram_resident() {
@@ -8491,11 +8489,11 @@ async fn a_ram_short_admission_evicts_the_yielding_ram_resident() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Falsifier (3, W2, the refusal leg): RAM short with no evictable Ram
+/// Falsifier (3, the refusal leg): RAM short with no evictable Ram
 /// resident. The refusal names every Ram holder with its matrix reason and
-/// kills nothing (operator ruling 2026-11-05).
-/// Falsifier: on the pre-fix tree the RAM refusal's only holder reason was
-/// the wave-1 uniform "the RAM gate does not release" line, so this pin's
+/// kills nothing.
+/// Falsifier: before the RAM planner existed the RAM refusal's only holder reason was
+/// the earlier uniform "the RAM gate does not release" line, so this pin's
 /// matrix reason is absent and the pin goes red.
 #[tokio::test]
 async fn a_ram_short_admission_with_no_evictable_ram_resident_refuses_naming_holders() {
@@ -8593,8 +8591,8 @@ async fn a_ram_short_admission_with_no_evictable_ram_resident_refuses_naming_hol
 /// booked 15 GiB would cover if the resource filter were down, and AUX is
 /// evictable by WORK in the shipped matrix — only the resource filter keeps
 /// it out of the candidate set; it rides the refusal as the uncontrolled
-/// holder its host RAM actually is (operator ruling 2026-11-05).
-/// Falsifier: with the RAM planner seeing all occupants (the W2 filter
+/// holder its host RAM actually is.
+/// Falsifier: with the RAM planner seeing all occupants (the resource filter
 /// reverted in place), the GPU job becomes the covering candidate — the row
 /// drains instead of refusing and the tail names it as considered. Against
 /// the wave-1 tree (planner absent) the refusal shape is the same; the
@@ -8696,13 +8694,13 @@ fn stale_seat(model: &str, need: f64, ram_need: Option<f64>, port: u16) -> Occup
     seat
 }
 
-/// M-R-01 (review, operator ruling 2026-11-06): a queued expert-offload
+/// A queued expert-offload
 /// reclaim victim is committed to release from the moment it is planned —
-/// exactly like a deficit victim under R2-20-01. With AUX, RP and EMB all
+/// exactly like a deficit victim under the same release-commit rule. With AUX, RP and EMB all
 /// opted into `idle_timeout_s`, a tick after the admit must sweep NONE of
 /// the committed rows: the dequeue-in-flight victim (covered by the `victim`
-/// arm already) and the still-queued reclaim victim (the arm this review
-/// added) both stay installed, while the idle sweep demonstrably still runs —
+/// arm already) and the still-queued reclaim victim (the arm added
+/// for it) both stay installed, while the idle sweep demonstrably still runs —
 /// the uninvolved small row it also covers gets its unload job. Without two
 /// causes of death for one model.
 /// Falsifier: remove the `reclaim.victims` arm of
@@ -8799,7 +8797,7 @@ async fn the_idle_sweep_skips_a_queued_expert_offload_reclaim_victim() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// L-R-01 (review, operator ruling 2026-11-06): both victim queues on one
+/// Both victim queues on one
 /// load. A greedy expert admit that is short on the card drains in the
 /// mandated order — the same-slot holder first, then the deficit queue, and
 /// only after the card gate is honest again does the reclaim queue run —
@@ -9516,7 +9514,7 @@ async fn an_uncalibrated_margin_never_validates_and_never_says_so() {
     }
 }
 
-/// TASK-R11-FIT pin: the session tolerance is exactly `fit_margin_gb` +
+/// Pin: the session tolerance is exactly `fit_margin_gb` +
 /// [`FIT_VALIDATE_SLACK_GIB`], that default slack is exactly 2.0 GiB, and
 /// an absent or non-finite margin leaves NO defined tolerance (the row
 /// never validates, silently). The C1 evidence figures live once, in the
@@ -10062,7 +10060,7 @@ fn booking_need_applies_the_max_truth_including_the_greedy_floor() {
         Ok(None),
         "a projection no other engine owns floors nothing"
     );
-    // Operator ruling 2026-11-04 (`TASK-BASALT-GREEDY`): a greedy basalt
+    // A greedy basalt
     // row is the legal unknown-nominal case too - `Ok(None)` books the
     // room at admit, and the gate judges the row's launch floor (60 on
     // the live row), the same floor-only path the strata spills proved.
@@ -10183,8 +10181,7 @@ fn a_refusal_quotes_a_place_only_behind_real_loads() {
 }
 
 // ---------------------------------------------------------------------------
-// W2 step 3: the CPU-resident working set (`TASK-CPU-LLAMA-EVICTION`,
-// operator ruling 2026-11-05). The process-tree probe feeds a `measured_ram_gb`
+// The CPU-resident working set. The process-tree probe feeds a `measured_ram_gb`
 // pair that books as max truth over the declared floor, on the serve cadence
 // and the symmetric one-GiB band — and never crosses into the card ledger.
 // ---------------------------------------------------------------------------
@@ -10938,7 +10935,7 @@ fn a_ram_spawn_seeds_its_anchor_from_the_ram_pair() {
     );
 }
 
-// --- TASK-RAM-RECLAIM: the expert-offload RAM reclaim (operator ruling 2026-11-06)
+// --- The expert-offload RAM reclaim
 
 /// The greedy expert-offload row: `cost: greedy` on an engine carrying the
 /// `expert_offload` policy cell. Written as the scan writes it, read back
@@ -10986,7 +10983,7 @@ fn expert_state(dir: &std::path::Path) -> ActorState {
     state
 }
 
-/// TASK-RAM-RECLAIM (operator ruling 2026-11-06): a `cost: greedy` admit on
+/// The expert-offload RAM reclaim: a `cost: greedy` admit on
 /// an expert-offload engine queues every CPU resident STRICTLY above the
 /// configured threshold, largest booked footprint first, through the drain
 /// rung — while the card gate passes as it always did (free 70 of 72, no
@@ -11074,7 +11071,7 @@ async fn a_greedy_expert_offload_admit_queues_large_cpu_residents_largest_first(
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// TASK-RAM-RECLAIM, the rule's own boundaries (operator ruling 2026-11-06):
+/// The reclaim rule's own boundaries:
 /// `0` disables the whole rule; a llama row never triggers it whatever it
 /// costs; a `fixed` row on the same expert engine never triggers it; and a
 /// holder sitting EXACTLY on the threshold stays (the comparison is strictly
@@ -11147,8 +11144,7 @@ async fn a_reclaim_never_plans_below_zero_at_threshold_or_for_another_row() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// TASK-RAM-RECLAIM, DOCTRINE's CPU posture honored (operator ruling
-/// 2026-11-06): a GPU resident is never a reclaim victim, however huge its
+/// DOCTRINE's CPU posture honored: a GPU resident is never a reclaim victim, however huge its
 /// footprint — it holds no booked host RAM, so the resource filter drops it
 /// before any other question, and it is not even named as skipped. The CPU
 /// resident beside it is queued normally.
@@ -11219,8 +11215,7 @@ async fn a_gpu_resident_is_never_an_expert_offload_reclaim_victim() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// TASK-RAM-RECLAIM, the ruling's "skip it rather than fail the load"
-/// (operator ruling 2026-11-06): a holder the `evictable_by` matrix protects
+/// The "skip it rather than fail the load" rule: a holder the `evictable_by` matrix protects
 /// and a holder inside its `min_turn` guard are SKIPPED with a named reason —
 /// the load still admits `FitsNow` and kills nothing — and one log line names
 /// the threshold, the (empty) evicted set, and every skipped row with its
@@ -11323,7 +11318,7 @@ async fn a_blocked_or_young_cpu_holder_is_skipped_with_its_reason_logged() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// TASK-RAM-RECLAIM, the drain end-to-end (operator ruling 2026-11-06): with
+/// The drain end-to-end: with
 /// the card gate passing on a free card, the greedy expert admit drains its
 /// CPU queue one release at a time — largest first — each victim killed only
 /// after the previous release is confirmed, the GPU resident never touched,
