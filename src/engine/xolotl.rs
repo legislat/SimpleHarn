@@ -351,10 +351,11 @@ fn env_map(
         }
         let value_ok = !value.is_empty()
             && value.chars().all(|c| {
-                c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+' | ':' | '\\' | '/')
+                c.is_ascii_alphanumeric()
+                    || matches!(c, '.' | '_' | '-' | '+' | ':' | '\\' | '/' | '~')
             });
         if !value_ok {
-            return Err(bad("plain value (letters, digits, `._+-:/\\`)", token));
+            return Err(bad("plain value (letters, digits, `._+-:/\\~`)", token));
         }
         map.insert(
             name.to_string(),
