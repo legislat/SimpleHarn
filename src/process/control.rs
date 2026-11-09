@@ -220,6 +220,13 @@ async fn run_control_command_with_stdin_timeout(
     for (key, value) in control_child_env() {
         command.env(key, value);
     }
+    // Control children are local shells (a staging driver, a docker helper),
+    // never engines, so HOME may ride here without widening the engine
+    // baseline. The rendered autostart scripts reference $HOME under `set -u`.
+    #[cfg(unix)]
+    if let Ok(home) = std::env::var("HOME") {
+        command.env("HOME", home);
+    }
     let run = async {
         let mut child = command.spawn().map_err(|error| error.to_string())?;
         let mut pipe = child

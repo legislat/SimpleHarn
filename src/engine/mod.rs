@@ -156,9 +156,13 @@ pub struct LaunchSpec {
     pub custody: Option<String>,
 }
 
-/// The shared WSL client prefix: `wsl.exe -d <distro> -u <user> --`. Launch
-/// (ninfer autostart) and teardown (`docker rm -f`) must address the same
-/// distro/user or unload reaps the wrong place (review, 2026-10-26).
+/// The shared container client prefix: `wsl.exe -d <distro> -u <user> --` on
+/// Windows. On Linux the container lives in the same distro the harness runs
+/// in, so the prefix is empty and the same suffix (`bash <autostart> ...`,
+/// `docker rm -f ...`) runs locally. Launch (ninfer autostart) and teardown
+/// must address the same place or unload reaps the wrong one (review,
+/// 2026-10-26).
+#[cfg(windows)]
 #[must_use]
 pub fn wsl_prefix(distro: &str, user: &str) -> Vec<String> {
     vec![
@@ -169,6 +173,13 @@ pub fn wsl_prefix(distro: &str, user: &str) -> Vec<String> {
         user.to_string(),
         "--".to_string(),
     ]
+}
+
+/// Linux: no WSL client hop; the distro is the host.
+#[cfg(unix)]
+#[must_use]
+pub fn wsl_prefix(_distro: &str, _user: &str) -> Vec<String> {
+    Vec::new()
 }
 
 /// Tri-state probe outcome (Step 7): the scheduler decides what a missing field means

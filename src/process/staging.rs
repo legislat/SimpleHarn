@@ -134,10 +134,25 @@ pub(crate) fn strata_profiles_dir() -> PathBuf {
     rendered_profiles_dir("strata")
 }
 
+#[cfg(windows)]
 pub(super) fn staged_script_path(slug: &str, script: &str) -> String {
     let slug = sanitize_slug(slug);
     let root = staged_scripts_root();
     format!("~/{root}/{slug}-{:016x}.sh", fnv1a64(script.as_bytes()))
+}
+
+/// Linux: `bash` is exec'd directly, so a literal `~` never expands. The path
+/// is absolute from the harness's own HOME (`~` only as an unreadable fallback,
+/// which the launch then fails on visibly).
+#[cfg(unix)]
+pub(super) fn staged_script_path(slug: &str, script: &str) -> String {
+    let slug = sanitize_slug(slug);
+    let root = staged_scripts_root();
+    let name = format!("{slug}-{:016x}.sh", fnv1a64(script.as_bytes()));
+    match std::env::var("HOME") {
+        Ok(home) if home.starts_with('/') => format!("{home}/{root}/{name}"),
+        _ => format!("~/{root}/{name}"),
+    }
 }
 
 /// Escape every POSIX ERE metacharacter so `find -regextype posix-extended -regex`
@@ -185,9 +200,20 @@ pub(super) fn escape_posix_regex(literal: &str) -> String {
 ///
 /// The rewritten argv, or `None` when argv is not `… -- bash <slot> …`.
 pub(super) fn rewrite_script_slot(mut argv: Vec<String>, path: String) -> Option<Vec<String>> {
-    let dashes = argv.iter().rposition(|arg| arg == "--")?;
-    argv.get(dashes + 1).filter(|word| *word == "bash")?;
-    let slot = argv.get_mut(dashes + 2)?;
+    // Windows: `wsl.exe ... -- bash <slot> ...`, anchored after the LAST `--`.
+    // Linux: the prefix is empty, so the program itself is `bash` and the slot
+    // is argv[1].
+    let bash_at = match argv.iter().rposition(|arg| arg == "--") {
+        Some(dashes) => {
+            argv.get(dashes + 1).filter(|word| *word == "bash")?;
+            dashes + 1
+        }
+        None => {
+            argv.first().filter(|word| *word == "bash")?;
+            0
+        }
+    };
+    let slot = argv.get_mut(bash_at + 1)?;
     *slot = path;
     Some(argv)
 }
@@ -622,5 +648,31 @@ mod tests {
             })
             .collect();
         assert_eq!(pool.len(), STAGED_PROFILE_KEEP, "the pool stays bounded");
+    }
+
+    /// Linux shape: the empty container prefix makes `bash` the program and the
+    /// script slot argv[1]; no `--` separator exists to anchor on.
+    #[test]
+    fn the_local_bash_shape_rewrites_without_a_wsl_separator() {
+        let argv = vec![
+            "bash".to_string(),
+            "placeholder".to_string(),
+            "card".to_string(),
+        ];
+        let rewritten =
+            rewrite_script_slot(argv, "/tmp/staged-x.sh".to_string()).expect("local bash shape");
+        assert_eq!(
+            rewritten,
+            vec!["bash", "/tmp/staged-x.sh", "card"],
+            "the slot after bash is the staged script"
+        );
+        assert!(
+            rewrite_script_slot(
+                vec!["sh".to_string(), "placeholder".to_string()],
+                "/tmp/x".to_string()
+            )
+            .is_none(),
+            "a spec that does not run bash refuses"
+        );
     }
 }

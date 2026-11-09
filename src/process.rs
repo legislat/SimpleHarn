@@ -101,7 +101,10 @@ use std::collections::BTreeMap;
 use std::process::Stdio;
 
 #[cfg(test)]
-use container::{container_ps_command, container_rm, DockerProbeSeam, ReapSeam, ReleaseGate};
+use container::{DockerProbeSeam, ReapSeam, ReleaseGate};
+// The two argv builders are pinned by Windows-hosted tests only.
+#[cfg(all(test, windows))]
+use container::{container_ps_command, container_rm};
 
 #[cfg(test)]
 use control::{child_env_baseline_from, control_child_env, OS_ENV_BASELINE};

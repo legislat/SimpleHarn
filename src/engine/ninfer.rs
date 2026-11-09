@@ -1010,10 +1010,13 @@ mod tests {
         let spec = NinferAdapter::new("U2", "usr")
             .spec(&entry(&pairs), 18110)
             .expect("valid spec");
-        assert_eq!(&spec.argv[2..4], ["U2", "-u"]);
-        assert_eq!(&spec.argv[4..7], ["usr", "--", "bash"]);
-        assert!(spec.argv[7].starts_with("ninfer-x-") && spec.argv[7].ends_with(".sh"));
-        assert_eq!(&spec.argv[8..], ["a", "key", "18110"]);
+        let base = crate::engine::wsl_prefix("U2", "usr").len();
+        assert_eq!(&spec.argv[..base], crate::engine::wsl_prefix("U2", "usr"));
+        assert_eq!(spec.argv[base], "bash");
+        assert!(
+            spec.argv[base + 1].starts_with("ninfer-x-") && spec.argv[base + 1].ends_with(".sh")
+        );
+        assert_eq!(&spec.argv[base + 2..], ["a", "key", "18110"]);
     }
 
     /// Pin of the `cpu_offload` engine scoping: the ninfer adapter reads no
@@ -1159,14 +1162,16 @@ mod tests {
             let spec = NinferAdapter::new("Ubuntu", "ops")
                 .spec(&entry(&pairs), 18109)
                 .expect("valid spec");
-            assert_eq!(spec.argv[9], "key", "ninfer_key: {value}");
+            let base = crate::engine::wsl_prefix("Ubuntu", "ops").len();
+            assert_eq!(spec.argv[base + 3], "key", "ninfer_key: {value}");
         }
         let mut pairs = template_pairs();
         pairs.push(("ninfer_key", "off"));
         let spec = NinferAdapter::new("Ubuntu", "ops")
             .spec(&entry(&pairs), 18109)
             .expect("valid spec");
-        assert_eq!(spec.argv[9], "nokey");
+        let base = crate::engine::wsl_prefix("Ubuntu", "ops").len();
+        assert_eq!(spec.argv[base + 3], "nokey");
     }
 
     /// The template keys as a live yaml would spell them (the operator's swift row,
@@ -1347,16 +1352,23 @@ mod tests {
         );
         // The positional contract the runtime stages against is unchanged: same
         // argv, the script position naming the staged file by its content hash.
-        assert_eq!(&spec.argv[..5], &["wsl.exe", "-d", "Ubuntu", "-u", "ops"]);
-        assert_eq!(&spec.argv[5..7], &["--", "bash"]);
-        assert!(spec.argv[7].starts_with("ninfer-x-") && spec.argv[7].ends_with(".sh"));
-        assert_eq!(&spec.argv[8..], &["b", "nokey", "18109"]);
+        let base = crate::engine::wsl_prefix("Ubuntu", "ops").len();
+        assert_eq!(
+            &spec.argv[..base],
+            crate::engine::wsl_prefix("Ubuntu", "ops")
+        );
+        assert_eq!(spec.argv[base], "bash");
+        assert!(
+            spec.argv[base + 1].starts_with("ninfer-x-") && spec.argv[base + 1].ends_with(".sh")
+        );
+        assert_eq!(&spec.argv[base + 2..], &["b", "nokey", "18109"]);
         let expected = format!(
             "ninfer-x-{:016x}.sh",
             crate::process::script_content_hash(script.as_str())
         );
         assert_eq!(
-            spec.argv[7], expected,
+            spec.argv[base + 1],
+            expected,
             "argv names the bytes that will be staged"
         );
         assert_eq!(spec.container.as_deref(), Some("ninfer-x"));

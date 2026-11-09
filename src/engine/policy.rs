@@ -736,6 +736,9 @@ pub(crate) const CANONICAL_NINFER_SCRIPT: &str = r#"#!/usr/bin/env bash
 # Do not edit the staged copy: it is rewritten from the model yaml before every load.
 # Profile {{PROFILE}} ({{PROFILE_SOURCE}}): ctx={{MAX_CTX}} kv={{KV_CAP}} conc={{CONC}} kv_dtype={{KV_DTYPE}}
 set -euo pipefail
+# WSL sets HOME; a harness running inside the distro starts from the scrubbed
+# engine env, so resolve the account's home instead of aborting under `set -u`.
+: "${HOME:=$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)}"
 
 NAME="{{NAME}}"
 IMAGE="{{IMAGE}}"
@@ -1121,7 +1124,7 @@ static NINFER_ROW: EnginePolicy = EnginePolicy {
     ],
     supports_fit: false,
     expert_offload: false,
-    platforms: &[HostPlatform::Windows],
+    platforms: &[HostPlatform::Windows, HostPlatform::Linux],
 };
 
 static MAYA_ROW: EnginePolicy = EnginePolicy {
@@ -2311,7 +2314,7 @@ mod tests {
     /// exists, so on Linux it refuses and on Windows it is supported. Unknown
     /// engines answer `None` here (the adapter registry owns them).
     #[test]
-    fn every_row_lists_a_host_and_ninfer_is_windows_only() {
+    fn every_row_lists_a_host_and_ninfer_lists_both_hosts() {
         for row in all() {
             assert!(
                 !row.platforms.is_empty(),
@@ -2320,19 +2323,15 @@ mod tests {
             );
         }
         let ninfer = engine_policy("ninfer").expect("the ninfer row ships");
-        assert_eq!(ninfer.platforms, &[HostPlatform::Windows]);
         assert_eq!(
-            engine_refusal_on_host("ninfer").is_some(),
-            !cfg!(windows),
-            "ninfer runs only on Windows: the refusal must follow the host"
+            ninfer.platforms,
+            &[HostPlatform::Windows, HostPlatform::Linux],
+            "the container lives in the same WSL distro, so both hosts are listed"
         );
-        if !cfg!(windows) {
-            let reason = engine_refusal_on_host("ninfer").expect("linux refuses ninfer");
-            assert!(
-                reason.contains("runs on windows only") && reason.contains("linux"),
-                "the refusal must name both sides: {reason}"
-            );
-        }
+        assert!(
+            engine_refusal_on_host("ninfer").is_none(),
+            "no host refusal for a row that lists both hosts"
+        );
         assert!(
             engine_refusal_on_host("unknown-engine").is_none(),
             "an unknown id is not this cell's refusal"

@@ -4,6 +4,9 @@
 # Do not edit the staged copy: it is rewritten from the model yaml before every load.
 # Profile {{PROFILE}} ({{PROFILE_SOURCE}}): ctx={{MAX_CTX}} kv={{KV_CAP}} conc={{CONC}} kv_dtype={{KV_DTYPE}}
 set -euo pipefail
+# WSL sets HOME; a harness running inside the distro starts from the scrubbed
+# engine env, so resolve the account's home instead of aborting under `set -u`.
+: "${HOME:=$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)}"
 
 NAME="{{NAME}}"
 IMAGE="{{IMAGE}}"

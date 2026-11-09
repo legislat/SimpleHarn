@@ -11783,12 +11783,12 @@ async fn a_death_report_never_touches_another_slots_resident() {
     assert_eq!(survivor_row.outcome.as_deref(), Some("loaded"));
 }
 
-/// P4: a row whose engine does not list this host warns at scan and still
-/// publishes; the load path refuses through the same helper. Ninfer is the
-/// only Windows-only row today, so this pin runs on Linux.
-#[cfg(unix)]
+/// P4: a row whose engine lists this host publishes without a platform
+/// warning. No shipped engine is host-unsupported today (ninfer moved to both
+/// hosts with the in-distro container); the refusal helper itself is pinned by
+/// `every_row_lists_a_host_and_ninfer_lists_both_hosts`.
 #[test]
-fn a_windows_only_row_warns_at_scan_and_still_publishes() {
+fn a_row_that_lists_this_host_does_not_warn_and_still_publishes() {
     let dir = crate::testutil::temp_dir("platform-scan");
     let (tx, _rx) = mpsc::unbounded_channel::<ActorMsg>();
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
@@ -11807,7 +11807,7 @@ fn a_windows_only_row_warns_at_scan_and_still_publishes() {
     let (map, problems) =
         crate::model::scan::parse_flat_yaml("engine: ninfer\ncategory: work\nvram_gb: 2\n");
     assert!(problems.is_empty(), "{problems:?}");
-    let entry = ModelEntry::from_flat(&map, "windows-only-row").expect("entry");
+    let entry = ModelEntry::from_flat(&map, "both-host-row").expect("entry");
     state.apply_catalog(
         crate::model::scan::Catalog {
             models: vec![entry],
@@ -11817,24 +11817,23 @@ fn a_windows_only_row_warns_at_scan_and_still_publishes() {
         &DriftStats::default(),
     );
     assert!(
-        state.catalog.iter().any(|m| m.name == "windows-only-row"),
+        state.catalog.iter().any(|m| m.name == "both-host-row"),
         "the row still publishes: {:?}",
         state.catalog.iter().map(|m| &m.name).collect::<Vec<_>>()
     );
     assert!(
-        state
+        !state
             .catalog_errors
             .iter()
-            .any(|e| e.reason.contains("runs on windows only") && e.reason.contains("linux")),
-        "the scan must warn naming the platform: {:?}",
+            .any(|e| e.reason.contains("runs on")),
+        "a listed host never warns: {:?}",
         state.catalog_errors
     );
 }
-/// P4: the load path refuses a row whose engine does not list this host,
-/// before any eviction, and the reason names both platforms.
-#[cfg(unix)]
+/// P4: a row whose engine lists this host reaches the adapter lookup, never the
+/// platform refusal.
 #[test]
-fn a_windows_only_row_refuses_at_load_naming_the_platform() {
+fn a_row_that_lists_this_host_reaches_the_adapter_lookup() {
     let dir = crate::testutil::temp_dir("platform-load");
     let (tx, _rx) = mpsc::unbounded_channel::<ActorMsg>();
     let mut state = ActorState::empty(
@@ -11848,18 +11847,15 @@ fn a_windows_only_row_refuses_at_load_naming_the_platform() {
     let (map, problems) =
         crate::model::scan::parse_flat_yaml("engine: ninfer\ncategory: work\nvram_gb: 2\n");
     assert!(problems.is_empty(), "{problems:?}");
-    let entry = ModelEntry::from_flat(&map, "windows-only-row").expect("entry");
+    let entry = ModelEntry::from_flat(&map, "both-host-row").expect("entry");
     let job = state.register_queued_load(0, &entry, Vec::new());
     match state.preflight_spec(job) {
-        Err(crate::scheduler::SchedulerError::Engine(crate::engine::EngineError::Rejected {
-            reason,
-            ..
-        })) => {
+        Err(crate::scheduler::SchedulerError::Spawn(reason)) => {
             assert!(
-                reason.contains("runs on windows only") && reason.contains("linux"),
-                "the load refusal must name both platforms: {reason}"
+                reason.contains("no adapter registered"),
+                "the fixture has no adapter, so the lookup owns this answer: {reason}"
             );
         }
-        other => panic!("expected a platform rejection, got {other:?}"),
+        other => panic!("expected the adapter lookup to speak, got {other:?}"),
     }
 }

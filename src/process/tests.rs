@@ -13,6 +13,7 @@ fn a_stale_ticket_never_owns_the_port_it_renames() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn container_rm_uses_the_shared_wsl_prefix() {
     let (program, args) = container_rm("Ubuntu", "ops", "ninfer-x");
@@ -23,6 +24,7 @@ fn container_rm_uses_the_shared_wsl_prefix() {
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn container_port_uses_the_shared_wsl_prefix() {
     let (program, args) = container_port("Ubuntu", "ops", "ninfer-x");
@@ -39,6 +41,7 @@ fn container_port_uses_the_shared_wsl_prefix() {
 /// entire docker reach. The seam pin records the verbs the probe asked the
 /// seam for; this one pins the argv the probe can actually build — the
 /// never-kill guarantee's other half.
+#[cfg(windows)]
 #[test]
 fn container_ps_is_the_reconciles_entire_docker_vocabulary() {
     let (program, args) = container_ps_command("Ubuntu", "ops");
@@ -119,10 +122,15 @@ async fn a_container_the_harness_never_claimed_is_never_queried_for_evidence() {
 fn a_staged_script_path_is_content_addressed_and_shell_bare() {
     let first = staged_script_path("ninfer-x", "echo a");
     let second = staged_script_path("ninfer-x", "echo b");
-    assert!(
-        first.starts_with("~/.simpleharn/autostart/ninfer-x-"),
-        "{first}"
-    );
+    let prefix = if cfg!(windows) {
+        "~/.simpleharn/autostart/ninfer-x-".to_string()
+    } else {
+        format!(
+            "{}/.simpleharn/autostart/ninfer-x-",
+            std::env::var("HOME").expect("the test host has HOME")
+        )
+    };
+    assert!(first.starts_with(&prefix), "{first} vs {prefix}");
     assert!(first.ends_with(".sh"), "{first}");
     assert_ne!(
         first, second,
@@ -2181,9 +2189,18 @@ fn the_staged_scripts_root_is_read_from_the_policy_cell() {
         "the cell is the value's single home, not a re-aliased constant"
     );
     let path = staged_script_path("nin-x", "echo body");
+    let prefix = if cfg!(windows) {
+        format!("~/{}/", staged_scripts_root())
+    } else {
+        format!(
+            "{}/{}/",
+            std::env::var("HOME").expect("the test host has HOME"),
+            staged_scripts_root()
+        )
+    };
     assert!(
-        path.starts_with(&format!("~/{}/", staged_scripts_root())),
-        "the staged script lives under the compiled custody root: {path}"
+        path.starts_with(&prefix),
+        "the staged script lives under the compiled custody root: {path} vs {prefix}"
     );
 }
 
@@ -2893,4 +2910,22 @@ async fn descendant_pids_reaches_the_grandchildren_of_the_asked_pid() {
         descendants.contains(&deep_parent),
         "the deep parent is itself a listed descendant: {descendants:?}"
     );
+
+    /// Linux: the distro is the host, so the prefix is empty and docker is the
+    /// program. The suffix shape is the Windows one, so launch and teardown use the
+    /// same coordinates.
+    #[cfg(unix)]
+    #[test]
+    fn the_linux_container_prefix_is_empty_and_docker_is_the_program() {
+        assert!(crate::engine::wsl_prefix("Ubuntu", "ops").is_empty());
+        let (program, args) = container_rm("Ubuntu", "ops", "ninfer-x");
+        assert_eq!(program, "docker");
+        assert_eq!(args, vec!["rm", "-f", "ninfer-x"]);
+        let (program, args) = container_port("Ubuntu", "ops", "ninfer-x");
+        assert_eq!(program, "docker");
+        assert_eq!(args, vec!["port", "ninfer-x"]);
+        let (program, args) = container_ps_command("Ubuntu", "ops");
+        assert_eq!(program, "docker");
+        assert_eq!(args, vec!["ps", "--format", "{{.Names}}"]);
+    }
 }

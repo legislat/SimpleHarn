@@ -270,7 +270,7 @@ the renamed wire values.
 |---|---|---|---|---|---|---|
 | Full rig | Windows 11 | one NVIDIA GPU, 71.7 GiB total, 2.0 GiB reserve | llama.cpp, ninfer, basalt, strata rows | pre-v1.3.1 working tree (pre-rename) | 2026-11-05 | Evidence run `2026-11-05-evidence-matrix` (RESULTS.md) |
 | Minimal | Windows | one NVIDIA GPU that fits the model plus the reserve | llama.cpp only | pre-v1.3.1 working tree (pre-rename) | 2026-11-05 | The `README.md` quick start; cardless llama adapter tests in `src/engine/llama.rs`. No isolated live leg on record |
-| llama (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | CUDA `llama-server` build 12211 (`7d7f02875`) | `Qwen3-0.6B-GGUF`, `Gemma-4-E4B` Q8_K_P, refusal floor row | load/chat 200, kill then next request restarts (200, new pid), same-slot swap, `measured_gb` stamped, `below_launch_floor` refusal leaves the holder serving, unload confirmed, witness `NVML` | worktree `be2b4eb` | 2026-11-09 | handoff repo, 2026-11-09-linux-card-legs/PROOF.md |
+| ninfer (Linux/WSL2) | WSL2 Ubuntu 24.04, docker daemon in the distro | `ninfer-bonsai:local` container, artifact on `/mnt/g` | `ninfer-bonsai-heretic` (profile card, ctx 262144, rk8v4) | load 200 (2m14s), chat 200, unload 200 and the container reaped | worktree `392a2e6`+P7 | 2026-11-09 | handoff repo, 2026-11-09-linux-ninfer/PROOF.md |`n| llama (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | CUDA `llama-server` build 12211 (`7d7f02875`) | `Qwen3-0.6B-GGUF`, `Gemma-4-E4B` Q8_K_P, refusal floor row | load/chat 200, kill then next request restarts (200, new pid), same-slot swap, `measured_gb` stamped, `below_launch_floor` refusal leaves the holder serving, unload confirmed, witness `NVML` | worktree `be2b4eb` | 2026-11-09 | handoff repo, 2026-11-09-linux-card-legs/PROOF.md |
 | CPU-only llama | Windows | one NVIDIA GPU, 72 GiB; loads booked host RAM, not the card | llama.cpp only, CPU rows | v1.3.0 (run on pre-tag `9e7ddb7`) | 2026-11-05 | `docs/evidence/v1.3.0-card-run.md` |
 
 Linux has one isolated live serving leg on record: WSL2 Ubuntu 24.04 with the
@@ -281,10 +281,9 @@ artifact in CI. The Linux witness reports `source: NVML` with real totals. The
 full release card (swap, crash/restart, measured stamp, refusal legs) has not run
 on Linux, so the Linux card verdict stays BLOCKED for those legs. Harness support by adapter today:
 llama, strata, basalt, maya and xolotl compile and pass their contract tests on
-Linux (llama and strata are the first release target); ninfer is Windows-only in the platform cell today (its container lives inside
-the same WSL distro; P7 adds the in-distro launch, after which the cell can list
-Linux), so its rows warn at scan and refuse at load on Linux meanwhile; mock
-runs where the grant is on.
+Linux (llama and strata are the first release target); ninfer runs on Linux without the `wsl.exe` hop: the container lives in the same
+WSL distro, `wsl_prefix` is empty there, and the canonical script runs locally
+(proven with the bonsai container). mock runs where the grant is on.
 
 ## 9. Glossary
 
