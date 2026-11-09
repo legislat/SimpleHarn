@@ -281,9 +281,10 @@ artifact in CI. The Linux witness reports `source: NVML` with real totals. The
 full release card (swap, crash/restart, measured stamp, refusal legs) has not run
 on Linux, so the Linux card verdict stays BLOCKED for those legs. Harness support by adapter today:
 llama, strata, basalt, maya and xolotl compile and pass their contract tests on
-Linux (llama and strata are the first release target); ninfer is Windows-only
-until a native adapter exists, so its rows warn at scan and refuse at load on
-Linux; mock runs where the grant is on.
+Linux (llama and strata are the first release target); ninfer is Windows-only in the platform cell today (its container lives inside
+the same WSL distro; P7 adds the in-distro launch, after which the cell can list
+Linux), so its rows warn at scan and refuse at load on Linux meanwhile; mock
+runs where the grant is on.
 
 ## 9. Glossary
 
