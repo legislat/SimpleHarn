@@ -140,9 +140,9 @@ A release is a task with acceptance criteria. Run the steps in this order:
    release directories" below, deploy it, and verify the boot. The Linux artifact is
    built from the same tag in CI (`release-facts.yml`, job `linux-artifact`): download
    `SimpleHarn-<ver>-linux-x64.tar.gz` and its `.sha256`, record both, and attach both
-   to the GitHub release. A Linux card verdict stays BLOCKED: the CI build proves the
-   binary compiles and packages, never that an engine loads. WSL2 already exposes
-   NVML to the Linux build; the missing piece is a Linux engine binary.
+   to the GitHub release. A Linux card verdict stays BLOCKED for the swap, crash and refusal legs: the
+   CI build proves only that the binary compiles and packages, and the recorded
+   Linux serving smoke is one llama load/serve/unload in WSL2.
 10. Keep and name the rollback artifact: the previous release stays in the fallback
     directory named below.
 
