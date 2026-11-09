@@ -141,7 +141,8 @@ A release is a task with acceptance criteria. Run the steps in this order:
    built from the same tag in CI (`release-facts.yml`, job `linux-artifact`): download
    `SimpleHarn-<ver>-linux-x64.tar.gz` and its `.sha256`, record both, and attach both
    to the GitHub release. A Linux card verdict stays BLOCKED: the CI build proves the
-   binary compiles and packages, never that an engine loads on a Linux GPU.
+   binary compiles and packages, never that an engine loads. WSL2 already exposes
+   NVML to the Linux build; the missing piece is a Linux engine binary.
 10. Keep and name the rollback artifact: the previous release stays in the fallback
     directory named below.
 

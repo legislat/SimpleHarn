@@ -272,9 +272,11 @@ the renamed wire values.
 | Minimal | Windows | one NVIDIA GPU that fits the model plus the reserve | llama.cpp only | pre-v1.3.1 working tree (pre-rename) | 2026-11-05 | The `README.md` quick start; cardless llama adapter tests in `src/engine/llama.rs`. No isolated live leg on record |
 | CPU-only llama | Windows | one NVIDIA GPU, 72 GiB; loads booked host RAM, not the card | llama.cpp only, CPU rows | v1.3.0 (run on pre-tag `9e7ddb7`) | 2026-11-05 | `docs/evidence/v1.3.0-card-run.md` |
 
-Linux has no isolated live leg on record. The port builds headless, runs the unit
-and contract suites in CI, and builds its release artifact in CI; card legs stay
-BLOCKED until a Linux GPU machine exists. Harness support by adapter today:
+Linux has no isolated live serving leg on record. The port builds headless, runs
+the unit and contract suites in CI, and builds its release artifact in CI. WSL2
+exposes the card through NVML, and the Linux witness was exercised there
+(`source: NVML`, real totals), so the GPU is not the blocker; a serving card leg
+needs a Linux engine binary, which the playground does not have yet. Harness support by adapter today:
 llama, strata, basalt, maya and xolotl compile and pass their contract tests on
 Linux (llama and strata are the first release target); ninfer is Windows-only
 until a native adapter exists, so its rows warn at scan and refuse at load on
