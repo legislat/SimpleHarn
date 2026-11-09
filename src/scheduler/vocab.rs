@@ -46,7 +46,7 @@ pub enum Command {
     /// serves, or a slot a live job owns, moves nothing: the successor and the
     /// in-flight job are not this death, and no other resident is ever
     /// touched. The reply reports what the command actually armed, like every
-    /// unload-class command (FINDINGS-07 [5]).
+    /// unload-class command (FINDINGS-07 \[5\]).
     ReportDeadEngine {
         model: String,
         category: CategoryId,

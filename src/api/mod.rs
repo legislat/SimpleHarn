@@ -156,7 +156,7 @@ pub enum ApiError {
     /// never came up" from a generic forward failure. The client-facing message
     /// names the deadline and a sanitized description of the last probe
     /// outcome; the probe's OS/URL text stays in the harness log through
-    /// [`error_body`], exactly like the other two detail-carrying classes.
+    /// `error_body`, exactly like the other two detail-carrying classes.
     #[error("readiness timeout: {reason}")]
     ReadinessTimeout { reason: String },
     /// The request conflicts with live state (cancelled, superseded, holder on port).

@@ -16,11 +16,19 @@ Versioning.
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
-## Unreleased
+## v1.5.0 - 2026-11-09
 
 ### Added
 
-- New engine `xolotl`: the harness supervises the Xolotl DeepSeek-V4.1-Flash
+- **Linux port (headless).** The platform seam now has a Linux side:
+  `/proc/<pid>/stat` identity with a boot-id stamp in custody, `setsid` plus
+  `killpg` trees, a `flock` single instance and a `/proc/meminfo` RAM witness.
+  Every engine row carries its host platforms; ninfer lists both and runs its
+  container inside the distro without the `wsl.exe` hop. llama, strata, basalt,
+  maya and xolotl serve on Linux from the Windows stores through `/mnt`, and the
+  Windows-authored card legs have a bash runner (release-card/run-linux.sh, private handoff repository).
+  CI adds ubuntu check/test/clippy/fmt and Linux MSRV legs; the tag workflow
+  builds a Linux artifact.- New engine `xolotl`: the harness supervises the Xolotl DeepSeek-V4.1-Flash
   GSQ serve (`ds41_generate.exe` behind the `serve_ds41.py` shim) as one 256K
   row. It launches `python -I <launcher> --engine strata --host 127.0.0.1
   --config <staged> --port <slot>`, renders and stages its own serve profile

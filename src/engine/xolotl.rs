@@ -17,7 +17,7 @@
 //! `.simpleharn/xolotl-profiles`, and rewrites `--config` to exactly that
 //! path. The operator JSON is a value source, never launch truth. `host`,
 //! `port` and key fields are absent by construction — the bind is the forced
-//! loopback `--host` argv and the port the forced `--port` — so ruling 22[1]
+//! loopback `--host` argv and the port the forced `--port` — so ruling 22\[1\]
 //! holds by rendering, not by policing. The shim `chdir`s to its tree root
 //! itself (the spawn cwd is not load-bearing) and absolutizes `--config`.
 //!
