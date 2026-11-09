@@ -108,6 +108,7 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `basalt_python` | **Required for basalt**: the interpreter `.exe`. It must be an absolute path to an existing file, and it is the program the harness launches. |
 | `basalt_cwd` | **Required for basalt**: the Basalt source-root directory. It must be an absolute path to an existing directory. The `-m serve.server` module resolves from this working directory. |
 | `basalt_exe` | **Required for basalt**: the engine binary. It must be an absolute path to an existing file, and the harness passes it as `--engine-bin`. |
+| `basalt_vision` | Image input: `off` (default), `dynamic`, `cpu`, or a GPU number as nvidia-smi spells it. Rendered into the profile as `server.vision`, never into argv: vision files are a harness decision, so `--vision` stays refused in `basalt_engine_args`. |
 | `basalt_parallel` | Optional worker-pool size passed as `--parallel`: a whole number `1..=8`, default `1`. It changes the KV footprint, so the row's declared cost must match it. |
 | `basalt_engine_args` | Comma-separated engine flags appended to the launch line; each entry is exactly one word. Long options only (`--flag` or `--flag=value`). The harness refuses a server-owned flag by exact name and says which mechanism owns that decision. |
 | `maya_python` | **Required for maya**: the interpreter `.exe`. It must be an absolute path to an existing file, and it is the program the harness launches. |

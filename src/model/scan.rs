@@ -3820,6 +3820,7 @@ mod tests {
              basalt_cwd: C:/Basalt\n\
              basalt_exe: C:/Basalt/bin/basalt.exe\n\
              basalt_parallel: 1\n\
+             basalt_vision: dynamic\n\
              basalt_engine_args: --temp=0.7\n\
              maya_python: D:/Maya/.venv/Scripts/python.exe\n\
              maya_cwd: D:/Maya\n\

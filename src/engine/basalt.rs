@@ -96,6 +96,10 @@ pub(crate) struct BasaltRow {
     pub engine_bin: PathBuf,
     /// Worker-pool size (`basalt_parallel`, default [`PARALLEL_MIN`]).
     pub parallel: u32,
+    /// Image-input mode (`basalt_vision`): `off`, `dynamic`, `cpu`, or a GPU
+    /// number as nvidia-smi spells it. Rendered into the profile's
+    /// `server.vision`, never into argv: vision files are a harness decision.
+    pub vision: Option<String>,
     /// Operator extra words, each comma entry one argv token, all value-checked.
     pub engine_args: Vec<String>,
 }
@@ -257,6 +261,22 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<BasaltRow, BasaltRowErr
             n
         }
     };
+    let vision = match knob(model, "basalt_vision") {
+        None => None,
+        Some(raw) => {
+            let mode = raw.to_ascii_lowercase();
+            let ok = matches!(mode.as_str(), "off" | "dynamic" | "cpu")
+                || (!mode.is_empty() && mode.chars().all(|c| c.is_ascii_digit()));
+            if !ok {
+                return Err(bad(
+                    model,
+                    "basalt_vision",
+                    format!("must be off, dynamic, cpu, or a GPU number: {raw}"),
+                ));
+            }
+            Some(mode)
+        }
+    };
     let engine_args = match knob(model, "basalt_engine_args") {
         None => Vec::new(),
         Some(value) => {
@@ -277,6 +297,7 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<BasaltRow, BasaltRowErr
         cwd,
         engine_bin,
         parallel,
+        vision,
         engine_args,
     })
 }
@@ -354,6 +375,9 @@ fn render_profile(row: &BasaltRow) -> String {
         serde_json::json!(row.model.to_string_lossy()),
     );
     server.insert("parallel".to_string(), serde_json::json!(row.parallel));
+    if let Some(mode) = &row.vision {
+        server.insert("vision".to_string(), serde_json::json!(mode));
+    }
     let mut profile = serde_json::Map::new();
     profile.insert("server".to_string(), serde_json::Value::Object(server));
     // BTreeMap key order makes the render byte-stable across builds (the
@@ -1111,5 +1135,36 @@ mod tests {
             measurement_from_metrics(&serde_json::json!({"engine": {"info": {"vram": 67.4}}})),
             None
         );
+    }
+    /// `basalt_vision` is a harness-owned mode: it rides the rendered profile's
+    /// `server.vision`, never argv (`--vision` stays refused in engine args).
+    #[test]
+    fn basalt_vision_lands_in_the_profile_and_never_in_argv() {
+        for mode in ["dynamic", "cpu", "0", "OFF"] {
+            let (_dir, model) = fixture(&[("basalt_vision", mode)]);
+            let row = validate_row(&model).expect("a valid vision mode");
+            let expected = mode.to_ascii_lowercase();
+            assert_eq!(row.vision.as_deref(), Some(expected.as_str()), "{mode}");
+            assert!(
+                render_profile(&row).contains(&format!("\"vision\": \"{expected}\"")),
+                "the profile carries server.vision {mode}"
+            );
+            let spec = BasaltAdapter.spec(&model, 18199).expect("the spec renders");
+            assert!(
+                !spec.argv.iter().any(|t| t == "--vision"),
+                "vision never rides argv: {mode}"
+            );
+        }
+    }
+
+    /// A vision value outside the engine's grammar refuses naming the knob.
+    #[test]
+    fn a_bad_basalt_vision_refuses_naming_the_knob() {
+        for value in ["on", "gpu", "-1", "1.5"] {
+            let (_dir, model) = fixture(&[("basalt_vision", value)]);
+            let error = validate_row(&model).expect_err("must refuse");
+            let text = format!("{error:?}");
+            assert!(text.contains("basalt_vision"), "{value}: {text}");
+        }
     }
 }

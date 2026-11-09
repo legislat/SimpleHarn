@@ -632,6 +632,7 @@ const BASALT_KNOBS: &[&str] = &[
     "basalt_cwd",
     "basalt_exe",
     "basalt_parallel",
+    "basalt_vision",
     "basalt_engine_args",
 ];
 
