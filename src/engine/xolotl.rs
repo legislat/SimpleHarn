@@ -231,7 +231,7 @@ fn args_tokens(model: &ModelEntry, line: &str, cwd: &Path) -> Result<Vec<String>
     }
     // The three flags whose value the launch cannot survive without: the
     // weights (`-m`, engine-side long alias `--model` accepted as the same
-    // truth), the engram expert file list (`;`-separated inside one token)
+    // truth), the engram expert file list (host-separated inside one token)
     // and the rank sidecar. Relative spellings resolve against the tree root
     // (`xolotl_cwd`), exactly as the engine resolves them.
     let mut missing: Option<(&'static str, String)> = None;
@@ -268,7 +268,7 @@ fn args_tokens(model: &ModelEntry, line: &str, cwd: &Path) -> Result<Vec<String>
             },
         };
         if flag == "--engram" {
-            for entry in value.split(';') {
+            for entry in value.split(ENGRAM_SEPARATOR) {
                 let entry = entry.trim();
                 if entry.is_empty() {
                     return Err(XolotlRowError::Bad {
@@ -301,6 +301,13 @@ fn args_tokens(model: &ModelEntry, line: &str, cwd: &Path) -> Result<Vec<String>
 
 /// The first engram/weights path that is not on disk, resolved against `cwd`
 /// when relative; `None` when the path exists.
+/// The engram file-list separator inside one argument: Windows uses `;`
+/// (docs/WINDOWS.md), Linux uses `:` (the engine's POSIX spelling).
+#[cfg(windows)]
+const ENGRAM_SEPARATOR: char = ';';
+/// The engram file-list separator inside one argument on Linux.
+#[cfg(unix)]
+const ENGRAM_SEPARATOR: char = ':';
 fn missing_arg_path(raw: &str, cwd: &Path) -> Option<String> {
     let path = if super::strata::is_absolute_shape(raw) {
         PathBuf::from(raw)
@@ -503,8 +510,8 @@ fn validate_rendered(json: &str) -> Result<(), XolotlRowError> {
 /// target's existence is irrelevant to loading) and so is the top-level
 /// `env` map (the DSpark door judges it). Relative paths stay exempt (the
 /// engine resolves those against the tree root — the chunk 10 backlog rule).
-/// A `;` splits a list of paths inside one string (the engram file-list
-/// shape), so each element is judged on its own.
+/// The host separator (`;` on Windows, `:` on Linux) splits the engram
+/// file-list shape inside one string, so each element is judged on its own.
 fn missing_rendered_path(root: &serde_json::Value) -> Option<(String, String)> {
     walk_rendered(root, "profile")
 }
@@ -520,7 +527,7 @@ fn walk_rendered(value: &serde_json::Value, key: &str) -> Option<(String, String
         }),
         serde_json::Value::Array(items) => items.iter().find_map(|inner| walk_rendered(inner, key)),
         serde_json::Value::String(text) => text
-            .split(';')
+            .split(ENGRAM_SEPARATOR)
             .filter_map(super::strata::profile_path_candidate)
             .find(|path| std::fs::metadata(path).is_err())
             .map(|path| (key.to_string(), path)),
@@ -1332,8 +1339,9 @@ mod tests {
         let err = spec_err_of(&[(
             "xolotl_args",
             &format!(
-                "--engram {};{}",
+                "--engram {}{}{}",
                 path_text(&l1),
+                ENGRAM_SEPARATOR,
                 path_text(&dir.join("model").join("engram-layers.14"))
             ),
         )]);
@@ -1363,8 +1371,9 @@ mod tests {
         let ok = spec_of(&[(
             "xolotl_args",
             &format!(
-                "--engram {};{}, --rank {}",
+                "--engram {}{}{}, --rank {}",
                 path_text(&l1),
+                ENGRAM_SEPARATOR,
                 path_text(&l14),
                 path_text(&rank)
             ),

@@ -270,6 +270,8 @@ the renamed wire values.
 |---|---|---|---|---|---|---|
 | Full rig | Windows 11 | one NVIDIA GPU, 71.7 GiB total, 2.0 GiB reserve | llama.cpp, ninfer, basalt, strata rows | pre-v1.3.1 working tree (pre-rename) | 2026-11-05 | Evidence run `2026-11-05-evidence-matrix` (RESULTS.md) |
 | Minimal | Windows | one NVIDIA GPU that fits the model plus the reserve | llama.cpp only | pre-v1.3.1 working tree (pre-rename) | 2026-11-05 | The `README.md` quick start; cardless llama adapter tests in `src/engine/llama.rs`. No isolated live leg on record |
+| xolotl (Windows) | Windows 11, RTX PRO 5000 72GB | build-win `ds41_generate` (2026-11-08), `.venv-serve`; model and engram on `D:` | `xolotl-deepseek-v41-gsq` (ctx 262144, kv q8, arena 56 GiB) | load 200 in 27.4 s, chat 200, unload 200 | worktree `4b96b86`+staged | 2026-11-09 | handoff repo, 2026-11-09-win-xolotl/PROOF.md |
+| xolotl (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | Linux `build/ds41_generate` + `.venv`; model on `/mnt/d`, engram `:` separator | `xolotl-deepseek-v41-gsq-linux` (same 256K profile) | load 200, chat 200, unload 200 | worktree HEAD+P7 | 2026-11-09 | handoff repo, 2026-11-09-linux-xolotl/PROOF.md |
 | maya (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | project-maya Linux build + venv; pack, dflash and vectors on `/mnt` | `maya-l-glp` (ctx 131072, thinking high) | load 200 (~420 s), chat 200, unload 200; no Linux vision build (text only) | worktree `4b96b86`+P7 | 2026-11-09 | handoff repo, 2026-11-09-linux-maya/PROOF.md |
 | ninfer (Linux/WSL2) | WSL2 Ubuntu 24.04, docker daemon in the distro | `ninfer-bonsai:local` container, artifact on `/mnt/g` | `ninfer-bonsai-heretic` (profile card, ctx 262144, rk8v4) | load 200 (2m14s), chat 200, unload 200 and the container reaped | worktree `392a2e6`+P7 | 2026-11-09 | handoff repo, 2026-11-09-linux-ninfer/PROOF.md |
 | strata (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | strata engine 0.1.58, pack and ggufs on `/mnt/d` | `strata-fp4local` (ctx 262144, int8 KV, vision mmproj) | load 200 (~750 s), chat 200, vision on, unload 200 | worktree `cc60020`+P7 | 2026-11-09 | handoff repo, 2026-11-09-linux-strata/PROOF.md |
@@ -286,8 +288,8 @@ full release card (swap, crash/restart, measured stamp, refusal legs) has not ru
 on Linux, so the Linux card verdict stays BLOCKED for those legs. Harness support by adapter today:
 llama, strata, basalt and maya have live serving legs on Linux (packs and
 bundles read from the Windows stores through `/mnt`); maya has no Linux vision
-build yet; xolotl ships no row on either host, so it is compile-only and carries
-no live claim; ninfer runs on Linux without the `wsl.exe` hop: the container lives in the same
+build yet; xolotl serves on both hosts from the 256K profile (the engram list
+splits by host); ninfer runs on Linux without the `wsl.exe` hop: the container lives in the same
 WSL distro, `wsl_prefix` is empty there, and the canonical script runs locally
 (proven with the bonsai container). mock runs where the grant is on.
 
