@@ -288,6 +288,7 @@ harness never reads the old wire values or the old `.simplehar` custody dirs.
 - [llama-swap](https://github.com/mostlygeek/llama-swap)
 - [berth](https://github.com/T-Crypt/berth)
 - [Strata](https://github.com/Niko1221/Strata)
+- [Xolotl](https://github.com/Indras-Mirror/Xolotl)
 - [Basalt](https://github.com/jesdga95/basalt)
 - [NInfer](https://github.com/Neroued/ninfer)
 - [NInfer-all](https://github.com/iamwavecut/ninfer-all)
