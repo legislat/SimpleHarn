@@ -135,7 +135,7 @@ A release is a task with acceptance criteria. Run the steps in this order:
     require every leg to PASS or be named BLOCKED with its reason. Patch releases are
     exempt. The suite never substitutes for the cardless gate; it proves hardware
     behavior that CI cannot. On Linux or WSL the same legs run with
-    `release-card/run-linux.sh` (bash, curl, python3; same report shape); it also
+    release-card/run-linux.sh (private handoff repository) (bash, curl, python3; same report shape); it also
     refuses to start while a protected port or a harness is present.
 8. Push the commits and the tag. Each push needs operator approval.
 9. Build the Windows artifact, record its hash, stage the operator copy per "Build and
