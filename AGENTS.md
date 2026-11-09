@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: agent
 source_of_truth_for: [agent behavior, routing]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-09
 review_trigger: behavior-change, release, new-decision
 ---
 
@@ -16,8 +16,9 @@ pointed to, never copied here.
 
 ## 1. Project orientation
 
-- SimpleHarn is a Windows tray harness (single Rust crate) that supervises local LLM
-  inference engines (llama, strata, basalt, maya, ninfer, mock) on one GPU.
+- SimpleHarn is a local LLM harness (single Rust crate) for Windows (tray, an
+  optional feature) and Linux (headless). It supervises inference engines (llama,
+  strata, basalt, maya, xolotl, ninfer, mock) on one GPU.
 - A swap scheduler is the single writer: it admits and evicts engine jobs against live
   memory, so loads and unloads serialize through one decision point.
 - Admission is the product. It refuses with named blockers and never overcommits; the

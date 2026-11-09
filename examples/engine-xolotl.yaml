@@ -1,0 +1,24 @@
+# xolotl row template. Required keys: xolotl_python, xolotl_launcher,
+# xolotl_cwd, xolotl_exe, xolotl_tokenizer, and xolotl_args. All paths below
+# are PLACEHOLDERS: replace them with real absolute paths before copying this
+# file into ModelConf. The harness renders and stages its own serve profile
+# from these keys; the manual serve JSON is a value source, never a launch
+# input. On Linux use the POSIX paths, the venv bin/python, the binary without
+# .exe, and ':' in the --engram list (Windows uses ';').
+engine: xolotl
+category: WORK
+serve_model: example-xolotl-model
+xolotl_python: C:\models\xolotl\.venv\Scripts\python.exe
+xolotl_launcher: C:\models\xolotl\tools\serve_ds41.py
+xolotl_cwd: C:\models\xolotl-model
+xolotl_exe: C:\models\xolotl\build-win\ds41_generate.exe
+xolotl_tokenizer: C:\models\xolotl-model\tokenizer
+xolotl_args: -m model\example.gguf, --backend cuda, --experts gpu, --engram C:\models\xolotl-model\engram-a;C:\models\xolotl-model\engram-b, --rank C:\models\xolotl-model\rank.bin, --ctx 262144, --stop 1, --arena-adapt, --kv-q8, --arena-gib 56, --vram-margin 2, --prompt-batch 12288
+xolotl_env: GGML_NO_BACKTRACE=1 STRATA_PRESTAGE_GIB=1.5 STRATA_DENSE_REQUANT=q6_K
+xolotl_gpu: 0
+xolotl_reasoning_budget: 32768
+cost: greedy
+launch_only_with_at_least_vram_free: 60
+load_timeout: 900
+# A DSpark sidecar named in xolotl_env must exist on disk, or the scan
+# refuses the row by path. Stop a manual serve on the same card first.

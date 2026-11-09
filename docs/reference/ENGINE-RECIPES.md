@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, operator, agent]
 source_of_truth_for: [minimal engine setup for the harness]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-09
 review_trigger: engine-change, release
 ---
 
@@ -20,6 +20,11 @@ so rename the file or drop the key. Ready rows are in
 Use `cost: greedy` with a launch floor for an engine that offloads experts;
 `cost: fixed` with `vram_gb` for a fixed resident. `load_timeout` is the
 cold-load deadline.
+
+Paths below use Windows spellings. On Linux use POSIX absolute paths, the
+virtualenv `bin/python`, and the engine binary without `.exe`. Engine packs and
+models may stay on the Windows drives under `/mnt`; the row must name the
+host-native path, because the harness does not translate it.
 
 ## llama.cpp
 
@@ -49,7 +54,8 @@ sit beside `llama-server.exe`. Then use the row above.
 optional global default. First start detects a `llama-server.exe` on PATH and
 records it. A row may set `llama_server_exe` to pick a different llama.cpp
 fork for that model only; the path must be an absolute path to an existing
-`llama-server.exe`. The engine DLLs must sit beside the chosen binary. Two
+`llama-server.exe` (`llama-server` on Linux). The engine DLLs must sit beside
+the chosen binary. Two
 rows on two forks (placeholders, not machine facts):
 
 ```yaml
@@ -100,11 +106,13 @@ load_timeout: 1800
 irm https://github.com/Niko1221/Strata/releases/latest/download/install.ps1 | iex
 ```
 
-Or build from source per [SOURCE_INSTALL.md](https://github.com/Niko1221/Strata/blob/main/docs/SOURCE_INSTALL.md). The installer prepares the
+On Linux install from source. On Windows use the installer above, or build from source per [SOURCE_INSTALL.md](https://github.com/Niko1221/Strata/blob/main/docs/SOURCE_INSTALL.md). The installer prepares the
 engine and the Python environment; it can also download a model. Then use the
 row above.
 
-Keep engine tuning in `strata_args`.
+On Linux `strata_exe` is `<root>/engine/strata`, the virtualenv is
+`<root>/.venv/bin/python`, and `strata_lib_dirs` is usually unnecessary. Keep
+engine tuning in `strata_args`.
 
 ## Basalt
 
@@ -138,7 +146,9 @@ pip install -r requirements.txt
 ```
 
 Make or copy a `.basalt` pack with [model-file.md](https://github.com/jesdga95/basalt/blob/main/docs/model-file.md); v0.2.x reads pack
-version 2. Then use the row above.
+version 2. Then use the row above. On Linux the binary is `bin/basalt`, the
+virtualenv is `.venv/bin/python`, and the harness renders the v2 profile the
+newer server requires.
 
 ## Project Maya
 
@@ -178,10 +188,10 @@ The harness runs `serve.server` directly, not `maya.py`. Keep the config
 ## Xolotl
 
 Upstream: a source install (no public release). The engine is
-`ds41_generate.exe`; the harness drives it through the `serve_ds41.py` shim,
-which speaks the Strata serve-profile dialect. Build the engine per its
-`WINDOWS.md`, and place the tokenizer, the weights and the sidecars under one
-model root.
+`ds41_generate.exe` (`ds41_generate` on Linux); the harness drives it through
+the `serve_ds41.py` shim, which speaks the Strata serve-profile dialect. Build
+the engine per its `WINDOWS.md` on Windows, or from the Linux tree, and place
+the tokenizer, the weights and the sidecars under one model root.
 
 **Already installed.** Use the build that holds `ds41_generate.exe`, the
 directory that holds `serve_ds41.py` with its Python environment, and the
@@ -209,7 +219,8 @@ load_timeout: 900
 
 The harness renders its own serve profile from these knobs and stages it; the
 operator JSON a manual launch uses is a value source, never a launch input.
-`load_timeout` needs 600 seconds or more. A DSpark sidecar named in
+`load_timeout` needs 600 seconds or more. On Linux the `--engram` list splits
+with `:`, on Windows with `;`. A DSpark sidecar named in
 `xolotl_env` must exist on disk, or the scan refuses the row by path. A
 harness load and a manual instance on the operator's own port never coexist:
 stop the manual serve before loading the row.
@@ -222,7 +233,8 @@ Windows [NInferno](https://github.com/Brontir/NInferno) build is a separate
 manual path; the harness does not launch it.
 
 **Already installed.** The harness path is the container template. Use Docker
-in WSL, the model roots, and the `.ninfer` artifact.
+in WSL on Windows; on Linux the Docker daemon in the same distro serves it and
+no `wsl_*` key is needed. Name the model roots and the `.ninfer` artifact.
 
 ```yaml
 name: my-ninfer

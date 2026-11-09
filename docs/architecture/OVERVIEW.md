@@ -20,10 +20,11 @@ model, and API reference tables live in `docs/reference/`.
 
 ## 1. System context
 
-- SimpleHarn is a Windows tray harness: one Rust crate
-  (`simpleharn`, `Cargo.toml`), one process, one NVIDIA GPU, several local
-  LLM inference engines (`llama`, `strata`, `basalt`, `maya`, `ninfer`, plus
-  a test-only `mock`).
+- SimpleHarn is a local LLM harness: one Rust crate (`simpleharn`,
+  `Cargo.toml`), one process, one NVIDIA GPU, several local LLM inference
+  engines (`llama`, `strata`, `basalt`, `maya`, `xolotl`, `ninfer`, plus a
+  test-only `mock`). It runs on Windows (tray, an optional feature) and Linux
+  (headless).
 - It owns engine processes as its children, swaps models between four
   category listeners through one single-writer scheduler, and admits loads
   against the card's live reading. It refuses with named blockers rather than
@@ -32,8 +33,9 @@ model, and API reference tables live in `docs/reference/`.
   ports, and keys are harness-forced, never read from engine-side files.
 - Key runtime dependencies (`Cargo.toml`): `tokio` (async runtime), `axum`
   with `tower-http` (HTTP), `reqwest` (proxy and readiness probes),
-  `nvml-wrapper` (GPU witness), `tray-icon` plus the `windows` crate (tray,
-  Job Objects, single-instance mutex), `tracing` (logging), `serde`
+  `nvml-wrapper` (GPU witness), `tray-icon` behind the optional `tray`
+  feature, the target-gated `windows` crate (Job Objects, single-instance
+  mutex) with the unix side in `src/platform/unix.rs`, `tracing` (logging), `serde`
   (config and API), `base64` (ninfer script staging).
 - Engine software itself (llama.cpp, strata, basalt, the ninfer container)
   is external. The harness launches and supervises it; it does not contain
@@ -56,14 +58,16 @@ One harness process, one tokio runtime, plus OS-level children:
   `commands`, `events`, `fit`, `measured`, `occupant`, `spawn`, `status`).
 - HTTP tasks - per-category public listeners plus one control listener, all
   served from `src/api/mod.rs` over axum routers (`api::ApiState`).
-- Engine children - spawned by `src/process.rs` (`ProcessRuntime`). Each
-  owned tree lives in a Win32 Job Object with `KILL_ON_JOB_CLOSE`, so a
-  harness death kills the tree (the crash-proof orphan guarantee). Ninfer is
-  the documented carve-out: the child is a short-lived `wsl.exe` client; the
-  container is reaped by name with `docker rm -f` and reconciled pre-spawn.
-  Basalt's direct child is the Python server and rides the same job object;
-  Basalt puts the engine child in its own kill-on-close job, so the crash
-  path cannot orphan the engine.
+- Engine children - spawned by `src/process.rs` (`ProcessRuntime`) through the
+  `src/platform/` seam. On Windows each owned tree lives in a Job Object with
+  `KILL_ON_JOB_CLOSE`; on Linux the child leads its own session
+  (`setsid`) and a group kill reaches the tree, with the pid-identity sweep as
+  the crash path (`boot_id`-stamped custody). Ninfer stays the documented
+  carve-out: on Windows the child is a short-lived `wsl.exe` client, on Linux
+  the same script runs in the local distro; the container is reaped by name
+  with `docker rm -f` and reconciled pre-spawn. Basalt's direct child is the
+  Python server and rides the same group; Basalt puts the engine child in its
+  own kill-on-close group, so the crash path cannot orphan the engine.
 - Tray - `src/tray.rs`. The tray is a view: it renders the scheduler snapshot
   and the listener registry and sends the same commands the HTTP handlers
   send. No tray-only state.
@@ -205,7 +209,8 @@ One harness process, one tokio runtime, plus OS-level children:
 - Policy table (`src/engine/policy.rs`, `EnginePolicy::all`): the compiled-in
   single-source table behind L1/L2/L3 - one row per engine, `forced_fields`,
   forbidden words, and word contracts. One mechanism, seven instances.
-- `llama` (`src/engine/llama.rs`): native `llama-server.exe` per GGUF. The
+- `llama` (`src/engine/llama.rs`): native `llama-server` (`llama-server.exe`
+  on Windows) per GGUF. The
   flag map is data, parity-tested against the operator's start script. The
   harness forces `--host 127.0.0.1` (`LLAMA_ENGINE_HOST`) and the assigned
   `--port`. `cpu_offload` forces `-ngl 0` (llama only). `extra_args` is a
@@ -222,19 +227,21 @@ One harness process, one tokio runtime, plus OS-level children:
   (`superseded_sentence`) naming `simpleharn import strata <profile.json>`.
   Readiness needs `/health` 200 and the JSON `loaded` flag (strata answers
   200 while weights stream).
-- `basalt` (`src/engine/basalt.rs`): native Windows engine with a Python
-  OpenAI-compatible server. The harness launches `python -m serve.server`
+- `basalt` (`src/engine/basalt.rs`): native engine with a Python
+  OpenAI-compatible server on Windows and Linux. The harness launches `python -m serve.server`
   directly in `basalt_cwd` (not the source-tree launcher), forces
   `--host 127.0.0.1` and the assigned `--port`, and supplies `--engine-bin`,
-  `--alias`, `--gpu 0`, and `--parallel`. It renders the `{"server": ...}`
-  profile at every load under `.simpleharn\basalt-profiles`
+  `--alias`, `--gpu 0`, and `--parallel` where the engine accepts them
+  (the Linux server refuses the words a config file already sets, and wants
+  the v2 `{"version": 2, "models": [...]}` shape). It renders the
+  `{"server": ...}` profile at every load under `.simpleharn/basalt-profiles`
   (`process::rendered_profiles_dir`, content-addressed, atomic, keep-N
   prune) and rewrites `--config` to exactly that staged file. Readiness
   needs `/health` 200 with the JSON `loaded` flag not `false`, then
   `/v1/models` must report the `serve_model` alias. Cost is the declared
   `vram_gb` with `cost: fixed`; no Fit, because the engine reports no
-  projection. Kill is the job object; the engine child rides Basalt's own
-  kill-on-close job.
+  projection. Kill is the host tree guard (Job Object on Windows, the session group on
+  Linux); the engine child rides Basalt's own kill-on-close group.
 - `maya` (`src/engine/maya.rs`): Project Maya, a Python server in front of a
   native engine. The harness launches `python -m serve.server --engine maya`
   directly in `maya_cwd` (not the `maya.py` launcher, which opens a browser
@@ -251,9 +258,10 @@ One harness process, one tokio runtime, plus OS-level children:
   only after it, so a closed port is NotYet and `load_timeout` (required,
   300 s floor) is the deadline. Cost is `greedy` (the expert cache
   spills to RAM/SSD; the launch floor is the gate) or `fixed` with a declared
-  `vram_gb`; `exact` is refused. Kill is the job object: it takes the server
-  and all descendants.
-- `ninfer` (`src/engine/ninfer.rs`): GPU container inside WSL2. Template
+  `vram_gb`; `exact` is refused. Kill is the host tree guard (Job Object on Windows, the session group on
+  Linux): it takes the server and all descendants.
+- `ninfer` (`src/engine/ninfer.rs`): GPU container inside WSL2 on Windows and
+  inside the local distro on Linux (empty `wsl_prefix`, same script). Template
   mode is the current and only mode: the row declares `ninfer_image`, and
   the harness renders the canonical autostart script
   (`CANONICAL_NINFER_SCRIPT` in `engine/policy.rs`), stages it into the
@@ -267,13 +275,20 @@ One harness process, one tokio runtime, plus OS-level children:
   by container name; the claim ledger is `ownership::ContainerClaims`
   (`ninfer-claims.json`), and `ownership::boot_reap_decision` is the single
   boot-reclaim rule.
+- `xolotl` (`src/engine/xolotl.rs`): the Xolotl DeepSeek fork. The row names
+  the interpreter, the `serve_ds41.py` launcher, the engine tree and binary,
+  and the `xolotl_*` profile knobs; the harness renders and stages the serve
+  profile and forces the port. Path validation resolves `-m` and every
+  `--engram`/`--rank` entry the row names, and the engram list splits by host
+  (`;` on Windows, `:` on Linux). Readiness reuses the Strata `/health`
+  `loaded` flag and the `/metrics` engine block for booking.
 - `mock` (`src/engine/mock.rs`): test-facing adapter. Production boot
   registers it only when config `allow_mock_engine` is true; integration
   tests build their own adapter maps.
 - Custody: `src/custody.rs` (`CustodyLedger`) records what the harness
   launched for custodied engines (strata) and reconciles by pid identity at
-  boot; engine-side custody is untrusted. Basalt rides the job object and
-  its own engine job instead of a sidecar entry; the witness sees the Python
+  boot; engine-side custody is untrusted. Basalt rides the host tree guard and
+  its own engine group instead of a sidecar entry; the witness sees the Python
   child rather than the engine grandchild, so the grandchild reads only as
   a display-only `total_diff`.
 
@@ -347,7 +362,7 @@ One harness process, one tokio runtime, plus OS-level children:
 | `src/budget.rs` | admission arithmetic, `AdmissionError`, witnesses' types |
 | `src/prefetch.rs` | release-window OS-cache warm of the weight files the incoming row's launch opens (knob-gated, fire-and-forget) |
 | `src/witness.rs` | NVML witness with `nvidia-smi` fallback, TTL caches |
-| `src/engine/` | adapters (`llama.rs`, `strata.rs`, `basalt.rs`, `maya.rs`, `ninfer.rs`, `mock.rs`), `EnginePolicy` table (`policy.rs`), Fit probe (`fit.rs`) |
+| `src/engine/` | adapters (`llama.rs`, `strata.rs`, `basalt.rs`, `maya.rs`, `xolotl.rs`, `ninfer.rs`, `mock.rs`), `EnginePolicy` table (`policy.rs`), Fit probe (`fit.rs`) |
 | `src/process.rs` | Job-Object supervision, script staging, single-instance guard, log files |
 | `src/ownership.rs` | `SpawnTicket` provenance, `ContainerClaims` ledger, boot-reap rule |
 | `src/custody.rs` | harness-side custody sidecar for strata launches |
@@ -372,7 +387,8 @@ One harness process, one tokio runtime, plus OS-level children:
    the evidence pair (handle signaled, TCP refused); settle re-samples the
    card before the gate re-checks.
 5. `Spawn`: the adapter builds the L3 `LaunchSpec`; the runtime launches it
-   under its Job Object with scrubbed environment and log capture.
+   under its host tree guard (Job Object on Windows, session group on Linux)
+   with scrubbed environment and log capture.
 6. `Ready`: typed readiness probes (`Probe`) poll the engine - `/health`,
    `/v1/models`, and engine-specific flags such as the `loaded` figure that
    strata and basalt answer while weights stream.

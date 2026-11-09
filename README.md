@@ -2,20 +2,23 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/legislat/SimpleHarn/ci.yml?branch=main)](https://github.com/legislat/SimpleHarn/actions/workflows/ci.yml)
 
-SimpleHarn is a Windows tray harness for local LLM inference. It runs several inference
-engines on one GPU behind one OpenAI-compatible API. That API is an OpenAI subset: the
+SimpleHarn is a local LLM harness for Windows and Linux. On Windows it runs as a
+tray app; the tray is an optional feature and the headless build is the supported
+Linux form. It runs several inference engines on one GPU behind one
+OpenAI-compatible API. That API is an OpenAI subset: the
 model list plus the chat, completion, and embeddings routes. The
 [compatibility matrix](docs/reference/COMPATIBILITY.md) names the covered surface and the
 gaps. One swap scheduler is the only writer
 of scheduler state. It admits every model load against the memory the card itself reports,
 and it refuses to overcommit. The product name is SimpleHarn, and the repository is
-`legislat/SimpleHarn`. The binary is `simpleharn.exe`, the config file is `simpleharn.json`,
+`legislat/SimpleHarn`. The binary is `simpleharn` (`simpleharn.exe` on Windows), the config file is `simpleharn.json`,
 and the environment names use the `SIMPLEHARN_` prefix.
 
-Current release: **v1.5.0**. Windows 10/11, one NVIDIA GPU, single user.
-Prebuilt binaries: see the GitHub Releases page of this repository. The release
+Current release: **v1.5.0**. Windows 10/11 and Linux (headless), one NVIDIA
+GPU, single user. Prebuilt binaries: see the GitHub Releases page of this repository. The release
 zip holds `simpleharn.exe`, `SimpleHarn.vbs`, `README.md`, `LICENSE`, and
-`docs/assets/control-page.png`. Models and engine installs are yours.
+`docs/assets/control-page.png`. The Linux tar.gz from the same tag carries the
+headless binary and the same docs. Models and engine installs are yours.
 
 > This is a personal harness, built for my own machine and my own setup. Feel free to try
 > it out, give feedback, and contribute.
@@ -31,7 +34,7 @@ insufficient VRAM: need 24.0 GiB, free 18.3 GiB, reserve 2.0 GiB; blocked by: my
 
 ## Who this is for
 
-You run local LLMs on Windows with one NVIDIA GPU. You want several models that swap
+You run local LLMs on Windows or Linux with one NVIDIA GPU. You want several models that swap
 quickly, each on its own OpenAI-compatible endpoint, with no console windows to manage.
 You want one safe budget manager that never force-loads onto a full GPU and names the
 blockers and the numbers on every refusal. You do not want to deal with software juggernauts
@@ -78,6 +81,8 @@ can parse them reliably. The trade is that some pages read terse.
    [docs/reference/CLI.md](docs/reference/CLI.md). The full schema is in
    [docs/reference/MODELS.md](docs/reference/MODELS.md).
 3. Double-click `SimpleHarn.vbs`, open `http://127.0.0.1:8708/`, and load the model.
+   On Linux download `SimpleHarn-1.5.0-linux-x64.tar.gz` from the same
+   release, extract it, and run `./simpleharn` headless (no tray, no VBS).
 
 ### From source
 
@@ -91,10 +96,11 @@ cargo build --release --features tray
 ```
 
 The tray is an optional feature. Omit it for a headless build; the harness then
-runs without the icon and logs one warning if `tray_enabled` is set. On Linux
-the headless build is the only supported form today: the port is in progress
-(build, unit and contract tests, and CI checks run green; the engine adapters
-and the release artifact follow, llama and strata first).
+runs without the icon and logs one warning if `tray_enabled` is set. Linux uses
+the headless build: llama, strata, basalt, maya and xolotl serve there, ninfer
+runs its container inside the distro, the card legs and the bash suite runner
+pass in WSL2, and the tag workflow builds the Linux artifact. Engine packs and
+models can stay on the Windows drives under `/mnt`.
 
 1. Put one flat `.yaml` file per model in `ModelConf` beside the built exe. The harness
    creates the folder on boot if it is missing. Start from a ready row in
@@ -204,23 +210,25 @@ full policy is in [SECURITY.md](SECURITY.md); the token and bind keys are in
 
 ## Requirements
 
-Windows 10 or 11, one NVIDIA GPU. The `llama` path needs a llama.cpp build
-that runs `llama-server.exe`; first run detects one found on PATH. The
+Windows 10 or 11, or Linux (Ubuntu 24.04 tested in WSL2 and CI), one NVIDIA
+GPU. The `llama` path needs a llama.cpp build that runs `llama-server`
+(`llama-server.exe` on Windows); first run detects one found on PATH. The
 `strata`, `basalt`, and `maya` paths need their engine install and its Python
-environment. The `ninfer` path needs WSL2 and Docker; it runs a GPU container.
+environment. The `ninfer` path needs WSL2 and Docker on Windows; on Linux it uses the
+Docker daemon inside the same distro and runs a GPU container.
 The `xolotl` path needs a source-built engine and its Python environment.
 GPU memory is read through NVML with an `nvidia-smi` fallback. One GGUF file
 is needed per `llama` model. Minimal per-engine setup is in
 [ENGINE-RECIPES.md](docs/reference/ENGINE-RECIPES.md).
 
-Engine status as of 2026-11-08. "Verified here" means one witnessed load on
-the operator's machine, the setup proof that
+Engine status as of 2026-11-09. "Verified here" means one witnessed load on the
+operator's machine, the setup proof that
 [ENGINE-RECIPES.md](docs/reference/ENGINE-RECIPES.md) and
 [COMPATIBILITY.md](docs/reference/COMPATIBILITY.md) carry. An engine absent
 from that proof is unproven, not broken. The Linux column states what the
-engine upstreams document, from upstream docs read 2026-11-08. The harness
-ships Windows only today; the Linux port is in progress (headless build and CI
-checks; no Linux artifact yet).
+harness has proven there, with the per-engine evidence rows in COMPATIBILITY.
+The harness ships Windows 1.5.0 and a headless Linux artifact built from the
+same tag.
 
 | Engine | Verified here | Linux |
 |---|---|---|
@@ -228,15 +236,16 @@ checks; no Linux artifact yet).
 | `strata` | Yes | Yes: source install |
 | `basalt` | Yes | Yes: source install, Blackwell cards only |
 | `maya` | Yes | Yes |
-| `ninfer` | Yes | Not yet: the harness adapter is WSL2-only |
-| `xolotl` | No | Yes: upstream Linux-primary, source build |
+| `ninfer` | Yes | Yes: the container runs inside the same WSL distro |
+| `xolotl` | Yes | Yes: Linux source build, same 256K profile |
 
 ## Troubleshooting
 
 Common cases: a port that will not bind (a Hyper-V/WSL2 reservation often
 covers it), a missing model file at boot (the scan drops the row and reports
 it), and a repeated refusal (unload something; the harness never
-over-admits). The full list, with the `netsh` fix for reserved ports, is in
+over-admits). The full list, with the `netsh` fix for reserved ports and the `ss` twin on
+Linux, is in
 [docs/reference/TROUBLESHOOTING.md](docs/reference/TROUBLESHOOTING.md).
 Operator recovery procedures are in [docs/reference/RUNBOOK.md](docs/reference/RUNBOOK.md).
 
@@ -269,7 +278,7 @@ Found a problem or have an idea? Open an issue. Contributions are welcome; start
 ## Plans
 
 - Multiple GPU support
-- Linux support (in progress: headless build, CI checks, llama and strata first)
+- Linux support (headless; llama, strata, basalt, maya, xolotl and the ninfer container; artifact built by tag CI)
 - More engines
 - UI and user experience enhancements
 

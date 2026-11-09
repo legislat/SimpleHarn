@@ -44,7 +44,9 @@ non-ASCII punctuation in quotes is replaced with ASCII equivalents only.
    (handle signaled + TCP-refused proof)"; engine kill/release require
    `(port, generation)`, and "a stale ticket is refused, never honoured".
    Consequence: a spawn fires only on a proven release; a late ticket can
-   never act on a reused port or a newer generation.
+   never act on a reused port or a newer generation. The identity proof is a
+   process handle on Windows and the `/proc` start-time token plus the boot id
+   on Linux; both refuse a reused pid.
 6. **Reaping is ownership-scoped.** "A job reaps every process it owns (victim
    + own spawn)"; "the harness never registers/monitors what it did not
    spawn". Consequence: there is no path to kill "whatever holds a port"; a
@@ -113,7 +115,7 @@ non-ASCII punctuation in quotes is replaced with ASCII equivalents only.
     one." Consequence: forensic notes are for the operator; the harness never
     acts on them.
 17. **Tray red means a listener is down.** "Tray red = listener down, not
-    per-job errors." Consequence: a per-job error rides the tooltip; only a
+    per-job errors." On Windows (the tray is optional and Windows-only): Consequence: a per-job error rides the tooltip; only a
     dead listener turns the icon red.
 18. **Scrapped by the operator, never re-opened.** "Scrapped by operator:
     bonsai class, engine adoption, preload at boot, parallel soak, state

@@ -11,7 +11,11 @@ review_trigger: behavior-change, release
 # Operations reference
 
 Up: `docs/DOCS_README.md`. This file owns autostart, file layout, upgrade,
-uninstall, backup, and log retention.
+uninstall, backup, and log retention. The sections describe Windows, the
+tray-and-registry platform. On Linux the harness is headless: start it from a
+shell or your init system, stop it with SIGTERM (it closes the listeners and
+kills its engine group), and the single-instance lock lives at
+`$XDG_RUNTIME_DIR/simpleharn.lock` (a uid-suffixed temp fallback).
 
 ## Autostart
 

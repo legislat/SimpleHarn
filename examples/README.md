@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user]
 source_of_truth_for: [example model row set]
-last_reviewed: 2026-11-08
+last_reviewed: 2026-11-09
 review_trigger: behavior-change, release
 ---
 
@@ -16,7 +16,7 @@ into the `ModelConf` folder beside the exe, then edit it.
 Three groups:
 
 - `engine-*.yaml` - one row per engine (`llama`, `strata`, `basalt`,
-  `maya`, `ninfer`). Each row carries every key that engine requires.
+  `maya`, `xolotl`, `ninfer`). Each row carries every key that engine requires.
 - `tab-*.yaml` - one row per category (`WORK`, `RP`, `AUX`, `EMB`), with
   the eviction rule of that category in the header comment.
 - Starter rows: `minimal-llama.yaml` (the smallest working row),
@@ -41,6 +41,7 @@ Required keys per engine (schema: `docs/reference/MODELS.md`):
 | `strata` | `strata_exe`, `serve_model`, `strata_tokenizer` |
 | `basalt` | `model` (an absolute `.basalt` pack), `serve_model`, `basalt_python`, `basalt_cwd`, `basalt_exe` |
 | `maya` | `maya_python`, `maya_cwd`, `maya_config`, `serve_model`, `load_timeout` (300 s or more) |
+| `xolotl` | `xolotl_python`, `xolotl_launcher`, `xolotl_cwd`, `xolotl_exe`, `xolotl_tokenizer`, `xolotl_args` |
 | `ninfer` | `ninfer_image`, `ninfer_container`, `ninfer_model_name`, `ninfer_artifact`, `ninfer_model_roots` |
 
 An unknown key warns but never drops a row; an engine key the row's

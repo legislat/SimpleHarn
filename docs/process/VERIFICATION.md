@@ -31,7 +31,7 @@ node scripts/check-comments.mjs -Fail
 - `cargo test` includes the doc-test.
 - The cargo commands carry `--features tray`, the shipped Windows set, so the
   gate compiles the tray module and every tray pin. A build without the feature
-  is headless; the Linux port's CI runs that form.
+  is headless; the Linux CI job builds and tests that form.
 - A gate line that omits one of these commands is stale.
 - The gate must not start an engine and must not load a model.
 - The gate runs from any session, including a served session.

@@ -279,19 +279,17 @@ the renamed wire values.
 | llama (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | CUDA `llama-server` build 12211 (`7d7f02875`) | `Qwen3-0.6B-GGUF`, `Gemma-4-E4B` Q8_K_P, refusal floor row | load/chat 200, kill then next request restarts (200, new pid), same-slot swap, `measured_gb` stamped, `below_launch_floor` refusal leaves the holder serving, unload confirmed, witness `NVML` | worktree `be2b4eb` | 2026-11-09 | handoff repo, 2026-11-09-linux-card-legs/PROOF.md |
 | CPU-only llama | Windows | one NVIDIA GPU, 72 GiB; loads booked host RAM, not the card | llama.cpp only, CPU rows | v1.3.0 (run on pre-tag `9e7ddb7`) | 2026-11-05 | `docs/evidence/v1.3.0-card-run.md` |
 
-Linux has one isolated live serving leg on record: WSL2 Ubuntu 24.04 with the
-CUDA `llama-server` build loaded, served and unloaded `Qwen3-0.6B-GGUF`
-(evidence in the private handoff repo, 2026-11-09-linux-card/PROOF.md). The port also builds
-headless, runs the unit and contract suites in CI, and builds its release
-artifact in CI. The Linux witness reports `source: NVML` with real totals. The
-full release card (swap, crash/restart, measured stamp, refusal legs) has not run
-on Linux, so the Linux card verdict stays BLOCKED for those legs. Harness support by adapter today:
-llama, strata, basalt and maya have live serving legs on Linux (packs and
-bundles read from the Windows stores through `/mnt`); maya has no Linux vision
-build yet; xolotl serves on both hosts from the 256K profile (the engram list
-splits by host); ninfer runs on Linux without the `wsl.exe` hop: the container lives in the same
-WSL distro, `wsl_prefix` is empty there, and the canonical script runs locally
-(proven with the bonsai container). mock runs where the grant is on.
+Linux live legs are on record in WSL2 Ubuntu 24.04: llama, strata, basalt, maya,
+xolotl and the ninfer container each loaded, served and unloaded (packs and
+bundles read from the Windows stores through `/mnt`). The card legs (load/chat,
+crash/restart, same-slot swap, measured stamp and the floor refusal) were
+replayed, the cross-engine swap (strata to llama) passes, and the bash runner
+release-card/run-linux.sh ran 10 PASS / 0 FAIL (private handoff evidence,
+`2026-11-09-linux-*`). The port builds headless, runs the unit and contract
+suites in CI, and builds its release artifact in CI; the Linux witness reports
+`source: NVML` with real totals. Gaps: maya has no Linux vision build yet, and
+the Windows-authored PowerShell suite remains the Windows runner. mock runs
+where the grant is on.
 
 ## 9. Glossary
 

@@ -507,7 +507,7 @@ becomes the profile's served name; `load_timeout` is required with a floor of
 path the disk lacks is refused at rescan, before any load gesture can evict a
 resident: the engine `exe`, the launcher, the tokenizer, a relative `-m` that
 does not resolve against `xolotl_cwd`, an `--engram` entry (the value splits
-on `;`), the `--rank` sidecar, or a named DSpark sidecar
+on `;` on Windows and `:` on Linux), the `--rank` sidecar, or a named DSpark sidecar
 (`STRATA_SERVE_DSPARK`, `STRATA_DSPARK_KEEP`). A DSpark value may carry a
 `:float` keep-suffix; the path check strips it. Absence of the DSpark keys
 means no DSpark. The env allow-list is uppercase `STRATA_*` names plus the
@@ -556,19 +556,20 @@ nothing.
 
 ### Ninfer engines
 
-Ninfer models (`engine: ninfer`) are GPU containers in WSL2, and they run in
-**template mode, the only mode** (the row declares `ninfer_image`). The
-harness launches them as a short-lived
-`wsl.exe` client. The container outlives the client, so unload reaps it by
+Ninfer models (`engine: ninfer`) are GPU containers in WSL2 on Windows and in
+the local distro on Linux, and they run in **template mode, the only mode** (the
+row declares `ninfer_image`). The harness launches them as a short-lived
+client: `wsl.exe` on Windows, `bash` locally on Linux. The container outlives the client, so unload reaps it by
 name (`docker rm -f <ninfer_container>`), and the release evidence is the port
 closing, not the client exit. The client runs the harness's own canonical
 script. The harness renders it from your yaml, stages it base64
 through a stdin driver to
-`~/.simpleharn/autostart/<container-slug>-<content-hash>.sh`, verifies it by
+`~/.simpleharn/autostart/<container-slug>-<content-hash>.sh` (an absolute
+`$HOME` path on Linux, where a literal `~` never expands), verifies it by
 checksum on the distro before and after the atomic publish, and prunes to
 the newest renders of that container. The rendered launch carries the
-incident-review guarantees: `--restart no` (nothing revives on WSL boot
-without the harness deciding), a loopback-only publish, and bounded
+incident-review guarantees: `--restart no` (nothing revives on a distro boot,
+WSL or native Linux, without the harness deciding), a loopback-only publish, and bounded
 container logs (`json-file`; defaults 25 MiB x 5, set the keys
 `ninfer_log_max_size_mib` and `ninfer_log_max_files` in `CONFIG.md` to
 change them). It also carries your profile,
@@ -605,8 +606,8 @@ template. You never edit it. The repository carries an exact copy at
 A full parity test fails on any drift between the copy and the canonical
 template. That copy shows the exact canonical template, not a rendered
 launch. The release package does not include the template. The harness
-invokes the staged script inside
-WSL as `bash <staged-script> <profile> <key|nokey> <port>`: the profile and
+invokes the staged script in the distro
+(`bash <staged-script> <profile> <key|nokey> <port>`): the profile and
 key choice are already rendered into the script, and `$3` is the **host**
 publish port the harness assigned. The script demands it: a missing `$3`
 fails the launch instead of borrowing another number. The script exits once
@@ -621,7 +622,7 @@ Notes:
   unauthenticated engine to your LAN, and only the `key` mode (with a real
   key file under `$HOME/.simpleharn/keys/`) would make that safe.
 - `--restart no` is not a preference. A `--restart` policy revives
-  containers on WSL boot outside any harness decision, with no ledger entry
+  containers on a distro boot outside any harness decision, with no ledger entry
   and no reap path (the NINFER-8004 incident). The rendered script hard-codes
   it.
 - R10 namespaces: the container's internal port is a **third namespace**,

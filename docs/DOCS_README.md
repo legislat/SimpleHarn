@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent, architect]
 source_of_truth_for: [documentation routing]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-09
 review_trigger: release, quarterly, new-decision
 ---
 

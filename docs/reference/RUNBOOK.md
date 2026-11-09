@@ -15,7 +15,9 @@ procedures. Each procedure names a symptom, the evidence to collect, a safe
 action, and a stop condition. Case-by-case diagnosis lives in
 `docs/reference/TROUBLESHOOTING.md`. Two rules apply to every procedure: the
 harness reaps only what it spawned, so never stop a process it does not own,
-and never start a second harness instance.
+and never start a second harness instance. The commands show Windows tools; on
+Linux use `ss -ltnp` for listeners, SIGTERM for the harness you started,
+`docker ps` for ninfer containers, and the log files beside the exe.
 
 ## Boot refuses: open network bind without a control token
 
