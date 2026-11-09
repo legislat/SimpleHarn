@@ -176,6 +176,7 @@ const CONSUMED_KEYS: &[&str] = &[
     "basalt_cwd",
     "basalt_exe",
     "basalt_parallel",
+    "basalt_vision",
     "basalt_engine_args",
     "maya_python",
     "maya_cwd",

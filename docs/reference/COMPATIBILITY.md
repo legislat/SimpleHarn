@@ -270,7 +270,10 @@ the renamed wire values.
 |---|---|---|---|---|---|---|
 | Full rig | Windows 11 | one NVIDIA GPU, 71.7 GiB total, 2.0 GiB reserve | llama.cpp, ninfer, basalt, strata rows | pre-v1.3.1 working tree (pre-rename) | 2026-11-05 | Evidence run `2026-11-05-evidence-matrix` (RESULTS.md) |
 | Minimal | Windows | one NVIDIA GPU that fits the model plus the reserve | llama.cpp only | pre-v1.3.1 working tree (pre-rename) | 2026-11-05 | The `README.md` quick start; cardless llama adapter tests in `src/engine/llama.rs`. No isolated live leg on record |
-| ninfer (Linux/WSL2) | WSL2 Ubuntu 24.04, docker daemon in the distro | `ninfer-bonsai:local` container, artifact on `/mnt/g` | `ninfer-bonsai-heretic` (profile card, ctx 262144, rk8v4) | load 200 (2m14s), chat 200, unload 200 and the container reaped | worktree `392a2e6`+P7 | 2026-11-09 | handoff repo, 2026-11-09-linux-ninfer/PROOF.md |`n| llama (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | CUDA `llama-server` build 12211 (`7d7f02875`) | `Qwen3-0.6B-GGUF`, `Gemma-4-E4B` Q8_K_P, refusal floor row | load/chat 200, kill then next request restarts (200, new pid), same-slot swap, `measured_gb` stamped, `below_launch_floor` refusal leaves the holder serving, unload confirmed, witness `NVML` | worktree `be2b4eb` | 2026-11-09 | handoff repo, 2026-11-09-linux-card-legs/PROOF.md |
+| ninfer (Linux/WSL2) | WSL2 Ubuntu 24.04, docker daemon in the distro | `ninfer-bonsai:local` container, artifact on `/mnt/g` | `ninfer-bonsai-heretic` (profile card, ctx 262144, rk8v4) | load 200 (2m14s), chat 200, unload 200 and the container reaped | worktree `392a2e6`+P7 | 2026-11-09 | handoff repo, 2026-11-09-linux-ninfer/PROOF.md |
+| strata (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | strata engine 0.1.58, pack and ggufs on `/mnt/d` | `strata-fp4local` (ctx 262144, int8 KV, vision mmproj) | load 200 (~750 s), chat 200, vision on, unload 200 | worktree `cc60020`+P7 | 2026-11-09 | handoff repo, 2026-11-09-linux-strata/PROOF.md |
+| basalt (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | basalt 115 GB v2 bundle on `/mnt/d`, Linux venv | `basalt-qwen38-fn` (ctx 262144, `basalt_vision: dynamic`) | load 200 (76.9 GiB, 369 s), chat 200, vision `images=on`, unload 200 | worktree `cc60020`+P7 | 2026-11-09 | handoff repo, 2026-11-09-linux-basalt/PROOF.md |
+| llama (Linux/WSL2) | WSL2 Ubuntu 24.04, RTX PRO 5000 72GB | CUDA `llama-server` build 12211 (`7d7f02875`) | `Qwen3-0.6B-GGUF`, `Gemma-4-E4B` Q8_K_P, refusal floor row | load/chat 200, kill then next request restarts (200, new pid), same-slot swap, `measured_gb` stamped, `below_launch_floor` refusal leaves the holder serving, unload confirmed, witness `NVML` | worktree `be2b4eb` | 2026-11-09 | handoff repo, 2026-11-09-linux-card-legs/PROOF.md |
 | CPU-only llama | Windows | one NVIDIA GPU, 72 GiB; loads booked host RAM, not the card | llama.cpp only, CPU rows | v1.3.0 (run on pre-tag `9e7ddb7`) | 2026-11-05 | `docs/evidence/v1.3.0-card-run.md` |
 
 Linux has one isolated live serving leg on record: WSL2 Ubuntu 24.04 with the
@@ -280,8 +283,9 @@ headless, runs the unit and contract suites in CI, and builds its release
 artifact in CI. The Linux witness reports `source: NVML` with real totals. The
 full release card (swap, crash/restart, measured stamp, refusal legs) has not run
 on Linux, so the Linux card verdict stays BLOCKED for those legs. Harness support by adapter today:
-llama, strata, basalt, maya and xolotl compile and pass their contract tests on
-Linux (llama and strata are the first release target); ninfer runs on Linux without the `wsl.exe` hop: the container lives in the same
+llama, strata and basalt have live serving legs on Linux (pack and bundles read
+from the Windows stores through `/mnt`); maya and xolotl compile and pass their
+contract tests; ninfer runs on Linux without the `wsl.exe` hop: the container lives in the same
 WSL distro, `wsl_prefix` is empty there, and the canonical script runs locally
 (proven with the bonsai container). mock runs where the grant is on.
 

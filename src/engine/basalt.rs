@@ -367,7 +367,7 @@ pub(crate) fn check_engine_args_value(
 /// the weights it loads, the pool it sizes. Every network/key placement the
 /// strata profile also keeps out rides here the same way: absent by
 /// construction, harness-forced in argv (row 19 posture, §5, §22[1]).
-fn render_profile(row: &BasaltRow) -> String {
+fn profile_model(row: &BasaltRow) -> serde_json::Map<String, serde_json::Value> {
     let mut server = serde_json::Map::new();
     server.insert("alias".to_string(), serde_json::json!(row.alias));
     server.insert(
@@ -378,12 +378,33 @@ fn render_profile(row: &BasaltRow) -> String {
     if let Some(mode) = &row.vision {
         server.insert("vision".to_string(), serde_json::json!(mode));
     }
+    server
+}
+
+/// Windows: the v1 shape `{"server": {...}}`, byte-identical to the build the
+/// Windows tree ships.
+#[cfg(windows)]
+fn render_profile(row: &BasaltRow) -> String {
     let mut profile = serde_json::Map::new();
-    profile.insert("server".to_string(), serde_json::Value::Object(server));
+    profile.insert(
+        "server".to_string(),
+        serde_json::Value::Object(profile_model(row)),
+    );
     // BTreeMap key order makes the render byte-stable across builds (the
     // staged name is a content address, strata's same rule).
     serde_json::to_string_pretty(&serde_json::Value::Object(profile))
         .expect("invariant: a string/number map serializes")
+}
+
+/// Linux: the newer server requires v2 (`{"version": 2, "models": [...]}`);
+/// it refuses a v1 file with "Basalt requires v2 config".
+#[cfg(unix)]
+fn render_profile(row: &BasaltRow) -> String {
+    let profile = serde_json::json!({
+        "version": 2,
+        "models": [serde_json::Value::Object(profile_model(row))],
+    });
+    serde_json::to_string_pretty(&profile).expect("invariant: a string/number map serializes")
 }
 
 /// The Python child needs a home directory for Basalt's model cache. The
@@ -418,13 +439,21 @@ impl EngineAdapter for BasaltAdapter {
         let staged_name = crate::process::staged_profile_name(&model.name, &text);
         let mut argv = vec![v.python.to_string_lossy().into_owned()];
         argv.extend(super::policy::render_forced(row, port, Some(&staged_name)));
+        // The served alias and the pool size ride the staged profile on both
+        // hosts. Windows also repeats them in argv, byte-identical to the
+        // build it ships; the Linux server rejects a CLI value for a key the
+        // config already sets ("--alias is not supported when using a config
+        // file").
         argv.extend([
             "--engine-bin".to_string(),
             v.engine_bin.to_string_lossy().into_owned(),
-            "--alias".to_string(),
-            v.alias.clone(),
             "--gpu".to_string(),
             "0".to_string(),
+        ]);
+        #[cfg(windows)]
+        argv.extend([
+            "--alias".to_string(),
+            v.alias.clone(),
             "--parallel".to_string(),
             v.parallel.to_string(),
         ]);
@@ -594,7 +623,8 @@ mod tests {
         ]);
         let spec = BasaltAdapter.spec(&model, 18199).expect("fixture renders");
         let placeholder = spec.argv[6].clone();
-        let expected: Vec<String> = vec![
+        #[allow(unused_mut)]
+        let mut expected: Vec<String> = vec![
             dir.join("python.exe").to_string_lossy().into_owned(),
             "-m".to_string(),
             "serve.server".to_string(),
@@ -606,14 +636,25 @@ mod tests {
             "18199".to_string(),
             "--engine-bin".to_string(),
             dir.join("basalt-engine.exe").to_string_lossy().into_owned(),
-            "--alias".to_string(),
-            "basalt-test".to_string(),
             "--gpu".to_string(),
             "0".to_string(),
-            "--parallel".to_string(),
-            "3".to_string(),
             "--lazy-off".to_string(),
         ];
+        #[cfg(windows)]
+        {
+            let gpu_at = expected
+                .iter()
+                .position(|word| word == "--gpu")
+                .expect("the fixture passes --gpu");
+            expected.insert(gpu_at + 2, "basalt-test".to_string());
+            expected.insert(gpu_at + 2, "--alias".to_string());
+            let lazy_at = expected
+                .iter()
+                .position(|word| word == "--lazy-off")
+                .expect("the fixture passes an engine arg");
+            expected.insert(lazy_at, "3".to_string());
+            expected.insert(lazy_at, "--parallel".to_string());
+        }
         assert_eq!(spec.argv, expected);
         assert_eq!(spec.cwd, dir);
     }
@@ -650,14 +691,30 @@ mod tests {
         let spec = spec_of(&[("basalt_parallel", "4")]);
         let text = spec.rendered_profile.as_ref().expect("render").text.clone();
         let profile: serde_json::Value = serde_json::from_str(&text).expect("rendered JSON");
-        assert_eq!(profile["server"]["alias"], "basalt-test");
-        assert_eq!(profile["server"]["parallel"], 4);
-        assert!(profile["server"]["model"]
+        let figures = if cfg!(windows) {
+            assert_eq!(profile.as_object().expect("top").len(), 1);
+            assert_eq!(profile["server"].as_object().expect("server").len(), 3);
+            profile["server"].clone()
+        } else {
+            assert_eq!(profile["version"], 2, "the Linux server requires v2");
+            assert_eq!(
+                profile["models"].as_array().expect("models").len(),
+                1,
+                "one model per staged profile"
+            );
+            assert_eq!(
+                profile["models"][0].as_object().expect("model").len(),
+                3,
+                "the three figures and nothing else"
+            );
+            profile["models"][0].clone()
+        };
+        assert_eq!(figures["alias"], "basalt-test");
+        assert_eq!(figures["parallel"], 4);
+        assert!(figures["model"]
             .as_str()
             .expect("model")
             .ends_with(".basalt"));
-        assert_eq!(profile.as_object().expect("top").len(), 1);
-        assert_eq!(profile["server"].as_object().expect("server").len(), 3);
         for banned in [
             "host",
             "port",
