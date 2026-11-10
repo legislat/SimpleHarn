@@ -44,7 +44,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "str
 # deliberately NOT in `default`: Cargo features are not target-conditional, so a
 # default tray would drag GUI dependencies onto headless hosts. The tray ships
 # behind the `tray` feature; a binary built without it runs headless.
-tray-icon = { version = "0.21", optional = true }
+tray-icon = { version = "0.26", optional = true }
 
 # Stream adapters: broadcast receiver -> SSE body stream (Step 12 events).
 tokio-stream = { version = "0.1", features = ["sync"] }
