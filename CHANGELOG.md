@@ -16,6 +16,17 @@ Versioning.
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
+## v1.5.1.5 - 2026-11-10
+
+### Changed
+
+- A load that is short only because another load's booking is counted on top of
+  the memory that load already holds now waits for it instead of failing. The
+  request keeps its row, parks on its free slot and is re-gated the moment the
+  blocking load reports serving; when the card then cannot hold it (foreign
+  memory, or an unreachable launch floor) it takes the normal named refusal.
+  Paper bookings are never credited as physical memory, so a load the card truly
+  cannot hold still fails rather than waiting forever.
 ## v1.5.1.4 - 2026-11-10
 
 ### Fixed
