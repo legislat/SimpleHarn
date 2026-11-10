@@ -18,16 +18,15 @@
     <header class="sh-header" id="sh-header">
       <!-- rendered by app.js: title, loaded count, the sticky tab/slot strip, memory -->
     </header>
+    <!-- The error banner sits between the tab strip (the bottom of the header)
+         and the model table, in flow: it never covers page text and never
+         scrolls independently. app.js fills it on a failed action. -->
+    <div class="sh-flash-host" id="sh-flash-host">
+      <div id="sh-flash" class="sh-flash" role="alert" hidden></div>
+    </div>
     <main class="container" id="sh-main">
       <!-- rendered by app.js: model table, recent jobs -->
     </main>
-    <div
-      id="sh-flash"
-      class="sh-flash"
-      hidden
-      role="alert"
-      style="position: fixed; bottom: 1rem; left: 1rem; right: 1rem; z-index: 20"
-    ></div>
     <script src="/app.js"></script>
   </body>
 </html>

@@ -626,4 +626,47 @@ mod tests {
              the .ico path"
         );
     }
+
+    /// The error banner's shape (operator 2026-11-10): it lives in flow between
+    /// the header (whose bottom is the tab strip) and the model table, never as a
+    /// fixed overlay, and it is opaque. The 1.5.1.2 fixed, transparent banner
+    /// painted its text over the page text and read as garbled duplication.
+    ///
+    /// Nature, declared: source-content assertions over the `include_str!` bytes
+    /// the page serves. Falsifier: restore `position: fixed` on `#sh-flash`, or
+    /// move the host below `<main>`, and a leg fails.
+    #[test]
+    fn served_index_places_the_error_banner_between_tabs_and_table() {
+        let header = INDEX_HTML.find("</header>").expect("the header closes");
+        let host = INDEX_HTML
+            .find("id=\"sh-flash-host\"")
+            .expect("the banner host exists");
+        let main = INDEX_HTML
+            .find("id=\"sh-main\"")
+            .expect("the main host exists");
+        assert!(
+            header < host && host < main,
+            "the banner host must sit between the header and the model table"
+        );
+        assert!(
+            !INDEX_HTML.contains("position: fixed"),
+            "the page shell must not pin the banner over the page"
+        );
+        assert!(
+            STYLE_CSS.contains(".sh-flash-host {")
+                && STYLE_CSS.contains("background: var(--pico-card-background-color);")
+                && STYLE_CSS.contains("border-left: 4px solid var(--sh-bad);")
+                && STYLE_CSS.contains(".sh-flash[hidden] { display: none; }"),
+            "the banner must be opaque, edged and hidden when empty"
+        );
+        assert!(
+            APP_JS.contains("function flashUnlessJobRefusal(error)")
+                && APP_JS.contains("error.status = response.status;")
+                && APP_JS.contains("if (flashTimer !== null) clearTimeout(flashTimer);")
+                && APP_JS.contains("same reason as above")
+                && !APP_JS.contains("last fault: "),
+            "a server refusal must stay in its ledger row, each flash must clear the \
+             previous deadline, and repeated reasons must not be reprinted"
+        );
+    }
 }

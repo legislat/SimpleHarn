@@ -179,7 +179,7 @@ port matrix, the engine port plan, and the eviction rules live in
 The page shows category tabs (each naming its port, loaded resident, and inline
 Unload control), memory bars (observed VRAM, the reserve, in-flight bookings,
 host RAM), per-model rows with Load and Default, recent jobs, and the harness log. A
-rescan re-reads the catalog; a serving model keeps the launch it was spawned with, so an
+rescan re-reads the catalog; a failed action shows its reason once, in a dismissible banner between the tabs and the table, or as the job row when the server recorded one; a serving model keeps the launch it was spawned with, so an
 edit to a live model takes effect on its next load. The tray shows green loaded, yellow
 swap in flight, gray idle, or red listener down. The menu offers Open Web UI, the
 unload actions, and Exit.

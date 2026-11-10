@@ -32,6 +32,12 @@ class El {
     // emulate it on the root so a deleted restore line cannot pass both ways (F2).
     if (this.tag === "#sh-main") globalThis.window.scrollY = 0;
   }
+  get textContent() {
+    return this.children
+      .map((c) => (c instanceof Tx ? c.__text : c instanceof El ? c.textContent : ""))
+      .join("");
+  }
+  set textContent(v) { this.children = v === "" ? [] : [new Tx(v)]; }
   addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
   dispatch(type, event) { for (const fn of this.listeners[type] ?? []) fn(event); }
   querySelector(sel) {
@@ -131,7 +137,7 @@ globalThis.fetch = async (path, init) => {
     (globalThis.posts ??= []).push({ path, body: (init && init.body) || "" });
     if (globalThis.failNextPost !== null) {
       const message = globalThis.failNextPost;
-      return { ok: false, status: 400, json: async () => ({ message }) };
+      return { ok: false, status: globalThis.failNextPostStatus ?? 400, json: async () => ({ message }) };
     }
     return { ok: true, status: 200, json: async () => ({ ok: true }) };
   }
@@ -1077,18 +1083,43 @@ const driver = `
       "head=" + (headBody || "missing").slice(0, 40) + " th=" + (thBody || "missing").slice(0, 40));
   }
 
+  // One fact, one place (operator 2026-11-10): the newest fault is a ledger row,
+  // so the page renders no separate last-fault headline - no matter what the
+  // API still carries for the tray.
   const withFault = { ...fixtures["/har/status"], models: fixtures["/har/models"].data, last_error: "broken@WORK: never became ready" };
   applyState(withFault);
-  const errJobs = findAll(document.getElementById("sh-main"), "div", "sh-errline");
-  check("last fault renders beside the job ledger",
-    errJobs.length === 1 && textOf(errJobs[0]).includes("broken@WORK"),
-    errJobs.map(textOf).join(" | "));
-  check("the sticky header no longer carries the fault line",
-    findAll(document.getElementById("sh-header"), "div", "sh-errline").length === 0);
+  check("the page renders no separate last-fault headline",
+    findAll(document.getElementById("sh-main"), "div", "sh-errline").length === 0 &&
+      findAll(document.getElementById("sh-header"), "div", "sh-errline").length === 0,
+    "an errline is back in the page");
   applyState({ ...fixtures["/har/status"], models: fixtures["/har/models"].data });
   check("errline absent when last_error null",
     findAll(document.getElementById("sh-main"), "div", "sh-errline").length === 0 &&
       findAll(document.getElementById("sh-header"), "div", "sh-errline").length === 0);
+
+  // Retries fail the same way: the newest row prints the reason, a later identical
+  // one says so instead of repeating the paragraph. Row ids stay visible.
+  {
+    const reason = "launch floor not met: free 0.8 GiB";
+    const jobOf = (id) => ({ id, kind: "Load", model: "qwen3.5-4b", category: "WORK",
+      state: "Failed", path: null, terminal: true, outcome: "admission refused",
+      error: reason, is_fault: true });
+    applyState({
+      ...fixtures["/har/status"],
+      models: fixtures["/har/models"].data,
+      last_error: "qwen3.5-4b@WORK: " + reason,
+      jobs: [jobOf(41), jobOf(42)],
+    });
+    const rows = findAll(document.getElementById("sh-main"), "div", "sh-job").filter((r) => textOf(r).indexOf("qwen3.5-4b") >= 0);
+    const texts = rows.map(textOf);
+    check("identical retries print the reason once and mark the repeat",
+      texts.filter((t) => t.indexOf(reason) >= 0).length === 1 &&
+        texts.filter((t) => t.indexOf("same reason as above") >= 0).length === 1 &&
+        texts.filter((t) => t.indexOf("41") >= 0).length === 1 &&
+        texts.filter((t) => t.indexOf("42") >= 0).length === 1,
+      texts.join(" | "));
+    applyState({ ...fixtures["/har/status"], models: fixtures["/har/models"].data });
+  }
 
   const extBoxes = findAll(document.getElementById("sh-main"), "input")
     .filter((i) => i.attrs["aria-label"] === "extended logging");
@@ -1798,6 +1829,7 @@ const driver = `
 
   // ---- FINDINGS-16 [3]: a refused config-default write flashes AND re-reads ----
   const flashBox = document.getElementById("sh-flash");
+  const flashText = () => { const span = flashBox.querySelector(".sh-flash-text"); return span ? textOf(span) : ""; };
   const quietFlash = () => { flashBox.textContent = ""; flashBox.hidden = true; };
   const rowButton = (label) =>
     findAll(document.getElementById("sh-main"), "button").find((b) => textOf(b) === label);
@@ -1811,8 +1843,8 @@ const driver = `
   setDefault.dispatch("click", {});
   await flush();
   check("refused Default flashes the server's reason",
-    flashBox.hidden === false && String(flashBox.textContent) === refusal,
-    JSON.stringify(flashBox.textContent));
+    flashBox.hidden === false && flashText() === refusal,
+    JSON.stringify(flashText()));
   check("refused Default re-reads the server", globalThis.statusFetches > beforeSet,
     beforeSet + " -> " + globalThis.statusFetches);
   const clearDefault = findAll(document.getElementById("sh-main"), "button")
@@ -1823,9 +1855,9 @@ const driver = `
   clearDefault.dispatch("click", {});
   await flush();
   check("refused Clear default flashes and re-reads",
-    flashBox.hidden === false && String(flashBox.textContent) === refusal &&
+    flashBox.hidden === false && flashText() === refusal &&
       globalThis.statusFetches > beforeClear,
-    JSON.stringify(flashBox.textContent) + " " + beforeClear + " -> " + globalThis.statusFetches);
+    JSON.stringify(flashText()) + " " + beforeClear + " -> " + globalThis.statusFetches);
   globalThis.failNextPost = null;
   quietFlash();
   const beforeAccepted = globalThis.statusFetches;
@@ -1833,7 +1865,42 @@ const driver = `
   await flush();
   check("accepted Default re-reads the server",
     globalThis.statusFetches > beforeAccepted && flashBox.hidden !== false,
-    beforeAccepted + " -> " + globalThis.statusFetches + " flash=" + JSON.stringify(flashBox.textContent));
+    beforeAccepted + " -> " + globalThis.statusFetches + " flash=" + JSON.stringify(flashText()));
+
+  // ---- The error banner (operator 2026-11-10): one message in flow, dismissible,
+  // and never a second copy of a refusal the job ledger already records. ----
+  globalThis.failNextPost = null;
+  globalThis.failNextPostStatus = 400;
+  quietFlash();
+  state.activeTab = "WORK";
+  render();
+  const loadForFlash = rowButton("Load");
+  check("the flash legs have a Load row to click", !!loadForFlash, findAll(document.getElementById("sh-main"), "button").map(textOf).join("|"));
+  const flashDismiss = () => findAll(flashBox, "button").find((b) => String(" " + (b.attrs.class || "") + " ").indexOf(" sh-flash-x ") >= 0);
+  globalThis.failNextPost = "banner leg";
+  if (loadForFlash) loadForFlash.dispatch("click", {});
+  await flush();
+  check("failed Load with a 4xx flashes the banner with a dismiss control",
+    flashBox.hidden === false && flashText() === "banner leg" && !!flashDismiss(),
+    JSON.stringify(flashText()) + " x=" + String(!!flashDismiss()) + " kids=" + flashBox.children.map((c) => c.tag + ":" + (c.attrs.class || "")).join(","));
+  if (flashDismiss()) flashDismiss().dispatch("click", {});
+  check("dismissing the banner clears and hides it",
+    flashBox.hidden === true && flashText() === "",
+    JSON.stringify(flashText()));
+  globalThis.failNextPost = null;
+  quietFlash();
+  globalThis.failNextPost = "launch floor not met: free 0.8 GiB";
+  globalThis.failNextPostStatus = 503;
+  const beforeRefusedLoad = globalThis.statusFetches;
+  if (loadForFlash) loadForFlash.dispatch("click", {});
+  await flush();
+  check("a 5xx load refusal stays in the ledger and never flashes",
+    flashBox.hidden === true && flashText() === "" &&
+      globalThis.statusFetches > beforeRefusedLoad,
+    JSON.stringify(flashText()) + " " + beforeRefusedLoad + " -> " + globalThis.statusFetches);
+  globalThis.failNextPost = null;
+  globalThis.failNextPostStatus = 400;
+  quietFlash();
 
   // ---- R2-16-02: a refused Extended Logging flip re-reads and unflips ----
   // The POST is refused (token, restart, cross-site). No har_state push follows
@@ -1862,8 +1929,8 @@ const driver = `
     await flush();
     check("refused Extended Logging flashes the server's reason",
       flashBox.hidden === false &&
-        String(flashBox.textContent) === "harness refused the logging change",
-      JSON.stringify(flashBox.textContent));
+        flashText() === "harness refused the logging change",
+      JSON.stringify(flashText()));
     check("refused Extended Logging re-reads the server",
       globalThis.statusFetches > beforeExt, beforeExt + " -> " + globalThis.statusFetches);
     const afterExt = findAll(document.getElementById("sh-main"), "input")
@@ -1906,8 +1973,8 @@ const driver = `
     "prompts=" + globalThis.promptLog.length + " store=" + JSON.stringify(wrongSecret) +
       " sent=" + JSON.stringify(globalThis.sentTokens));
   check("401 is flashed, never swallowed",
-    flashBox.hidden === false && String(flashBox.textContent).indexOf("401") >= 0,
-    JSON.stringify(flashBox.textContent));
+    flashBox.hidden === false && flashText().indexOf("401") >= 0,
+    JSON.stringify(flashText()));
   check("stored token: control reads Clear token", tokenControl.textContent === "Clear token",
     JSON.stringify(tokenControl.textContent));
   globalThis.promptAnswers = ["s3cret"];
@@ -2048,8 +2115,8 @@ const driver = `
         deadText.indexOf("loaded") < 0 && deadText.indexOf("serving") < 0,
       "header=" + deadText.slice(0, 110) + " badges=" + deadBadges.join("|"));
     check("the unreachable stamp keeps the alert",
-      flashBox.hidden === false && String(flashBox.textContent).indexOf("cannot reach") >= 0,
-      JSON.stringify(flashBox.textContent));
+      flashBox.hidden === false && flashText().indexOf("cannot reach") >= 0,
+      JSON.stringify(flashText()));
     // Recovery with the SAME payload as before the failure: the render gate was
     // voided by the stamp, so the unchanged key still forces a full repaint.
     globalThis.fetchFails = null;

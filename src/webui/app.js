@@ -115,7 +115,12 @@ async function postJson(path, body) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.message || `${path} -> ${response.status}`);
+    // The status travels on the error: a 5xx from a mutating call is a
+    // server-side refusal that the job ledger records verbatim, so the banner
+    // can stay out of the way (see `flashUnlessJobRefusal`).
+    const error = new Error(data.message || `${path} -> ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -293,7 +298,7 @@ function renderTabItem(status, category) {
           class: "sh-mini sh-tab-side sh-unload",
           title: `unload every ${category} slot`,
           onclick: () =>
-            postJson("/har/unload", { category }).catch((error) => flashError(error)),
+            postJson("/har/unload", { category }).catch(flashUnlessJobRefusal),
         },
         text("Unload"),
       ),
@@ -648,7 +653,7 @@ function modelRow(status, model, category) {
         {
           class: "sh-mini sh-unload",
           onclick: () =>
-            postJson("/har/unload", { model: model.id }).catch((error) => flashError(error)),
+            postJson("/har/unload", { model: model.id }).catch(flashUnlessJobRefusal),
         },
         text("Unload"),
       ),
@@ -666,7 +671,7 @@ function modelRow(status, model, category) {
         {
           class: "sh-mini",
           onclick: () =>
-            postJson("/har/load", { model: model.id }).catch((error) => flashError(error)),
+            postJson("/har/load", { model: model.id }).catch(flashUnlessJobRefusal),
         },
         text("Load"),
       ),
@@ -1021,17 +1026,17 @@ async function toggleLog(details) {
 
 function renderJobs(status) {
   const recent = status.jobs.slice(-5).reverse();
-  // The last fault moved down here from the sticky header (operator 2026-11-01):
-  // a stale fault is history, and history belongs beside the job ledger, not
-  // above the live controls.
-  if (recent.length === 0 && !status.last_error) return null;
+  // One fact, one place (operator 2026-11-10): the newest failed load is already
+  // a row below, so the separate `last fault:` headline is not rendered. The
+  // server keeps `last_error` for the tray and any monitor; the page shows the
+  // ledger row, which carries the same reason and does not outlive it.
+  if (recent.length === 0) return null;
   const wrap = el("div", { class: "sh-jobs" });
   wrap.append(el("h3", {}, text("Recent jobs")));
-  if (status.last_error) {
-    wrap.append(
-      el("div", { class: "sh-errline", role: "alert" }, text(`last fault: ${status.last_error}`)),
-    );
-  }
+  // Retries fail the same way. Print the reason where it first appears in this
+  // newest-first list and mark later identical reasons instead of repeating a
+  // paragraph three times; the row ids stay, so the history is still countable.
+  let previousReason = null;
   for (const job of recent) {
     const line = el("div", { class: "sh-job" });
     // The rung (B6) is present only on admitted load rows; an absent field
@@ -1041,14 +1046,17 @@ function renderJobs(status) {
     // A cancelled row (supersede, request cancel) is operator policy, not a
     // fault (UIFR-01): its reason keeps the placement but takes the muted
     // note class - the fault red stays for real errors only.
-    if (job.error)
+    if (job.error) {
+      const repeated = job.error === previousReason;
       line.append(
         el(
           "span",
           { class: job.outcome === "cancelled" ? "sh-job-note" : "sh-job-error" },
-          text(job.error),
+          text(repeated ? "same reason as above" : job.error),
         ),
       );
+      if (!repeated) previousReason = job.error;
+    }
     wrap.append(line);
   }
   return wrap;
@@ -1077,13 +1085,56 @@ function renderUnreachableHeader(error) {
   );
 }
 
+// One error banner, in flow between the tab strip and the table. It exists for
+// failures that never become a job row (token, config, network); a refusal the
+// ledger already records stays in its row (see `flashUnlessJobRefusal`). Each
+// flash replaces the last, and the timer is cleared first so an older deadline
+// cannot hide a newer message.
+let flashTimer = null;
+
+function clearFlash() {
+  if (flashTimer !== null) {
+    clearTimeout(flashTimer);
+    flashTimer = null;
+  }
+  const box = document.getElementById("sh-flash");
+  if (!box) return;
+  box.replaceChildren();
+  box.hidden = true;
+}
+
 function flashError(error) {
   const box = document.getElementById("sh-flash");
-  box.textContent = String(error.message || error);
+  if (!box) return;
+  const message = String(error && error.message ? error.message : error);
+  box.replaceChildren(
+    el("span", { class: "sh-flash-text" }, text(message)),
+    el(
+      "button",
+      {
+        class: "sh-mini outline sh-flash-x",
+        type: "button",
+        title: "dismiss",
+        "aria-label": "dismiss the error",
+        onclick: clearFlash,
+      },
+      text("\u2715"),
+    ),
+  );
   box.hidden = false;
-  setTimeout(() => {
-    box.hidden = true;
-  }, 6000);
+  if (flashTimer !== null) clearTimeout(flashTimer);
+  flashTimer = setTimeout(clearFlash, 8000);
+}
+
+/// A server-side refusal (5xx) on a mutating call is already a ledger row:
+/// re-read and let the row carry the reason, so one failure never shows twice.
+/// Client-side and transport errors have no row, so they take the banner.
+function flashUnlessJobRefusal(error) {
+  if (error && typeof error.status === "number" && error.status >= 500) {
+    refresh();
+    return;
+  }
+  flashError(error);
 }
 
 function render() {
