@@ -21,12 +21,20 @@
 //!   kill; the group kill is the fast path for the tree that stayed.
 //! - `flock` is advisory and per lock file: it refuses a second harness by the
 //!   same lock file, not by a named kernel object. The file is
-//!   `/tmp/simpleharn-<uid>.lock` — a fixed path that reads no environment, so
-//!   a shell launch and a systemd launch contend for the same lock. The uid
-//!   suffix separates users on one machine. `flock` releases when the
-//!   descriptor closes, so a crashed harness cannot leave a lock no one can
-//!   clear; a pre-created file that the current user does not own is refused
-//!   rather than locked.
+//!   `/dev/shm/simpleharn-<uid>.lock` when the `/dev/shm` directory exists,
+//!   else `/tmp/simpleharn-<uid>.lock` — a fixed choice that reads no
+//!   environment and depends only on the host's filesystem, so a shell launch
+//!   and a systemd launch contend for the same lock. The uid suffix separates
+//!   users on one machine. `/dev/shm` leads for two reasons: `/tmp` is subject
+//!   to age-based cleanup (systemd-tmpfiles), which can unlink a live lock and
+//!   let the next launch lock a fresh inode — a silent second instance — and
+//!   `/dev/shm` is tmpfs that such age cleanup does not touch; a unit with
+//!   `PrivateTmp=` gets a private `/tmp` invisible to a shell launch, which
+//!   would split the lock again, while `/dev/shm` is NOT privatised by
+//!   `PrivateTmp=`. `/tmp` therefore stays only the fallback for hosts without
+//!   `/dev/shm`. `flock` releases when the descriptor closes, so a crashed
+//!   harness cannot leave a lock no one can clear; a pre-created file that the
+//!   current user does not own is refused rather than locked.
 //!
 //! No new crate is introduced for the C calls: the few needed functions are
 //! declared here, and every call site is documented unsafe.
@@ -209,21 +217,32 @@ pub fn host_boot_id() -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-/// The one-instance lock path: a fixed, uid-suffixed file under `/tmp`.
+/// The one-instance lock path: `/dev/shm/simpleharn-<uid>.lock` when the
+/// `/dev/shm` directory exists, else `/tmp/simpleharn-<uid>.lock`.
 ///
 /// The path must NOT depend on the environment. An earlier rule used
 /// `$XDG_RUNTIME_DIR` when set and a temp-dir name otherwise, so a shell launch
 /// (`XDG_RUNTIME_DIR` set) and a systemd launch (unset, or a different
 /// `TMPDIR`) took different lock files and both could run — the exact double
-/// instance the guard exists to prevent. `/tmp` is the FHS constant; the uid
-/// suffix keeps two users on one machine from colliding on a world-writable
-/// directory, while a second harness for the SAME user still hits the SAME
-/// file. Kept out of [`SingleInstanceGuard::acquire`] so the naming rule is
-/// assertable with no environment in play.
+/// instance the guard exists to prevent. The directory choice reads only the
+/// host's filesystem, so it is deterministic per host: `/dev/shm` is preferred
+/// because `/tmp` is subject to age-based cleanup (unlinking a live lock hands
+/// the next launch a fresh inode and a silent second instance) and because
+/// `PrivateTmp=` gives a unit a private `/tmp` while `/dev/shm` stays shared;
+/// `/tmp` is the fallback for hosts without `/dev/shm`. The uid suffix keeps
+/// two users on one machine from colliding on a world-writable directory,
+/// while a second harness for the SAME user still hits the SAME file. Kept out
+/// of [`SingleInstanceGuard::acquire`] so the naming rule is assertable with no
+/// environment in play.
 fn lock_file_path() -> std::path::PathBuf {
     // Safety: `getuid` is a pure syscall; it cannot fail and takes no state.
     let uid = unsafe { getuid() };
-    std::path::PathBuf::from("/tmp").join(format!("simpleharn-{uid}.lock"))
+    let dir = if std::path::Path::new("/dev/shm").is_dir() {
+        "/dev/shm"
+    } else {
+        "/tmp"
+    };
+    std::path::PathBuf::from(dir).join(format!("simpleharn-{uid}.lock"))
 }
 
 /// The flock-backed single-instance guard. Dropping the guard closes the file,
@@ -258,7 +277,7 @@ impl SingleInstance for SingleInstanceGuard {
             .map_err(|error| format!("cannot stat {}: {error}", path.display()))?;
         if !meta.file_type().is_file() || meta.uid() != uid {
             return Err(format!(
-                "{} is not a regular file owned by this user; remove it or point SIMPLEHARN at a user-owned directory",
+                "{} is not a regular file owned by this user; remove it, or run as the user who owns it",
                 path.display()
             ));
         }
@@ -504,39 +523,72 @@ mod tests {
         );
     }
 
+    /// The process environment is global and libtest runs tests on many
+    /// threads of one process, so every test here that mutates the environment
+    /// serializes on this one mutex. No thread can own the environment; the
+    /// guard is what keeps the set-and-restore windows from overlapping.
+    static ENV_TEST_GUARD: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+
     /// The lock path must be the SAME file for one user no matter how the
-    /// harness was launched: a shell with `XDG_RUNTIME_DIR` set and a systemd
-    /// unit with it unset (or a different `TMPDIR`) must not take different
-    /// locks. The rule is a fixed `/tmp` name plus the uid, and it reads no
-    /// environment at all. Falsifier: restore any env input and the
-    /// environment-independence assert fails.
+    /// harness was launched: a shell with `XDG_RUNTIME_DIR` and `TMPDIR` set
+    /// and a systemd unit with them unset must not take different locks. The
+    /// rule is `/dev/shm/simpleharn-<uid>.lock` when `/dev/shm` exists and
+    /// `/tmp/simpleharn-<uid>.lock` otherwise, and it reads no environment at
+    /// all. Falsifier: route the directory choice back through any env input —
+    /// `TMPDIR` via `std::env::temp_dir()` or `XDG_RUNTIME_DIR` directly — and
+    /// the environment-independence assert fails.
     #[test]
     fn the_lock_path_is_a_fixed_uid_name_that_ignores_the_environment() {
+        // The environment is process-global: this test holds the guard for
+        // its whole set-and-restore window, serializing it against every
+        // other test that takes this guard. Neither variable is read by the
+        // rule under test or by any product code path.
+        let _env_guard = ENV_TEST_GUARD
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let path = lock_file_path();
         // Safety: pure syscall, cannot fail.
         let uid = unsafe { getuid() };
+        let expected_dir = if std::path::Path::new("/dev/shm").is_dir() {
+            "/dev/shm"
+        } else {
+            "/tmp"
+        };
         assert_eq!(
             path,
-            std::path::PathBuf::from(format!("/tmp/simpleharn-{uid}.lock"))
+            std::path::PathBuf::from(format!("{expected_dir}/simpleharn-{uid}.lock"))
         );
         assert_eq!(
             path.file_name().expect("named").to_string_lossy(),
             format!("simpleharn-{uid}.lock")
         );
-        assert_eq!(path.parent(), Some(std::path::Path::new("/tmp")));
+        assert_eq!(path.parent(), Some(std::path::Path::new(expected_dir)));
 
-        let before = std::env::var_os("XDG_RUNTIME_DIR");
-        // Safety: this thread owns the test binary's environment for the call.
-        unsafe { std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1000") };
-        let with_xdg = lock_file_path();
-        // Safety: the same thread restores the variable immediately below.
-        unsafe { std::env::remove_var("XDG_RUNTIME_DIR") };
-        if let Some(value) = before {
-            // Safety: restoring the prior value on the same thread.
-            unsafe { std::env::set_var("XDG_RUNTIME_DIR", value) };
+        let xdg_before = std::env::var_os("XDG_RUNTIME_DIR");
+        let tmpdir_before = std::env::var_os("TMPDIR");
+        // Safety: guarded env writes; no lock-path code reads either variable.
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1000");
+            std::env::set_var("TMPDIR", "/var/tmp");
+        }
+        let with_env = lock_file_path();
+        // Safety: the same guarded window restores the exact prior values;
+        // `var_os` keeps an originally-empty variable distinct from an unset
+        // one, so an empty value is restored as empty and an unset one stays
+        // removed.
+        unsafe {
+            match xdg_before {
+                Some(value) => std::env::set_var("XDG_RUNTIME_DIR", value),
+                None => std::env::remove_var("XDG_RUNTIME_DIR"),
+            }
+            match tmpdir_before {
+                Some(value) => std::env::set_var("TMPDIR", value),
+                None => std::env::remove_var("TMPDIR"),
+            }
         }
         assert_eq!(
-            with_xdg, path,
+            with_env, path,
             "a shell launch and a systemd launch share one lock file"
         );
     }
