@@ -291,6 +291,12 @@ suites in CI, and builds its release artifact in CI; the Linux witness reports
 the Windows-authored PowerShell suite remains the Windows runner. mock runs
 where the grant is on.
 
+The prebuilt Linux artifact requires glibc 2.39 or newer: CI builds it on
+Ubuntu 24.04, and `objdump -T` shows `GLIBC_2.39` as its highest required
+symbol version. Debian 12, Ubuntu 22.04 and RHEL 9 are older and fail at the
+loader, so build from source on those hosts. A lower-floor build (container
+base or a musl target) is not shipped yet.
+
 ## 9. Glossary
 
 - Admission: the gate's decision to admit or refuse one load against live

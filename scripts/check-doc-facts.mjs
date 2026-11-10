@@ -214,7 +214,28 @@ if (version !== null) {
     );
   }
 
-  // 8. make-public-asset.ps1: zip name pattern and package manifest.
+  // 8. Linux artifact floor: the README names the glibc the CI image produces,
+  // and the artifact job pins that image instead of a floating ubuntu-latest.
+  // The v1.5.1 artifact required GLIBC_2.39 while no doc named a floor, so a
+  // first-time Debian 12 or RHEL 9 user met a raw loader error.
+  const facts = present(".github/workflows/release-facts.yml");
+  if (facts !== null) {
+    check(
+      readme !== null && /glibc\s+2\.39/.test(readme),
+      "README.md",
+      "the Requirements paragraph names the glibc 2.39 floor of the prebuilt Linux artifact",
+      "no glibc floor named"
+    );
+    const job = facts.split(/^  linux-artifact:/m)[1]?.split(/^  [a-z-]+:/m)[0] ?? "";
+    check(
+      /runs-on:\s+ubuntu-24\.04\b/.test(job) && !/runs-on:\s+ubuntu-latest\b/.test(job),
+      ".github/workflows/release-facts.yml",
+      "a linux-artifact job pinned to ubuntu-24.04, so the published floor cannot drift silently",
+      job.length === 0 ? "no linux-artifact job" : "job uses a floating runner image"
+    );
+  }
+
+  // 9. make-public-asset.ps1: zip name pattern and package manifest.
   const maker = present("scripts/make-public-asset.ps1");
   if (maker !== null) {
     const direct = /SimpleHarn-"\s*\+\s*\$Version\b/;

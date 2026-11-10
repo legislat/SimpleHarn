@@ -14,8 +14,9 @@ and it refuses to overcommit. The product name is SimpleHarn, and the repository
 `legislat/SimpleHarn`. The binary is `simpleharn` (`simpleharn.exe` on Windows), the config file is `simpleharn.json`,
 and the environment names use the `SIMPLEHARN_` prefix.
 
-Current release: **v1.5.1**. Windows 10/11 and Linux (headless), one NVIDIA
-GPU, single user. Prebuilt binaries: see the GitHub Releases page of this repository. The release
+Current release: **v1.5.1**. Windows 10/11 and Linux x86-64 (headless; glibc
+2.39 or newer, see Requirements), one NVIDIA GPU, single user. Prebuilt
+binaries: see the GitHub Releases page of this repository. The release
 zip holds `simpleharn.exe`, `SimpleHarn.vbs`, `README.md`, `LICENSE`, and
 `docs/assets/control-page.png`. The Linux tar.gz from the same tag carries the
 headless binary and the same docs. Models and engine installs are yours.
@@ -211,8 +212,12 @@ full policy is in [SECURITY.md](SECURITY.md); the token and bind keys are in
 
 ## Requirements
 
-Windows 10 or 11, or Linux (Ubuntu 24.04 tested in WSL2 and CI), one NVIDIA
-GPU. The `llama` path needs a llama.cpp build that runs `llama-server`
+Windows 10 or 11, or Linux x86-64 with glibc 2.39 or newer, one NVIDIA
+GPU. The prebuilt Linux artifact is built on Ubuntu 24.04, so it runs on
+Ubuntu 24.04 and newer and on Debian 13 and newer; Debian 12, Ubuntu 22.04 and
+RHEL 9 carry older glibc and fail at the loader with
+`version 'GLIBC_2.39' not found`. Build from source on those hosts. The
+`llama` path needs a llama.cpp build that runs `llama-server`
 (`llama-server.exe` on Windows); first run detects one found on PATH. The
 `strata`, `basalt`, and `maya` paths need their engine install and its Python
 environment. The `ninfer` path needs WSL2 and Docker on Windows; on Linux it uses the

@@ -20,10 +20,13 @@
 //!   pid-identity sweep at the next boot (token + boot stamp), not the group
 //!   kill; the group kill is the fast path for the tree that stayed.
 //! - `flock` is advisory and per lock file: it refuses a second harness by the
-//!   same lock file, not by a named kernel object. The file lives under
-//!   `$XDG_RUNTIME_DIR` (falling back to a uid-suffixed name in the temp dir),
-//!   where the kernel wipes it at logout/reboot, so a crashed harness cannot
-//!   leave a lock no one can clear.
+//!   same lock file, not by a named kernel object. The file is
+//!   `/tmp/simpleharn-<uid>.lock` — a fixed path that reads no environment, so
+//!   a shell launch and a systemd launch contend for the same lock. The uid
+//!   suffix separates users on one machine. `flock` releases when the
+//!   descriptor closes, so a crashed harness cannot leave a lock no one can
+//!   clear; a pre-created file that the current user does not own is refused
+//!   rather than locked.
 //!
 //! No new crate is introduced for the C calls: the few needed functions are
 //! declared here, and every call site is documented unsafe.
@@ -206,19 +209,21 @@ pub fn host_boot_id() -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-/// The one-instance lock path: `$XDG_RUNTIME_DIR/simpleharn.lock` when the
-/// runtime dir is set, else a uid-suffixed temp path so two different users
-/// on one machine never collide on a world-writable temp dir, while a second
-/// harness for the SAME user still hits the SAME file. Kept out of
-/// [`SingleInstanceGuard::acquire`] so the naming rule is assertable without
-/// touching the process environment.
-fn lock_file_path(xdg_runtime_dir: Option<std::ffi::OsString>) -> std::path::PathBuf {
-    if let Some(dir) = xdg_runtime_dir.filter(|dir| !dir.is_empty()) {
-        return std::path::PathBuf::from(dir).join("simpleharn.lock");
-    }
+/// The one-instance lock path: a fixed, uid-suffixed file under `/tmp`.
+///
+/// The path must NOT depend on the environment. An earlier rule used
+/// `$XDG_RUNTIME_DIR` when set and a temp-dir name otherwise, so a shell launch
+/// (`XDG_RUNTIME_DIR` set) and a systemd launch (unset, or a different
+/// `TMPDIR`) took different lock files and both could run — the exact double
+/// instance the guard exists to prevent. `/tmp` is the FHS constant; the uid
+/// suffix keeps two users on one machine from colliding on a world-writable
+/// directory, while a second harness for the SAME user still hits the SAME
+/// file. Kept out of [`SingleInstanceGuard::acquire`] so the naming rule is
+/// assertable with no environment in play.
+fn lock_file_path() -> std::path::PathBuf {
     // Safety: `getuid` is a pure syscall; it cannot fail and takes no state.
     let uid = unsafe { getuid() };
-    std::env::temp_dir().join(format!("simpleharn-{uid}.lock"))
+    std::path::PathBuf::from("/tmp").join(format!("simpleharn-{uid}.lock"))
 }
 
 /// The flock-backed single-instance guard. Dropping the guard closes the file,
@@ -230,9 +235,10 @@ pub struct SingleInstanceGuard {
 impl SingleInstance for SingleInstanceGuard {
     fn acquire() -> Result<Self, String> {
         use std::fs::OpenOptions;
+        use std::os::unix::fs::MetadataExt;
         use std::os::unix::fs::OpenOptionsExt;
 
-        let path = lock_file_path(std::env::var_os("XDG_RUNTIME_DIR"));
+        let path = lock_file_path();
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
@@ -241,6 +247,21 @@ impl SingleInstance for SingleInstanceGuard {
             .mode(0o600)
             .open(&path)
             .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
+        // A world-writable directory invites a pre-created symlink or a foreign
+        // file at the lock path: `mode` applies only on create. Refuse anything
+        // the current user does not own, or that is not a regular file, rather
+        // than locking a file someone else controls.
+        // Safety: `getuid` is a pure syscall; it cannot fail and takes no state.
+        let uid = unsafe { getuid() };
+        let meta = file
+            .metadata()
+            .map_err(|error| format!("cannot stat {}: {error}", path.display()))?;
+        if !meta.file_type().is_file() || meta.uid() != uid {
+            return Err(format!(
+                "{} is not a regular file owned by this user; remove it or point SIMPLEHARN at a user-owned directory",
+                path.display()
+            ));
+        }
         // Safety: `file` owns the descriptor and lives for the guard's lifetime.
         let locked = unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) };
         if locked == 0 {
@@ -483,27 +504,41 @@ mod tests {
         );
     }
 
-    /// The lock-path rule: `$XDG_RUNTIME_DIR/simpleharn.lock` when set, else
-    /// the uid-suffixed temp name — asserted on the pure naming rule, with no
-    /// environment mutation racing other tests.
+    /// The lock path must be the SAME file for one user no matter how the
+    /// harness was launched: a shell with `XDG_RUNTIME_DIR` set and a systemd
+    /// unit with it unset (or a different `TMPDIR`) must not take different
+    /// locks. The rule is a fixed `/tmp` name plus the uid, and it reads no
+    /// environment at all. Falsifier: restore any env input and the
+    /// environment-independence assert fails.
     #[test]
-    fn the_lock_path_is_xdg_runtime_dir_else_the_uid_suffixed_temp_name() {
-        use std::ffi::OsString;
-        assert_eq!(
-            lock_file_path(Some(OsString::from("/run/user/1000"))),
-            std::path::PathBuf::from("/run/user/1000/simpleharn.lock")
-        );
+    fn the_lock_path_is_a_fixed_uid_name_that_ignores_the_environment() {
+        let path = lock_file_path();
         // Safety: pure syscall, cannot fail.
         let uid = unsafe { getuid() };
-        for unset in [None, Some(OsString::new())] {
-            let path = lock_file_path(unset);
-            assert_eq!(
-                path.file_name().expect("named").to_string_lossy(),
-                format!("simpleharn-{uid}.lock"),
-                "same-user harnesses collide on one file by design"
-            );
-            assert_eq!(path.parent().expect("in temp dir"), std::env::temp_dir());
+        assert_eq!(
+            path,
+            std::path::PathBuf::from(format!("/tmp/simpleharn-{uid}.lock"))
+        );
+        assert_eq!(
+            path.file_name().expect("named").to_string_lossy(),
+            format!("simpleharn-{uid}.lock")
+        );
+        assert_eq!(path.parent(), Some(std::path::Path::new("/tmp")));
+
+        let before = std::env::var_os("XDG_RUNTIME_DIR");
+        // Safety: this thread owns the test binary's environment for the call.
+        unsafe { std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1000") };
+        let with_xdg = lock_file_path();
+        // Safety: the same thread restores the variable immediately below.
+        unsafe { std::env::remove_var("XDG_RUNTIME_DIR") };
+        if let Some(value) = before {
+            // Safety: restoring the prior value on the same thread.
+            unsafe { std::env::set_var("XDG_RUNTIME_DIR", value) };
         }
+        assert_eq!(
+            with_xdg, path,
+            "a shell launch and a systemd launch share one lock file"
+        );
     }
 
     /// The flock refusal is per lock FILE and per holder: a second acquire is

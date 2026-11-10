@@ -75,7 +75,9 @@ jobs:
   # loads on a Linux GPU.
   linux-artifact:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: the runner image sets the artifact's glibc floor,
+    # published in README Requirements. A floating image would move it silently.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
