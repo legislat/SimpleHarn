@@ -535,7 +535,7 @@ function renderHeader(status) {
         onclick: () =>
           postJson("/har/unload", {})
             .then(refresh)
-            .catch((error) => flashError(error)),
+            .catch(flashUnlessJobRefusal),
       },
       text("Unload all"),
     ),
@@ -1056,6 +1056,9 @@ function renderJobs(status) {
         ),
       );
       if (!repeated) previousReason = job.error;
+    } else {
+      // A success row between two identical failures breaks "above".
+      previousReason = null;
     }
     wrap.append(line);
   }
@@ -1126,15 +1129,23 @@ function flashError(error) {
   flashTimer = setTimeout(clearFlash, 8000);
 }
 
-/// A server-side refusal (5xx) on a mutating call is already a ledger row:
-/// re-read and let the row carry the reason, so one failure never shows twice.
-/// Client-side and transport errors have no row, so they take the banner.
-function flashUnlessJobRefusal(error) {
-  if (error && typeof error.status === "number" && error.status >= 500) {
-    refresh();
+/// Show a failed action once. Re-read first, then ask the ledger whether this
+/// exact reason is already a job row: if it is, the row carries it and the
+/// banner stays out; if not, the banner is the only surface. Status codes are
+/// not a proxy for that answer - a 409 can record a row and a 500 can fail
+/// without one - so the decision is the visible fact itself.
+async function flashUnlessJobRefusal(error) {
+  const message = String(error && error.message ? error.message : error);
+  try {
+    await refresh();
+  } catch {
+    flashError(error);
     return;
   }
-  flashError(error);
+  const jobs = state.status && Array.isArray(state.status.jobs) ? state.status.jobs : [];
+  const newest = [...jobs].reverse().find((job) => job.error);
+  const shown = newest && (message.indexOf(newest.error) >= 0 || newest.error.indexOf(message) >= 0);
+  if (!shown) flashError(error);
 }
 
 function render() {

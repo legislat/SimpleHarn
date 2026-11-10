@@ -24,6 +24,10 @@
    * theme overrides this - 25 % there left the label at 4.46:1. */
   --sh-warn-tint: #d89b1d40;
   --sh-bad: #c0392b;
+  /* Error text ink: the banner and job reasons, dark enough for 4.5:1 on the
+   * light card (5.3:1) and lightened in the dark block (5.9:1). The dot and
+   * edge keep --sh-bad - graphics only need 3:1. */
+  --sh-bad-ink: #b03024;
   --sh-releasing: #a16207;
   /* Working-model indicator (operator 2026-11-05): the matte olive dot read
    * as nearly nothing at 9px on the parchment and the card. The serving dot
@@ -67,6 +71,7 @@ html[data-theme="dark"] {
   --sh-warn-tint: #d89b1d2e;
   /* Matte olive lightened for the dark card (6.9:1) - see :root. */
   --sh-accent-solid: #8fae6f;
+  --sh-bad-ink: #e8756a;
   /* Cost provenance ink: the same olive on the dark card (7.0:1). */
   --sh-cost-ink: var(--sh-accent-solid);
   /* Calm slate chrome for dark mode (TASK-UI-POLISH, 2026-11-09): mirrors
@@ -647,7 +652,7 @@ input[type="checkbox"] {
   border-bottom: 1px dashed var(--pico-card-border-color);
 }
 .sh-job:last-child { border-bottom: 0; }
-.sh-job-error { color: var(--sh-bad); overflow-wrap: anywhere; }
+.sh-job-error { color: var(--sh-bad-ink); overflow-wrap: anywhere; }
 /* A cancel is policy, not a fault (UIFR-01): the reason keeps its place and
    takes the muted ink, never the fault red. */
 .sh-job-note { color: var(--pico-muted-color); overflow-wrap: anywhere; }
@@ -698,14 +703,14 @@ input[type="checkbox"] {
   border-radius: var(--sh-radius, 8px);
   background: var(--pico-card-background-color);
   box-shadow: var(--sh-card-shadow);
-  color: var(--sh-bad);
+  color: var(--sh-bad-ink);
   font-size: 0.85rem;
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
 .sh-flash[hidden] { display: none; }
 .sh-flash-text { flex: 1 1 auto; min-width: 0; }
-.sh-flash-x { flex: 0 0 auto; margin: 0; }
+.sh-flash-x { flex: 0 0 auto; margin: 0; color: var(--sh-bad-ink); border-color: var(--sh-bad-ink); }
 
 /* Small controls: unload buttons and the two static header-corner buttons. */
 .sh-mini {

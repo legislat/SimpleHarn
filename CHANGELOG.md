@@ -26,6 +26,7 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   renders the separate `last fault:` headline, and retries that fail the same
   way print the reason once, with later rows marked "same reason as above".
   The banner is opaque, so it can never paint its text over the page.
+
 ## v1.5.1.2 - 2026-11-10
 
 ### Added

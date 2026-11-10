@@ -649,8 +649,20 @@ mod tests {
             "the banner host must sit between the header and the model table"
         );
         assert!(
-            !INDEX_HTML.contains("position: fixed"),
-            "the page shell must not pin the banner over the page"
+            INDEX_HTML.contains("id=\"sh-flash\"")
+                && INDEX_HTML.find("id=\"sh-flash-host\"").expect("host")
+                    < INDEX_HTML.find("id=\"sh-flash\"").expect("banner"),
+            "the banner host must contain the banner element, not rely on the test DOM fabricating it"
+        );
+        assert!(
+            !INDEX_HTML.contains("position: fixed") && !STYLE_CSS.contains("position: fixed"),
+            "the page shell and the stylesheet must not pin the banner over the page"
+        );
+        assert!(
+            STYLE_CSS.contains("--sh-bad-ink: #b03024")
+                && STYLE_CSS.contains("--sh-bad-ink: #e8756a")
+                && STYLE_CSS.contains(".sh-job-error { color: var(--sh-bad-ink);"),
+            "error text uses the readable ink in both themes, not the graphics red"
         );
         assert!(
             STYLE_CSS.contains(".sh-flash-host {")

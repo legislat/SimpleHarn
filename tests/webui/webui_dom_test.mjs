@@ -1110,7 +1110,7 @@ const driver = `
       last_error: "qwen3.5-4b@WORK: " + reason,
       jobs: [jobOf(41), jobOf(42)],
     });
-    const rows = findAll(document.getElementById("sh-main"), "div", "sh-job").filter((r) => textOf(r).indexOf("qwen3.5-4b") >= 0);
+    const rows = findAll(document.getElementById("sh-main"), "div", "sh-job").filter((r) => { const t = textOf(r); return /^[0-9]+/.test(t) && t.indexOf(" · qwen3.5-4b") >= 0; });
     const texts = rows.map(textOf);
     check("identical retries print the reason once and mark the repeat",
       texts.filter((t) => t.indexOf(reason) >= 0).length === 1 &&
@@ -1889,15 +1889,48 @@ const driver = `
     JSON.stringify(flashText()));
   globalThis.failNextPost = null;
   quietFlash();
-  globalThis.failNextPost = "launch floor not met: free 0.8 GiB";
+  // The banner's rule is the visible fact, not the status code: a refusal the
+  // ledger already carries (any status) does not flash...
+  const ledgerReason = "launch floor not met: free 0.8 GiB";
+  const ledgerDoc = {
+    ...fixtures["/har/status"],
+    models: fixtures["/har/models"].data,
+    jobs: [{ id: 77, kind: "Load", model: "qwen3.5-4b", category: "WORK",
+      state: "Failed", path: null, terminal: true, outcome: "admission refused",
+      error: ledgerReason, is_fault: true }],
+  };
+  fixtures["/har/status"] = ledgerDoc;
+  applyState(ledgerDoc);
+
+  state.activeTab = "WORK";
+  render();
+  const loadForLedger = rowButton("Load");
+  check("the ledger legs have a Load row to click", !!loadForLedger, String(!!loadForLedger));
+  globalThis.failNextPost = "service unavailable: " + ledgerReason;
   globalThis.failNextPostStatus = 503;
-  const beforeRefusedLoad = globalThis.statusFetches;
-  if (loadForFlash) loadForFlash.dispatch("click", {});
+  const beforeLedgerLoad = globalThis.statusFetches;
+  if (loadForLedger) loadForLedger.dispatch("click", {});
   await flush();
-  check("a 5xx load refusal stays in the ledger and never flashes",
+  await flush();
+  check("a refusal already in the ledger does not flash",
     flashBox.hidden === true && flashText() === "" &&
-      globalThis.statusFetches > beforeRefusedLoad,
-    JSON.stringify(flashText()) + " " + beforeRefusedLoad + " -> " + globalThis.statusFetches);
+      globalThis.statusFetches > beforeLedgerLoad,
+    JSON.stringify(flashText()) + " " + beforeLedgerLoad + " -> " + globalThis.statusFetches);
+  // ...and an error with no row must still reach the operator, whatever its code.
+  fixtures["/har/status"] = { ...fixtures["/har/status"], models: fixtures["/har/models"].data, jobs: [] };
+  applyState(fixtures["/har/status"]);
+  state.activeTab = "WORK";
+  render();
+  const loadNoRow = rowButton("Load");
+  quietFlash();
+  globalThis.failNextPost = "service unavailable: the scheduler actor went away";
+  globalThis.failNextPostStatus = 500;
+  if (loadNoRow) loadNoRow.dispatch("click", {});
+  await flush();
+  await flush();
+  check("a 500 with no ledger row still flashes",
+    flashBox.hidden === false && flashText() === "service unavailable: the scheduler actor went away",
+    JSON.stringify(flashText()));
   globalThis.failNextPost = null;
   globalThis.failNextPostStatus = 400;
   quietFlash();
