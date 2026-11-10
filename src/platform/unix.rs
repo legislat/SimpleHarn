@@ -251,20 +251,22 @@ pub struct SingleInstanceGuard {
     _lock: std::fs::File,
 }
 
-impl SingleInstance for SingleInstanceGuard {
-    fn acquire() -> Result<Self, String> {
+impl SingleInstanceGuard {
+    /// Acquire the guard on an explicit lock file. `acquire` supplies the
+    /// production path; tests supply a private one so a harness or a parallel
+    /// test run holding the real lock cannot fail a test about flock itself.
+    fn acquire_at(path: &std::path::Path) -> Result<Self, String> {
         use std::fs::OpenOptions;
         use std::os::unix::fs::MetadataExt;
         use std::os::unix::fs::OpenOptionsExt;
 
-        let path = lock_file_path();
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
             .read(true)
             .write(true)
             .mode(0o600)
-            .open(&path)
+            .open(path)
             .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
         // A world-writable directory invites a pre-created symlink or a foreign
         // file at the lock path: `mode` applies only on create. Refuse anything
@@ -291,6 +293,12 @@ impl SingleInstance for SingleInstanceGuard {
             return Err("another SimpleHarn instance is already running".to_string());
         }
         Err(format!("cannot lock {}: {error}", path.display()))
+    }
+}
+
+impl SingleInstance for SingleInstanceGuard {
+    fn acquire() -> Result<Self, String> {
+        Self::acquire_at(&lock_file_path())
     }
 }
 
@@ -594,12 +602,25 @@ mod tests {
     }
 
     /// The flock refusal is per lock FILE and per holder: a second acquire is
-    /// refused with the "already running" line, and a new acquire succeeds
-    /// once the first guard drops (closing the descriptor releases the lock).
+    /// refused with the "already running" line, and a new acquire succeeds once
+    /// the first guard drops (closing the descriptor releases the lock).
+    ///
+    /// The test holds a PRIVATE lock file, not the production one. The rule the
+    /// production path obeys is pinned separately, and taking the machine-wide
+    /// lock here made the test fail whenever a harness or a parallel test run
+    /// held it - a false alarm about a guard that was behaving correctly.
     #[test]
     fn the_flock_guard_refuses_a_second_holder_then_releases_on_drop() {
-        let first = SingleInstanceGuard::acquire().expect("the first holder acquires");
-        let second = SingleInstanceGuard::acquire();
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let unique = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "simpleharn-lock-test-{}-{unique}.lock",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        let first = SingleInstanceGuard::acquire_at(&path).expect("the first holder acquires");
+        let second = SingleInstanceGuard::acquire_at(&path);
         match second {
             Err(reason) => assert!(
                 reason.contains("already running"),
@@ -608,8 +629,27 @@ mod tests {
             Ok(_) => panic!("flock must refuse a second exclusive holder"),
         }
         drop(first);
-        let _reacquired =
-            SingleInstanceGuard::acquire().expect("dropping the guard released the lock");
+        // A concurrently spawned child can hold an inherited copy of the lock
+        // descriptor for the fork-to-exec window, which keeps the open file
+        // description alive a moment past the drop here. Wait for that window
+        // instead of asserting on the scheduler; a lock that is genuinely never
+        // released still fails, after the bound.
+        let mut attempts = 0;
+        let reacquired = loop {
+            match SingleInstanceGuard::acquire_at(&path) {
+                Ok(guard) => break guard,
+                Err(reason) => {
+                    attempts += 1;
+                    assert!(
+                        attempts <= 20,
+                        "the lock did not release within 2s after the guard dropped: {reason}"
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        };
+        drop(reacquired);
+        let _ = std::fs::remove_file(&path);
     }
 
     /// The walk over the live tree: a child this test spawned appears under
