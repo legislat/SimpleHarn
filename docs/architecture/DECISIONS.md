@@ -890,3 +890,19 @@ recorded here so dated references to ARCHIVED still resolve:
   path.
   | 2026-11-10 | `this task`
 
+- **A load short only on in-flight bookings waits** (operator ruling 2026-11-10):
+  admission debits another non-terminal load's whole booking on top of the
+  physical memory that load has already taken, so a second load is refused until
+  the first reports Serving even when both fit together (observed: `Ninfer-nvfp4`
+  booking 29.8 GiB, RP-1 refused three times at free 16.4/6.7, admitted the
+  moment Ninfer terminalised). When `deficit <= in_flight`, the row has no victim
+  and no releasable candidate, and no launch floor is unreachable, the gate now
+  parks the row on its free slot (`pending[slot]`, state `Idle`, waiters
+  attached) instead of refusing it, and the terminal funnel re-runs admission for
+  parked rows whose slot is free. A re-gate that still cannot fit re-parks; a
+  gate now short on foreign memory takes the normal `AdmitFail`. Paper bookings
+  are never credited as physical bytes. This adds the `(Admit, Idle)` edge to the
+  locked state graph and lets the supersede path take a parked row's queue place
+  before killing an in-flight load; both are part of this ruling.
+  | 2026-11-10 | `this task`
+

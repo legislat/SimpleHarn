@@ -264,7 +264,10 @@ struct ActorState {
     /// Slots holding a queued (parked) load, T3.4, mapped to the ledger row registered
     /// when it parks: its model, waiters and state all live on that
     /// row, and [`ActorState::start_pending`] arms the same row rather than creating
-    /// a second one.
+    /// a second one. Since the 2026-11-10 ruling a gate-parked row lives here too:
+    /// a load the gate found short only on in-flight bookings parks with state `Idle`
+    /// on its (otherwise free) slot, and [`ActorState::finish`] re-gates it when any
+    /// booking terminalizes.
     pending: HashMap<usize, JobId>,
     /// Slots whose occupant an operator's unload must still free once the in-flight
     /// job it cancelled terminalizes: unload = cancel *and* unload.
@@ -762,6 +765,33 @@ impl ActorState {
             // consumed: a slot is never unloaded twice.
             if self.unload_after_finish.remove(&slot) && self.slots[slot].occupant.is_some() {
                 self.begin_unload_slot(slot, "unloaded");
+            }
+        }
+        // Operator 2026-11-10: this funnel is the one moment another
+        // load's paper booking can leave the gate, and a gate-parked row waits
+        // on exactly such a release. Re-gate every parked row whose slot is
+        // free through the ordinary `start_pending` arm path: the fresh gate
+        // re-reads the live witness, a row still short only on bookings parks
+        // again, and a row the card cannot hold now takes the named `AdmitFail`
+        // - so waiting cannot spin forever and never credits paper with
+        // physical bytes. Rows parked behind a running job (the T3.4 shape)
+        // keep waiting for their own slot: the filter requires a slot with
+        // neither occupant nor job, and the block above already answered or
+        // started the finishing slot's queued row, so nothing is double-armed
+        // (the remove check skips rows this same turn already took).
+        let waiting: Vec<(usize, JobId)> = self
+            .pending
+            .iter()
+            .filter(|(&slot, &queued)| {
+                self.slots[slot].occupant.is_none()
+                    && self.slots[slot].job.is_none()
+                    && self.jobs.get(&queued).is_some_and(|job| !job.terminal)
+            })
+            .map(|(&slot, &queued)| (slot, queued))
+            .collect();
+        for (slot, queued) in waiting {
+            if self.pending.remove(&slot) == Some(queued) {
+                self.start_pending(slot, queued);
             }
         }
         // FR-01: this is the one funnel every job exits through (the only writer of

@@ -6171,6 +6171,533 @@ async fn a_need_short_swap_still_takes_the_release_first_path() {
     assert_eq!(job.state, SwapState::Dispose);
 }
 
+/// Shared fixture for the gate-park pins (operator 2026-11-10): two
+/// empty WORK slots on a 72 GiB card with the 2 GiB reserve, plus `ninfer-like`
+/// — the admitted, non-terminal booking row sitting on slot 0 with its spawn
+/// still in flight and no occupant installed: the witness counts its
+/// allocation and `in_flight_need` debits its paper booking on top, exactly the
+/// live `Ninfer-nvfp4` shape. Returns the state and the entry of the row under
+/// test (`waiting`), which the pin arms on slot 1.
+fn booking_short_fixture(
+    dir: &std::path::Path,
+    waiting_name: &str,
+    waiting_yaml: &str,
+) -> (ActorState, ModelEntry) {
+    let inflight_yaml = dir.join("ninfer-like.yaml");
+    std::fs::write(
+        &inflight_yaml,
+        "engine: mock\ncategory: work\nvram_gb: 29.8\n",
+    )
+    .expect("seed booking");
+    let waiting_path = dir.join(format!("{waiting_name}.yaml"));
+    std::fs::write(&waiting_path, waiting_yaml).expect("seed waiting");
+    let mut state = fold_state(dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.cfg.witness_tolerance_gb = 2.0;
+    let inflight = rescan_entry(&inflight_yaml, "ninfer-like");
+    let waiting = rescan_entry(&waiting_path, waiting_name);
+    state.catalog = vec![inflight.clone(), waiting.clone()];
+    state.slots = vec![
+        Slot {
+            category: CategoryId::Work,
+            index: 0,
+            engine_port: 18_140,
+            occupant: None,
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Work,
+            index: 1,
+            engine_port: 18_141,
+            occupant: None,
+            job: None,
+        },
+    ];
+    // The in-flight booking, armed as `start_queued_load` arms a row (slot
+    // claim, booked need, `Admit`) without a dispatched sample task: the
+    // booking is what the second gate debits, and its row never receives the
+    // event that would let it install.
+    let booking = state.register_queued_load(0, &inflight, Vec::new());
+    state.slots[0].job = Some(booking);
+    state.jobs.get_mut(&booking).expect("booking row").need = Some(Gibibytes(29.8));
+    state.step(booking, SwapState::Admit);
+    (state, waiting)
+}
+
+fn gate_sample(used_gib: f64) -> crate::budget::MemorySample {
+    crate::budget::MemorySample {
+        total_gib: 72.0,
+        used_gib,
+        processes: Vec::new(),
+        attribution: crate::budget::AttributionQuality::Unavailable,
+    }
+}
+
+/// Operator 2026-11-10, the incident shape: `Ninfer-nvfp4` was
+/// installing (booking 29.8), the witness already counted its allocation and
+/// the gate also debited its booking, and RP-1 (need 29) saw free
+/// 72 - 2 - 23.8 - 29.8 = 16.4 and died `AdmitFail` three times - while the
+/// moment the Ninfer row terminalized, the same load admitted on the spot.
+/// The ruling: a deficit covered only by in-flight bookings waits, and the
+/// terminal funnel re-gates it. Falsifier: delete the park arm in
+/// `finish_admit` and the first gate terminalizes the row with `AdmitFail` —
+/// the non-terminal, error-free, `pending`, and unanswered-waiter legs all go
+/// red together, and the second half never runs.
+#[tokio::test]
+async fn a_load_short_only_on_an_in_flight_booking_waits_then_admits() {
+    let dir = crate::testutil::temp_dir("gate-park-wait");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let (mut state, waiting) =
+        booking_short_fixture(&dir, "rp-1", "engine: mock\ncategory: work\nvram_gb: 29\n");
+    let (reply_tx, mut reply_rx) = tokio::sync::oneshot::channel();
+    let parked = JobId(state.next_job);
+    state.begin_load(1, waiting.clone(), vec![reply_tx]);
+    // free = 72 - 2 - 23.8 - 29.8 = 16.4 against need 29: short 12.6, and the
+    // 29.8 booking covers it exactly once the spawn terminalizes.
+    state.finish_admit_card(parked, Ok(gate_sample(23.8)));
+    let row = &state.jobs[&parked];
+    assert!(
+        !row.terminal,
+        "a paper-booking deficit is a wait, not a refusal: {:?}",
+        row.error
+    );
+    assert!(row.error.is_none(), "{:?}", row.error);
+    assert_eq!(row.state, SwapState::Idle, "the row is parked, not armed");
+    assert_eq!(
+        state.pending.get(&1),
+        Some(&parked),
+        "the row waits in its slot's queue place"
+    );
+    assert!(
+        state.slots[1].job.is_none(),
+        "the parked row releases the gate's slot claim"
+    );
+    assert!(
+        matches!(
+            reply_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ),
+        "the caller keeps waiting - the row answers nothing at park time"
+    );
+    // The booked load terminalizes: the booking leaves the gate, and the
+    // terminal funnel must re-gate the waiting row through the queue path.
+    let booking = state.slots[0].job.expect("the in-flight row owns slot 0");
+    state.cancel_job(booking, "the in-flight engine died before install");
+    assert!(
+        state.jobs[&booking].terminal,
+        "the booking has left the sum"
+    );
+    assert_eq!(
+        state.slots[1].job,
+        Some(parked),
+        "the drain re-arms the parked row on its free slot"
+    );
+    assert!(state.pending.is_empty(), "and takes its queue place");
+    assert_eq!(
+        state.jobs[&parked].state,
+        SwapState::Admit,
+        "the row stands before the gate again"
+    );
+    assert!(!state.jobs[&parked].terminal);
+    // Re-gate with the booking gone and the card free: the gate says yes on
+    // the fresh witness sample, and the caller's waiter gets the real answer.
+    state.finish_admit_card(parked, Ok(gate_sample(2.0)));
+    let row = &state.jobs[&parked];
+    assert!(
+        !row.terminal,
+        "the roomy card admits the waiting load: {:?}",
+        row.error
+    );
+    assert_eq!(row.path, Some(AdmissionPath::FitsNow));
+    assert_eq!(
+        row.state,
+        SwapState::Spawn,
+        "the row advanced past Idle: the re-gate armed it"
+    );
+    state.apply_event(
+        parked,
+        super::Event::Spawned(Ok(crate::engine::Spawned {
+            port: 18_141,
+            pid: 7_777,
+        })),
+    );
+    state.apply_event(
+        parked,
+        super::Event::Probed(crate::engine::Probe::Ready, Some("rp-1".to_string())),
+    );
+    let row = &state.jobs[&parked];
+    assert!(row.terminal, "the load completes as any ordinary load");
+    assert_eq!(row.outcome.as_deref(), Some("loaded"));
+    assert_eq!(
+        state.slots[1].occupant.as_ref().map(|o| o.model.as_str()),
+        Some("rp-1"),
+        "the waiter waited; the engine now serves"
+    );
+    match reply_rx.try_recv() {
+        Ok(Ok(Reply::Loaded(receipt))) => {
+            assert_eq!(receipt.model, "rp-1");
+            assert_eq!(receipt.port, 18_141);
+        }
+        other => panic!("the waiter receives the load receipt: {other:?}"),
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The second arm of the drain's re-gate (operator 2026-11-10): the blocking
+/// booking terminalises, the drain re-arms the parked row, but the card no
+/// longer has the room - the witness now reads 60 of 72 GiB used, foreign
+/// bytes the dead booking never held - so `in_flight` is zero, the park
+/// guard fails, and the re-gate takes the ordinary named `AdmitFail` with
+/// the caller's waiter answered exactly once: not another park, not a hang.
+/// Falsifier: remove the re-gate's refusal arm - park unconditionally
+/// instead of only when the bookings cover the deficit, i.e. drop the
+/// `in_flight > 0 && deficit <= in_flight` legs from the park guard - and
+/// this re-gate parks the row again: the `terminal`, `AdmitFail`,
+/// empty-`pending`, and answered-waiter legs all go red, and the wait
+/// outlives the very memory it was waiting for.
+#[tokio::test]
+async fn a_wait_that_cannot_fit_after_the_booking_dies_refuses() {
+    use super::{AdmissionError, SchedulerError};
+    let dir = crate::testutil::temp_dir("gate-park-refuse");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let (mut state, waiting) =
+        booking_short_fixture(&dir, "rp-1", "engine: mock\ncategory: work\nvram_gb: 29\n");
+    let (reply_tx, mut reply_rx) = tokio::sync::oneshot::channel();
+    let parked = JobId(state.next_job);
+    state.begin_load(1, waiting, vec![reply_tx]);
+    state.finish_admit_card(parked, Ok(gate_sample(23.8)));
+    assert_eq!(state.pending.get(&1), Some(&parked), "the row waits");
+    // The blocking booking terminalises and the terminal funnel re-gates the
+    // parked row through the queue path (ruling step 3).
+    let booking = state.slots[0].job.expect("the in-flight row owns slot 0");
+    state.cancel_job(booking, "the in-flight engine died before install");
+    assert_eq!(
+        state.slots[1].job,
+        Some(parked),
+        "the drain re-arms the parked row"
+    );
+    // The re-gate now reads a card the booking's death did not free: free
+    // 72 - 2 - 60 = 10 against need 29, with no booking left to cover the
+    // 19 GiB deficit.
+    state.finish_admit_card(parked, Ok(gate_sample(60.0)));
+    let row = &state.jobs[&parked];
+    assert!(
+        row.terminal,
+        "a re-gate short on foreign memory refuses, not parks: {:?}",
+        row.error
+    );
+    assert_eq!(row.state, SwapState::AdmitFail);
+    assert!(
+        matches!(
+            row.error,
+            Some(SchedulerError::Admission(
+                AdmissionError::Insufficient { .. }
+            ))
+        ),
+        "{:?}",
+        row.error
+    );
+    assert!(state.pending.is_empty(), "the refusal never re-parks");
+    assert!(state.slots[1].job.is_none(), "and releases the slot");
+    match reply_rx.try_recv() {
+        Ok(Err(SchedulerError::Admission(AdmissionError::Insufficient { .. }))) => {}
+        other => panic!("the caller receives the named refusal: {other:?}"),
+    }
+    assert!(
+        matches!(
+            reply_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+        ),
+        "exactly once"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The other half of the ruling: the wait is reserved for a deficit another
+/// load's booking causes. Nothing is in flight here - a foreign tenant holds
+/// 60 of 72 GiB and the harness may release nothing - so the shortfall is the
+/// memory the wait cannot free, and DOCTRINE 3's named refusal stands.
+/// Falsifier: let the park guard ignore `in_flight > 0` (wait whenever the
+/// gate is short) and this row parks instead of refusing: the `terminal` and
+/// `Insufficient` legs go red, `pending` grows, and the real refusal is
+/// swallowed.
+#[tokio::test]
+async fn foreign_memory_short_of_need_still_refuses() {
+    use super::{AdmissionError, SchedulerError};
+    let dir = crate::testutil::temp_dir("gate-park-foreign");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let yaml = dir.join("big.yaml");
+    std::fs::write(&yaml, "engine: mock\ncategory: work\nvram_gb: 40\n").expect("seed");
+    let mut state = fold_state(&dir);
+    state.cfg.vram_reserve_gb = 2.0;
+    let entry = rescan_entry(&yaml, "big");
+    state.catalog = vec![entry.clone()];
+    state.slots = vec![Slot {
+        category: CategoryId::Work,
+        index: 0,
+        engine_port: 18_142,
+        occupant: None,
+        job: None,
+    }];
+    let row_id = JobId(state.next_job);
+    state.begin_load(0, entry, Vec::new());
+    // free = 72 - 2 - 60 = 10 < need 40, with no booking to wait behind.
+    state.finish_admit_card(row_id, Ok(gate_sample(60.0)));
+    let row = &state.jobs[&row_id];
+    assert!(
+        row.terminal,
+        "memory no wait can free is a named refusal, never a park"
+    );
+    assert!(
+        matches!(
+            row.error,
+            Some(SchedulerError::Admission(
+                AdmissionError::Insufficient { .. }
+            ))
+        ),
+        "{:?}",
+        row.error
+    );
+    assert_eq!(row.state, SwapState::AdmitFail);
+    assert!(
+        state.pending.is_empty(),
+        "the wait must not swallow the real refusal"
+    );
+    assert!(
+        state.slots[0].job.is_none(),
+        "the refused row releases its slot"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The floor leg of the same ruling: the in-flight booking numerically covers
+/// this floor deficit (`deficit 19.8 <= in_flight 29.8`), but even releasing
+/// everything the harness may touch leaves the launch floor out of reach
+/// (`no_releases_reach`), and the Row-10 guard refuses before any wait.
+/// Falsifier: drop `!no_releases_reach` from the park guard and this row
+/// parks on a floor the card denies: `terminal` and the `BelowLaunchFloor` leg
+/// go red - a wait would end only in the same refusal, late and un-named.
+#[tokio::test]
+async fn an_unreachable_floor_still_refuses() {
+    use super::{AdmissionError, SchedulerError};
+    let dir = crate::testutil::temp_dir("gate-park-floor");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let (mut state, waiting) = booking_short_fixture(
+        &dir,
+        "floor-row",
+        "engine: mock\ncategory: work\nvram_gb: 2\nlaunch_only_with_at_least_vram_free: 40\n",
+    );
+    let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
+    let row_id = JobId(state.next_job);
+    state.begin_load(1, waiting, vec![reply_tx]);
+    // free = 72 - 2 - 20 - 29.8 = 20.2; floor 40 is 19.8 out of reach and no
+    // release the harness may perform can raise free to 38 (tolerance 2).
+    state.finish_admit_card(row_id, Ok(gate_sample(20.0)));
+    let row = &state.jobs[&row_id];
+    assert!(
+        row.terminal,
+        "an unreachable floor refuses even when a booking covers the deficit"
+    );
+    assert!(
+        matches!(
+            row.error,
+            Some(SchedulerError::Admission(
+                AdmissionError::BelowLaunchFloor {
+                    no_releases_reach: true,
+                    ..
+                }
+            ))
+        ),
+        "{:?}",
+        row.error
+    );
+    let error = row
+        .error
+        .as_ref()
+        .expect("the refusal rides the row")
+        .to_string();
+    assert!(
+        error.contains("No releases allow for the VRAM floor"),
+        "{error}"
+    );
+    assert_eq!(row.state, SwapState::AdmitFail);
+    assert!(state.pending.is_empty(), "no queue place for a refusal");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Ruling step 4: every path that takes a parked row away answers its waiters
+/// exactly once. Here: `Cancel` on a gate-parked row (the `Idle`-state queued
+/// branch), then `Unload All` over a second parked row - the command the
+/// parking ruling newly gives that shape. Falsifier: answer the waiter at park
+/// time or in both the drain and the cancel, and the first `try_recv` leg or
+/// the `Closed` follow-up goes red; without the `pending`-slot leg of
+/// `on_unload_all`, the second waiter never answers and `pending` still names
+/// the row at the unload asserts.
+#[tokio::test]
+async fn a_cancelled_waiting_load_is_answered_once() {
+    use super::SchedulerError;
+    let dir = crate::testutil::temp_dir("gate-park-cancel");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let (mut state, waiting) =
+        booking_short_fixture(&dir, "rp-1", "engine: mock\ncategory: work\nvram_gb: 29\n");
+    let (reply_tx, mut reply_rx) = tokio::sync::oneshot::channel();
+    let parked = JobId(state.next_job);
+    state.begin_load(1, waiting.clone(), vec![reply_tx]);
+    state.finish_admit_card(parked, Ok(gate_sample(23.8)));
+    assert_eq!(state.pending.get(&1), Some(&parked), "the row waits");
+    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel();
+    state.on_cancel(parked, cancel_tx);
+    match reply_rx.try_recv() {
+        Ok(Err(SchedulerError::Cancelled(reason))) => {
+            assert!(reason.contains("cancelled by request"), "{reason}");
+        }
+        other => panic!("the parked row's single waiter is answered once: {other:?}"),
+    }
+    assert!(
+        matches!(
+            reply_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+        ),
+        "nobody answers it a second time"
+    );
+    assert!(matches!(cancel_rx.try_recv(), Ok(Ok(Reply::Done))));
+    let row = &state.jobs[&parked];
+    assert!(row.terminal, "the cancel terminalizes the parked row");
+    assert_eq!(row.outcome.as_deref(), Some("cancelled"));
+    assert!(state.pending.is_empty(), "and releases the queue place");
+    assert!(state.slots[1].job.is_none());
+    let view = state
+        .snapshot()
+        .jobs
+        .into_iter()
+        .find(|j| j.id == parked)
+        .expect("the row stands on the ledger");
+    assert!(
+        !view.is_fault,
+        "a waiting load the operator took back is not a fault"
+    );
+    // The other answer path: `Unload All` while a row is parked. The row the
+    // command can see is the row the command removes.
+    let (reply2_tx, mut reply2_rx) = tokio::sync::oneshot::channel();
+    let parked2 = JobId(state.next_job);
+    state.begin_load(1, waiting, vec![reply2_tx]);
+    state.finish_admit_card(parked2, Ok(gate_sample(23.8)));
+    assert_eq!(state.pending.get(&1), Some(&parked2), "a fresh wait forms");
+    let (unload_tx, mut unload_rx) = tokio::sync::oneshot::channel();
+    state.on_unload_all(unload_tx);
+    match reply2_rx.try_recv() {
+        Ok(Err(SchedulerError::Cancelled(reason))) => {
+            assert!(reason.contains("unloaded by request"), "{reason}");
+        }
+        other => panic!("the unload answers the parked waiter once: {other:?}"),
+    }
+    assert!(
+        matches!(
+            reply2_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+        ),
+        "and never twice"
+    );
+    match unload_rx.try_recv() {
+        Ok(Ok(Reply::Unloaded {
+            unloading,
+            jobs_cancelled,
+        })) => {
+            assert_eq!(unloading, 0, "nothing was installed to unload");
+            assert_eq!(
+                jobs_cancelled, 2,
+                "the in-flight booking and the parked row both answered"
+            );
+        }
+        other => panic!("the unload reports what it cancelled: {other:?}"),
+    }
+    assert!(state.pending.is_empty());
+    assert!(state
+        .slots
+        .iter()
+        .all(|s| s.job.is_none() && s.occupant.is_none()));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Ruling step 2, the other half of the protection: the gate-parked row sits
+/// on a slot that shows neither job nor occupant, so target selection would
+/// happily arm a different model on top of its queue place. It must instead
+/// take the park-and-supersede path - which answers the parked row - and the
+/// supersede prefers a waiting row's place over killing the in-flight load.
+/// Falsifier: drop the `!pending` leg from `on_swap`'s `idle` predicate and
+/// the third model begins loading on the parked row's slot: the parked row
+/// never terminalizes, its waiter stays unanswered, and `pending` still names
+/// the superseded row while the slot gains a second silent job.
+#[tokio::test]
+async fn a_different_model_supersedes_a_gate_parked_row_instead_of_stealing_its_slot() {
+    use super::SchedulerError;
+    let dir = crate::testutil::temp_dir("gate-park-supersede");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let (mut state, waiting) =
+        booking_short_fixture(&dir, "rp-1", "engine: mock\ncategory: work\nvram_gb: 29\n");
+    let (reply_tx, mut reply_rx) = tokio::sync::oneshot::channel();
+    let parked = JobId(state.next_job);
+    state.begin_load(1, waiting, vec![reply_tx]);
+    state.finish_admit_card(parked, Ok(gate_sample(23.8)));
+    assert_eq!(
+        state.pending.get(&1),
+        Some(&parked),
+        "the row waits on slot 1"
+    );
+    let other_yaml = dir.join("other.yaml");
+    std::fs::write(&other_yaml, "engine: mock\ncategory: work\nvram_gb: 4\n").expect("seed other");
+    let other = rescan_entry(&other_yaml, "other");
+    state.catalog.push(other);
+    let (third_tx, _third_rx) = tokio::sync::oneshot::channel();
+    state.on_swap("other".to_string(), CategoryId::Work, third_tx);
+    let row = &state.jobs[&parked];
+    assert!(
+        row.terminal,
+        "the different model supersedes the parked row's queue place"
+    );
+    assert_eq!(row.outcome.as_deref(), Some("cancelled"));
+    match reply_rx.try_recv() {
+        Ok(Err(SchedulerError::Cancelled(reason))) => {
+            assert!(reason.contains("superseded by a newer load"), "{reason}");
+        }
+        other => panic!("the superseded row's waiter is answered once: {other:?}"),
+    }
+    assert!(
+        matches!(
+            reply_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+        ),
+        "exactly once"
+    );
+    // The new load takes the superseded place; the slot being free, the
+    // terminal funnel re-gates it at once (ruling step 3): supersede of a
+    // gate-parked row hands over its queue, and an empty slot needs no wait.
+    let newer = state.slots[1]
+        .job
+        .expect("the new load arms on the freed slot");
+    assert_ne!(newer, parked, "a different row now owns the slot");
+    assert_eq!(state.jobs[&newer].model, "other");
+    assert_eq!(state.jobs[&newer].state, SwapState::Admit);
+    assert!(state.pending.is_empty(), "the queue place became an arm");
+    // The in-flight booking survives: superseding a waiting row never costs
+    // the running load its work.
+    let booking = state.slots[0]
+        .job
+        .expect("the in-flight row keeps its slot");
+    assert!(
+        !state.jobs[&booking].terminal,
+        "the waiting row is the lighter supersede, not the running load"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// B6 rung pin, door 1: a load the card already holds admits on the
 /// `FitsNow` rung — and the rung, once recorded, is what the `/har/jobs`
 /// projection serves. A same-slot replacement alone never changes the

@@ -128,7 +128,11 @@ impl SwapState {
 /// - every working step may fail into `Failed` (the exit funnel);
 /// - any non-idle state may observe `CancelRequested`, and cancel always ends in
 ///   `Reap`, never in `Spawn`;
-/// - `AdmitFail`, `Failed`, and `Reap` return the slot to `Idle`.
+/// - `AdmitFail`, `Failed`, and `Reap` return the slot to `Idle`;
+/// - the gate may also park instead of refusing (operator 2026-11-10): a
+///   load short only on another load's paper booking returns `Admit -> Idle` as a
+///   parked row (it lives in `pending`, books nothing, answers nothing) and
+///   re-enters through the ordinary `Idle -> Admit` edge when a booking clears.
 pub fn transition_allowed(from: SwapState, to: SwapState) -> bool {
     use SwapState::*;
     let happy_or_fail = matches!(
@@ -137,6 +141,11 @@ pub fn transition_allowed(from: SwapState, to: SwapState) -> bool {
             | (Admit, Quiesce)
             | (Admit, AdmitFail)
             | (AdmitFail, Idle)
+            // Gate-short park (operator 2026-11-10): a deficit covered
+            // only by in-flight bookings waits in `pending` instead of
+            // terminalizing; the row never spawned and owes no reap, so the
+            // return to `Idle` needs no `Reap` leg (same shape as a queued row).
+            | (Admit, Idle)
             | (Quiesce, Dispose)
             | (Quiesce, Failed)
             | (Dispose, Spawn)

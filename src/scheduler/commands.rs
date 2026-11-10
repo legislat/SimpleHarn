@@ -156,7 +156,12 @@ impl ActorState {
             }
         }
         // Target: an empty slot first, else the LRU occupied one, else supersede.
-        let idle = |s: usize| self.slots[s].job.is_none();
+        // A slot holding a parked row is not an offer either (operator ruling
+        // 2026-11-10): a gate-parked row sits on a slot that shows neither job
+        // nor occupant, and arming a second load on it would silently break the
+        // wait. A different model instead takes the park-and-supersede path
+        // below, which answers the parked row exactly like a busy slot's does.
+        let idle = |s: usize| self.slots[s].job.is_none() && !self.pending.contains_key(&s);
         let target = slots
             .iter()
             .copied()
@@ -172,14 +177,32 @@ impl ActorState {
         match target {
             Some(target) => self.begin_load(target, entry, vec![reply]),
             None => {
-                // Every slot runs a job: cancel the oldest, park this load (T3.4).
+                // Every slot runs a job or parks a row: cancel the oldest, park
+                // this load (T3.4). A slot whose queue place is free of any job
+                // (a gate-parked row waits there, operator 2026-11-10) is
+                // taken
+                // first: superseding a row that never started is the lighter
+                // replacement, and the different model never silently steals a
+                // parked row's place while an in-flight load could be killed
+                // instead. A parked row behind a running job stays under that
+                // job's slot exactly as before.
                 let target = slots
-                    .into_iter()
+                    .iter()
+                    .copied()
+                    .filter(|&s| self.slots[s].job.is_none() && self.pending.contains_key(&s))
                     .min_by_key(|&s| {
-                        self.slots[s]
-                            .job
-                            .and_then(|j| self.jobs.get(&j))
+                        self.pending
+                            .get(&s)
+                            .and_then(|j| self.jobs.get(j))
                             .map_or(Instant::now(), |j| j.t0)
+                    })
+                    .or_else(|| {
+                        slots.iter().copied().min_by_key(|&s| {
+                            self.slots[s]
+                                .job
+                                .and_then(|j| self.jobs.get(&j))
+                                .map_or(Instant::now(), |j| j.t0)
+                        })
                     })
                     .expect("invariant: the category has at least one slot");
                 // The parked load gets its ledger row now, not when it starts: a
@@ -196,7 +219,13 @@ impl ActorState {
                         "cancelled",
                     );
                 }
-                if let Some(job_id) = self.slots[target].job {
+                // Superseding a gate-parked row on a free slot just armed `queued`
+                // there (the terminal funnel re-gates a row whose slot came
+                // free, operator 2026-11-10): the cancel below targets the job the slot
+                // ran before this command, never the row this command just
+                // started. A busy slot keeps its running job under this check -
+                // it is a different id than `queued`, exactly as before.
+                if let Some(job_id) = self.slots[target].job.filter(|&j| j != queued) {
                     self.cancel_job(job_id, "superseded by a newer load");
                 }
             }
@@ -393,10 +422,20 @@ impl ActorState {
     }
 
     /// T12.4: unload every occupied slot; loading jobs are cancelled, and the slot
-    /// they still leave occupied is unloaded when the cancel terminalizes.
+    /// they still leave occupied is unloaded when the cancel terminalizes. A slot
+    /// holding only a parked row is a target too (operator 2026-11-10): the
+    /// row is
+    /// the load the operator can see waiting, and an Unload All that skipped it
+    /// would let it re-gate onto the card the very same gesture just emptied -
+    /// the same "the row the command can see is the row the command removes"
+    /// contract `on_unload_model` gives a queued row.
     pub(super) fn on_unload_all(&mut self, reply: Waiter) {
         let targets: Vec<usize> = (0..self.slots.len())
-            .filter(|&i| self.slots[i].occupant.is_some() || self.slots[i].job.is_some())
+            .filter(|&i| {
+                self.slots[i].occupant.is_some()
+                    || self.slots[i].job.is_some()
+                    || self.pending.contains_key(&i)
+            })
             .collect();
         self.unload_slots(targets, reply);
     }

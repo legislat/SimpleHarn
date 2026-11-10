@@ -838,9 +838,15 @@ async fn unreadable_card_refuses_rather_than_guesses() {
 async fn concurrent_loads_cannot_double_spend_the_same_bytes() {
     // An 18 GiB load sits in the settle window (its victim's bytes have not come
     // back), so the card still reads 58 of 72 used. A 4 GiB load in another
-    // category must be refused: those 18 GiB are committed even though the card
-    // cannot have accounted for them yet. The retired ledger counted installed
-    // occupants only, so it admitted both and over-committed (operator 2026-10-26).
+    // category must never be admitted over those bytes. The 2026-11-10 ruling
+    // names the response: the deficit rides on a live paper booking, so the
+    // 4 GiB load WAITS instead of being refused, and admits only once a real
+    // release lands. The retired ledger counted installed occupants only, so
+    // it admitted both and over-committed (operator 2026-10-26): under that
+    // bug the early hold-out loop goes red with an instant Loaded. Falsifier
+    // for the wait half (run in place, revert): neuter the park arm in
+    // `finish_admit` and the Idle poll times out with a refused, terminalized
+    // row instead.
     let witness = FakeWitness::with(vec![sample(72.0, 58.0, vec![])]);
     let cfg = AppConfig {
         settle_timeout_s: 30,
@@ -873,15 +879,40 @@ async fn concurrent_loads_cannot_double_spend_the_same_bytes() {
     })
     .await;
 
-    let error = handle
-        .swap("b", CategoryId::Rp)
-        .await
-        .expect_err("the 18 GiB still in flight must be debited");
-    let message = error.to_string();
-    assert!(message.contains("insufficient VRAM"), "was: {message}");
-    assert!(message.contains("need 4.0 GiB"), "was: {message}");
-    // The debit must not become a permanent lockout: once the card frees, a1
-    // installs, and b then fits what a1's victim released.
+    // The 18 GiB are committed even though the card cannot have accounted for
+    // them yet: `b`'s gate sees the debit, parks the row, and the POST waits.
+    let waiting = {
+        let handle = handle.clone();
+        tokio::spawn(async move { handle.swap("b", CategoryId::Rp).await })
+    };
+    wait_until(&handle, 10, |status| {
+        status
+            .jobs
+            .iter()
+            .any(|job| job.model == "b" && job.state == simpleharn::scheduler::SwapState::Idle)
+    })
+    .await;
+    // The debit must hold while it lives: one second of ledger watching with
+    // no receipt and no occupant, then the wait must still be open.
+    for _ in 0..40 {
+        assert!(
+            !waiting.is_finished(),
+            "the in-flight 18 GiB debit must hold b out"
+        );
+        let status = handle.status().await.expect("actor alive");
+        assert!(
+            status
+                .slots
+                .iter()
+                .all(|slot| slot.model.as_deref() != Some("b")),
+            "b must never occupy a slot while a1's booking is live"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    // The card frees: a1 installs its 18 GiB. `b` is parked or - when the
+    // victim row's terminalization fired a re-gate onto the now-free card -
+    // already on its way: both paths end in one Loaded receipt below.
     witness.set(sample(72.0, 40.0, vec![]));
     let Reply::Loaded(receipt) = parked
         .await
@@ -891,10 +922,16 @@ async fn concurrent_loads_cannot_double_spend_the_same_bytes() {
         panic!("expected Loaded");
     };
     assert_eq!(receipt.model, "a1");
-    let Reply::Loaded(receipt) = handle
-        .swap("b", CategoryId::Rp)
+
+    // And the wait never strands: unloading a1 terminalizes its row, the
+    // terminal funnel re-gates any still-parked row onto the room the release
+    // just made, and the open POST answers with its receipt.
+    handle.unload_model("a1").await.expect("unload accepted");
+    let Reply::Loaded(receipt) = tokio::time::timeout(std::time::Duration::from_secs(10), waiting)
         .await
-        .expect("b loads after a1 installed")
+        .expect("b admits once a1's row leaves the ledger")
+        .expect("task alive")
+        .expect("b loads after the release")
     else {
         panic!("expected Loaded");
     };

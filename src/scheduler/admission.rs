@@ -620,6 +620,24 @@ impl ActorState {
                             deficit_gib = deficit,
                             "admission short on the booked credit: releasing the same-slot victim first and re-gating on the physical card (release-first)"
                         );
+                    } else if in_flight > 0.0
+                        && deficit <= in_flight
+                        && self.jobs[&job_id].victim.is_none()
+                        && considered.is_empty()
+                        && !no_releases_reach
+                        && self.jobs[&job_id].slot.is_some()
+                    {
+                        // Operator 2026-11-10: the deficit is covered
+                        // ONLY by other loads' paper bookings - no same-slot
+                        // victim, no evictable candidate, no unreachable floor -
+                        // so the row waits for those bookings and re-gates when
+                        // one terminalizes, instead of dying `AdmitFail` on a
+                        // double-counted card (witness bytes plus their own
+                        // bookings). Foreign/unreleasable memory and a floor no
+                        // release reaches still refuse: the guard legs above are
+                        // the whole difference between waiting and refusing.
+                        self.park_short_on_in_flight_bookings(job_id, deficit, in_flight);
+                        return;
                     } else {
                         self.step(job_id, SwapState::AdmitFail);
                         let reserve = Gibibytes(self.cfg.vram_reserve_gb);
@@ -953,6 +971,69 @@ impl ActorState {
         sample: Result<crate::budget::MemorySample, String>,
     ) {
         self.finish_admit(job_id, Some(sample), None);
+    }
+
+    /// Park a gate-short load instead of refusing it (operator ruling
+    /// 2026-11-10): when the whole deficit is covered by other loads' paper
+    /// bookings (`deficit <= in_flight`, no victim, no candidate, reachable
+    /// floor), the row returns to the parked shape the queue path already owns
+    /// — state `Idle`, no slot claim, one queue place in `pending`, waiters
+    /// still attached, no terminal row, no fault — and the terminal funnel
+    /// ([`super::ActorState::finish`]) re-gates it through the ordinary
+    /// `start_pending` arm path the moment any booking leaves the gate.
+    ///
+    /// Never a credit of paper with physical bytes: a parked row books nothing
+    /// (`SwapState::reserves_vram` excludes `Idle`, so it never enters anyone's
+    /// `in_flight_need`), every re-gate re-reads the live witness (DOCTRINE 4),
+    /// and when the bookings are gone but the room is not there, the park guard
+    /// (`in_flight > 0`) fails and the ordinary named `AdmitFail` runs — the
+    /// wait therefore cannot swallow a real refusal or spin forever.
+    fn park_short_on_in_flight_bookings(&mut self, job_id: JobId, deficit: f64, in_flight: f64) {
+        let slot = self.jobs[&job_id]
+            .slot
+            .expect("invariant: the park arm checked the row has a slot");
+        let booked: Vec<String> = self
+            .jobs
+            .iter()
+            .filter(|(id, job)| {
+                **id != job_id
+                    && job.kind == JobKind::Load
+                    && !job.terminal
+                    && job.ram_need.is_none()
+                    && job.state.reserves_vram()
+            })
+            .map(|(_, job)| format!("{} ({:.1} GiB)", job.model, job.need.map_or(0.0, |n| n.0)))
+            .collect();
+        self.step(job_id, SwapState::Idle);
+        if self.slots[slot].job == Some(job_id) {
+            self.slots[slot].job = None;
+        }
+        // A row armed on a slot holds no queue place there by construction
+        // (every arm path removes it first). A stale one would strand its
+        // waiter silently, so it is answered exactly like the park path's
+        // supersede answers a queued row.
+        if let Some(older) = self.pending.get(&slot).copied() {
+            if older != job_id {
+                self.pending.remove(&slot);
+                self.finish_queued_load(
+                    older,
+                    Err(SchedulerError::Cancelled(
+                        "superseded by a newer load before it started".to_string(),
+                    )),
+                    "cancelled",
+                );
+            }
+        }
+        self.pending.insert(slot, job_id);
+        tracing::info!(
+            %job_id,
+            model = %self.jobs[&job_id].model,
+            slot = self.slots[slot].index,
+            deficit_gib = deficit,
+            in_flight_gib = in_flight,
+            in_flight_models = ?booked,
+            "admission short only on in-flight bookings: parking to wait for them and re-gate, not refusing"
+        );
     }
 
     /// What this refusal honestly knows about waiting, computed at decision

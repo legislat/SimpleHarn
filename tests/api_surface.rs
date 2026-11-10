@@ -3486,7 +3486,7 @@ async fn a_confirmed_release_lands_the_estimate_and_a_place_on_the_next_refusal(
             ("rel", "mock", CategoryId::Work, Some(4.0)),
             ("aux-a", "mock", CategoryId::Aux, Some(30.0)),
             ("aux-slow", "mock-never", CategoryId::Aux, Some(30.0)),
-            ("aux-over", "mock", CategoryId::Aux, Some(20.0)),
+            ("aux-over", "mock", CategoryId::Aux, Some(60.0)),
         ],
     );
 
@@ -3547,10 +3547,16 @@ async fn a_confirmed_release_lands_the_estimate_and_a_place_on_the_next_refusal(
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
 
-    // Leg 3: the refusal. `aux-over` (20 GiB) arms on the third, empty AUX
+    // Leg 3: the refusal. `aux-over` (60 GiB) arms on the third, empty AUX
     // slot; the ledger already holds aux-a plus the in-flight debit for
-    // aux-slow, and nothing same-category is evictable, so the gate refuses in
-    // `finish_admit` — with the hint born beside the numbers.
+    // aux-slow, so the card holds 10 free and the 50 GiB deficit is bigger
+    // than every in-flight booking (30) - a refusal the 2026-11-10 ruling
+    // leaves intact (a booking-only deficit would park instead, see
+    // `a_gate_short_load_waits_at_the_api_behind_an_in_flight_booking_and_
+    // admits`), and nothing same-category is evictable, so the gate refuses
+    // in `finish_admit` - with the hint born beside the numbers. Falsifier
+    // (run in place, revert): drop `aux-over` back to 20 GiB and this leg
+    // goes red - the row parks on the booking instead of refusing.
     let (status, body) = post_json(&control, "/har/load", r#"{"model":"aux-over"}"#).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "body: {body}");
     assert_eq!(body["code"], "unavailable");
@@ -3562,7 +3568,7 @@ async fn a_confirmed_release_lands_the_estimate_and_a_place_on_the_next_refusal(
         body["message"]
             .as_str()
             .unwrap_or_default()
-            .contains("need 20.0 GiB"),
+            .contains("need 60.0 GiB"),
         "the message keeps the numbers: {body}"
     );
     assert!(
@@ -3588,6 +3594,107 @@ async fn a_confirmed_release_lands_the_estimate_and_a_place_on_the_next_refusal(
     // and resolves the parked POST (409 cancelled) before the test ends.
     let (status, body) = post_json(&control, "/har/unload", r#"{"model":"aux-slow"}"#).await;
     assert_eq!(status, StatusCode::OK, "cancel accepted: {body}");
+    let (slow_status, slow_body) = slow_post.await.expect("slow task joined");
+    assert_eq!(
+        slow_status,
+        StatusCode::CONFLICT,
+        "the cancelled swap answers conflict, not a receipt: {slow_body}"
+    );
+}
+
+#[tokio::test]
+async fn a_gate_short_load_waits_at_the_api_behind_an_in_flight_booking_and_admits() {
+    // Operator ruling 2026-11-10 at the wire: a load whose VRAM deficit is
+    // covered only by another load's paper booking must wait, not refuse.
+    // `aux-a` holds 30 and `aux-slow` (never-ready mock) books 30, so
+    // `aux-over` (20 GiB) is 10 short with 30 of booking ahead: the POST
+    // parks the row open instead of answering 503, `/har/jobs` shows the row
+    // alive (a refusal would have terminalized it), and cancelling the
+    // in-flight row releases the booking so the terminal funnel re-gates the
+    // waiting row and the mock load lands a Loaded receipt. Falsifier (run in
+    // place, revert): neuter the park arm in `finish_admit` (return it to a
+    // plain refusal) and the 200 leg goes red with the old 503 body.
+    let (control, _, _, _, _, _) = app(
+        aux_slots(3),
+        &[
+            ("aux-a", "mock", CategoryId::Aux, Some(30.0)),
+            ("aux-slow", "mock-never", CategoryId::Aux, Some(30.0)),
+            ("aux-over", "mock", CategoryId::Aux, Some(20.0)),
+        ],
+    );
+    let (status, body) = post_json(&control, "/har/load", r#"{"model":"aux-a"}"#).await;
+    assert_eq!(status, StatusCode::OK, "load aux-a: {body}");
+    let slow_post = {
+        let control = control.clone();
+        tokio::spawn(
+            async move { post_json(&control, "/har/load", r#"{"model":"aux-slow"}"#).await },
+        )
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let (_, jobs) = get_json(&control, "/har/jobs").await;
+        let flying = jobs["jobs"]
+            .as_array()
+            .expect("jobs array")
+            .iter()
+            .any(|job| job["model"] == "aux-slow" && job["terminal"] == false);
+        if flying {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the never-ready AUX load never became an in-flight row: {jobs}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    // The deficit is paper-only, so this POST parks: the row rides the ledger
+    // alive, which a named refusal never leaves behind.
+    let over_post = {
+        let control = control.clone();
+        tokio::spawn(
+            async move { post_json(&control, "/har/load", r#"{"model":"aux-over"}"#).await },
+        )
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let (_, jobs) = get_json(&control, "/har/jobs").await;
+        let waiting = jobs["jobs"]
+            .as_array()
+            .expect("jobs array")
+            .iter()
+            .any(|job| job["model"] == "aux-over" && job["terminal"] == false);
+        if waiting {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the gate-short load never stayed alive on the ledger: {jobs}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    // Cancelling the in-flight row terminalizes its booking; the terminal
+    // funnel re-gates the waiting row, and the fresh gate sees the card free.
+    let (status, body) = post_json(&control, "/har/unload", r#"{"model":"aux-slow"}"#).await;
+    assert_eq!(status, StatusCode::OK, "cancel accepted: {body}");
+    let (over_status, over_body) =
+        tokio::time::timeout(std::time::Duration::from_secs(30), over_post)
+            .await
+            .expect("the parked load must admit once the booking ahead terminalizes")
+            .expect("over task joined");
+    assert_eq!(
+        over_status,
+        StatusCode::OK,
+        "the wait ends loaded: {over_body}"
+    );
+    assert_eq!(
+        over_body["status"], "loaded",
+        "receipt shape kept: {over_body}"
+    );
+
+    // Teardown honestly: cancelling the never-ready swap releases its engine
+    // and resolves the parked POST (409 cancelled) before the test ends.
     let (slow_status, slow_body) = slow_post.await.expect("slow task joined");
     assert_eq!(
         slow_status,

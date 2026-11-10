@@ -80,8 +80,13 @@ One harness process, one tokio runtime, plus OS-level children:
   `transition_allowed`):
   `Idle -> Admit -> Quiesce -> Dispose -> Spawn -> Ready -> Install ->
   Serving`, with `AdmitFail`, `Failed`, `Reap`, `CancelRequested` as the exit
-  paths. No skips: a job may not jump to `Spawn` (that is how double spawns
-  happened, defect F-6).
+  paths, plus the gate-park edge `Admit -> Idle` (operator ruling
+  2026-11-10): a deficit covered only by another non-terminal load's booking
+  parks the row on its free slot (the `pending` place, state `Idle`, waiters
+  held, nothing booked), and the terminal funnel re-gates it when a slot
+  frees - a re-gate still short on bookings re-parks, and a gate now short on
+  foreign memory ends `AdmitFail`. No skips: a job may not jump to `Spawn`
+  (that is how double spawns happened, defect F-6).
 - `Dispose -> Spawn` is a confirmation gate, not a delay: the edge is legal
   only once release is proven (handle signaled plus TCP-refused proof); an
   unproven release within `release_timeout_s` fails into `Reap` and refuses.
@@ -89,9 +94,11 @@ One harness process, one tokio runtime, plus OS-level children:
   yet card-visible; the admission gate debits exactly that set and the page
   shows the same figure as "booked".
 - Same-slot policy is supersede: a same-category load of a different model
-  cancels the running job and starts when the slot returns to `Idle`. Other
-  requests queue FIFO. Cancel is cooperative: the current step completes,
-  cleanup runs, then `Reap`.
+  cancels the running job - or takes a parked row's queue place when one
+  waits on an otherwise-free slot, the lighter replacement (operator ruling
+  2026-11-10) - and starts when the slot returns to `Idle`. `UnloadAll` can
+  target a parked row's slot too. Other requests queue FIFO. Cancel is
+  cooperative: the current step completes, cleanup runs, then `Reap`.
 - Eviction follows the `evictable_by` matrix from the config
   (`config::CategoryConfig`): WORK is evicted by nobody, RP only by WORK,
   AUX and EMB by both; same-slot replacement is always allowed. The planner
@@ -382,7 +389,8 @@ One harness process, one tokio runtime, plus OS-level children:
    the load (cost ladder, section 4), and compares free VRAM minus reserve
    against the need plus in-flight bookings.
 3. If short, the planner selects victims through the `evictable_by` matrix;
-   a refusal names the blockers (`AdmissionError` -> `AdmitFail` -> `Idle`).
+   a load short only on other loads' bookings parks for them (section 3); a
+   refusal names the blockers (`AdmissionError` -> `AdmitFail` -> `Idle`).
 4. `Quiesce -> Dispose`: victims release one at a time; each release needs
    the evidence pair (handle signaled, TCP refused); settle re-samples the
    card before the gate re-checks.
