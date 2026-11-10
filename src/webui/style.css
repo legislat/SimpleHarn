@@ -67,6 +67,8 @@ html[data-theme="dark"] {
   --sh-warn-tint: #d89b1d2e;
   /* Matte olive lightened for the dark card (6.9:1) - see :root. */
   --sh-accent-solid: #8fae6f;
+  /* Cost provenance ink: the same olive on the dark card (7.0:1). */
+  --sh-cost-ink: var(--sh-accent-solid);
   /* Calm slate chrome for dark mode (TASK-UI-POLISH, 2026-11-09): mirrors
    * light mode's warm chrome discipline so unselected tabs, Load/Default/✕
    * buttons, and form selects sit on a muted dark-slate plate (#1e2631,
@@ -202,8 +204,10 @@ html[data-theme="dark"] {
    * light-only, dark falls back to the card token. */
   --sh-header-bg: #f2eadc;
   /* Matte olive darkened one step in light so checked cost figures hold
-   * >= 4.5:1 AA even over the serving row's olive wash (4.7:1 measured). */
-  --sh-accent-solid: #536542;
+   * >= 4.5:1 AA even over the serving row's olive wash (4.7:1 measured).
+   * Separate from --sh-accent-solid: the operator pinned that olive for the
+   * selected tab's border, and a pin never moves to serve a text figure. */
+  --sh-cost-ink: #536542;
   --sh-row-zebra: rgba(111, 91, 54, 0.03);
   --sh-row-hover: rgba(111, 91, 54, 0.065);
   --sh-serving-bg: rgba(89, 107, 71, 0.08);
@@ -460,7 +464,7 @@ header.sh-header {
   white-space: nowrap;
   text-align: right;
 }
-.sh-cost-checked { color: var(--sh-accent-solid); }
+.sh-cost-checked { color: var(--sh-cost-ink); }
 .sh-cost-unchecked { color: var(--sh-warn-ink); }
 .sh-models { min-width: 56rem; }
 .sh-models .sh-name { white-space: nowrap; }
@@ -469,13 +473,13 @@ header.sh-header {
   font-size: 0.78rem;
   font-weight: 400;
 }
-/* Buttons sit side by side and only slide under each other when the column is
- * genuinely cramped (operator, 2026-10-26). The flex lives on the INNER span
- * (operator 2026-11-05, white-seam fix): `display: flex` on the td replaced
- * the table-cell box, so the browser painted an anonymous cell that carries
- * no background - headless-Edge pixels proved a ~200px column of card white
- * between the buttons and the Model column. The td stays a table-cell (and
- * paints its row colour); the span flexes inside it. */
+/* Buttons sit side by side on one line, never stacked (operator 2026-10-26;
+ * one line is forced since the serving-row polish). The flex lives on the INNER
+ * span (operator 2026-11-05, white-seam fix): `display: flex` on the td
+ * replaced the table-cell box, so the browser painted an anonymous cell that
+ * carries no background - headless-Edge pixels proved a ~200px column of card
+ * white between the buttons and the Model column. The td stays a table-cell
+ * (and paints its row colour); the span flexes inside it. */
 table.sh-models td.sh-actions { width: max-content; white-space: nowrap; }
 /* The actions column is the table's first column, so the buttons stick to
  * its left corner: the column's cells drop the start padding (operator,
@@ -523,11 +527,11 @@ table.sh-models td, table.sh-models th { padding: 0.45rem 0.6rem; }
  * 2026-11-05): the head takes the panel/row surface token (dark falls back
  * to the card - the panel itself), its text is muted in light only (the
  * dark fallback is Pico's own th ink), and the one bottom rule stays
- * Pico's --pico-table-border-color line. */
+ * Pico's --pico-table-border-color line. No `position: sticky`: the table
+ * lives inside `.sh-tablewrap`, whose horizontal overflow makes it the
+ * scroll container, and the wrapper never scrolls vertically, so a sticky
+ * head would never engage. */
 table.sh-models thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   background: var(--sh-panel-bg, var(--pico-card-background-color));
   color: var(--sh-head-ink, var(--pico-color));
 }
@@ -614,9 +618,8 @@ input[type="checkbox"] {
  * overhead (padding-inline 0.6rem), no grow, so the table's spare width
  * never stretches a button (target ~55-75px at the default root). The small
  * 4rem floor only equalises the short labels (Load/Unload/Default land on it
- * within a pixel), side by side and in the stacked line alike; the block
- * stays flush-left. The old flex-end left a gap on the left of the column
- * as soon as it grew. */
+ * within a pixel), side by side on one line; the block stays flush-left. The
+ * old flex-end left a gap on the left of the column as soon as it grew. */
 .sh-row-actions button {
   padding: 0.25rem 0.6rem;
   font-size: 0.8rem;

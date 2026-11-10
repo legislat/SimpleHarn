@@ -554,8 +554,17 @@ function slotReportedGb(status, category, modelId) {
 }
 
 function modelRow(status, model, category) {
+  // A resident row is "serving" only when its own slot says so. A slot can be
+  // present while the load is still in flight (or a release is draining), and
+  // the row must not claim a resident the engine has not answered for yet:
+  // the dot, the wash and the Unload button all follow this one answer. A slot
+  // without `state` keeps the pre-state derivation (serving), so an older
+  // payload renders exactly as it did.
   const serving = status.slots.some(
-    (slot) => slot.category === category && slot.model === model.id,
+    (slot) =>
+      slot.category === category &&
+      slot.model === model.id &&
+      (slot.state === undefined || slot.state === "serving"),
   );
   const loading = slotJobsFor(status, category).some((job) => job.model === model.id);
   // The dot follows the newest job for this model only: a fail that a later

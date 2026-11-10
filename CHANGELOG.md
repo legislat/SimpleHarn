@@ -16,6 +16,36 @@ Versioning.
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
+## v1.5.1 - 2026-11-10
+
+### Fixed
+
+- The fatal-error console hold now also requires a visible console window. The
+  hidden `SimpleHarn.vbs` launcher allocates a console with no window, so the
+  terminal test alone waited on an invisible prompt while holding the
+  single-instance lock; a hidden launch now exits at once, exactly as before the
+  hold existed. A redirect, a service supervisor, and a hidden window all
+  return immediately.
+- A slot that is still loading no longer renders as a serving row. The dot, the
+  row wash and the Unload/Load action now follow `slots[].state`, so a load in
+  flight shows `Loading…` and claims no resident; a payload without `state`
+  renders exactly as it did.
+- The selected tab keeps the pinned matte olive border. The checked cost
+  figures moved to their own ink token (`#536542` in light, the olive in dark)
+  instead of darkening the pinned accent.
+- The idle tabs, row buttons and selects keep their calm chrome in both themes:
+  the checked-box and scrollbar rules stay unscoped, and the tests now pin that
+  absence instead of a substring that a theme-scoped copy would satisfy.
+
+### Changed
+
+- The control page, shipped in v1.5.0 and recorded here after the fact: a
+  serving row carries a start-edge bar and a full-row wash with its launch
+  stamp in secondary ink; `Ctx` and `Cost` align right with tabular figures;
+  every model header carries `scope="col"`; rows take a zebra and hover tint;
+  and dark mode paints its chrome from a muted slate instead of the saturated
+  primary blue.
+
 ## v1.5.0 - 2026-11-09
 
 ### Added

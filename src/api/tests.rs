@@ -4877,28 +4877,41 @@ fn the_death_report_is_reachable_only_from_the_exhausted_crash_retry() {
 }
 
 /// The boot gate and `ApiState::new` must agree on whether a token resolves:
-/// the refusal now runs before the scheduler exists, so a divergence would let
-/// a posture be refused early or admitted late. Falsifier: point this at the
-/// raw `config.control_token` field and the file-token assert still passes,
-/// but the env-first precedence pin in this suite fails.
+/// the refusal runs before the scheduler exists, so a divergence would refuse a
+/// supported posture early or admit a refused one late. Falsifier: stop trimming
+/// the file token and the whitespace-only leg fails; read the raw field in
+/// `control_token_resolves` and the environment leg fails.
 #[test]
-fn the_boot_gate_answers_from_the_same_resolver_as_the_state() {
-    let mut config = AppConfig {
+fn the_boot_gate_reads_the_same_token_rules_as_the_guard() {
+    let with_file = AppConfig {
         control_token: Some("  file-secret  ".to_string()),
         ..AppConfig::default()
     };
-    assert!(control_token_resolves(&config));
+    assert!(
+        control_token_resolves(&with_file),
+        "a non-blank file token resolves"
+    );
     let state = ApiState::new(
-        config.clone(),
+        with_file.clone(),
         SchedulerHandle::test_dummy(),
         crate::listeners::ListenerRegistry::new(),
         std::sync::Arc::new(crate::budget::LedgerOnlyWitness),
         BootTimings::default(),
     );
-    assert_eq!(control_token_resolves(&config), state.requires_token());
+    assert_eq!(
+        state.requires_token(),
+        control_token_resolves(&with_file),
+        "the state and the boot gate must answer the same posture"
+    );
 
-    config.control_token = None;
-    if crate::config::token_from_env().is_none() {
-        assert!(!control_token_resolves(&config));
-    }
+    let blank = AppConfig {
+        control_token: Some("   ".to_string()),
+        ..AppConfig::default()
+    };
+    let env_resolves = crate::config::token_from_env().is_some_and(|raw| !raw.trim().is_empty());
+    assert_eq!(
+        control_token_resolves(&blank),
+        env_resolves,
+        "a whitespace-only file token must not resolve; the environment is the only other source"
+    );
 }

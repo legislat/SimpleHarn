@@ -100,13 +100,13 @@ mod windows;
 
 #[cfg(unix)]
 pub use unix::{
-    descendant_pids_of, host_ram_bytes, working_set_bytes_of, KillGroup, SingleInstanceGuard,
-    UnixProcessIdentity, UnixProcessTree,
+    console_window_visible, descendant_pids_of, host_ram_bytes, working_set_bytes_of, KillGroup,
+    SingleInstanceGuard, UnixProcessIdentity, UnixProcessTree,
 };
 #[cfg(windows)]
 pub use windows::{
-    descendant_pids_of, working_set_bytes_of, KillGroup, SingleInstanceGuard, WinProcessIdentity,
-    WinProcessTree, CREATE_NO_WINDOW,
+    console_window_visible, descendant_pids_of, working_set_bytes_of, KillGroup,
+    SingleInstanceGuard, WinProcessIdentity, WinProcessTree, CREATE_NO_WINDOW,
 };
 
 /// Hides a short-lived control child: no window on this target.

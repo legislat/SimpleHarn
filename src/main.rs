@@ -21,19 +21,22 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Whether a fatal boot error should hold the console open (operator 2026-11-09):
-/// true only when both console ends are real terminals. A double-clicked exe then
-/// leaves its reason on screen instead of vanishing; a redirected launch,
-/// `SimpleHarn.vbs`, and a service supervisor never block on a prompt.
-fn console_is_interactive(stdout_tty: bool, stdin_tty: bool) -> bool {
-    stdout_tty && stdin_tty
+/// true only when both console ends are real terminals AND the console window is
+/// visible. A double-clicked exe leaves its reason on screen; a redirected launch,
+/// a service supervisor, and the hidden `SimpleHarn.vbs` launcher (which still
+/// allocates a console) never block on a prompt nobody can see.
+fn console_is_interactive(stdout_tty: bool, stdin_tty: bool, window_visible: bool) -> bool {
+    stdout_tty && stdin_tty && window_visible
 }
 
 /// Hold an interactive console open after a fatal error so the reason can be read.
-/// Redirected output and a redirected or absent stdin return at once.
+/// Redirected output, a hidden window, and a redirected or absent stdin return at
+/// once.
 fn hold_console_after_fatal() {
     if !console_is_interactive(
         std::io::stdout().is_terminal(),
         std::io::stdin().is_terminal(),
+        simpleharn::platform::console_window_visible(),
     ) {
         return;
     }
@@ -421,9 +424,11 @@ async fn main() -> ExitCode {
         boot,
     ));
     // Boot gate for the unauthenticated network bind: already decided above,
-    // before the scheduler, the catalog scan, and every listener. The posture is
-    // pinned by `unauthenticated_network_bind_refusal` and cannot change between
-    // there and here: the config is immutable from that point.
+    // before the scheduler, the catalog scan, and every listener. This is a
+    // debug-only re-check, not a second gate: the first-run fill touches no
+    // posture field (`internal_host`, `control_token`, the opt-in), so the
+    // answer cannot change in between. A future fill that touched one would
+    // trip the assert in debug builds and be caught before release.
     debug_assert!(
         state
             .config
@@ -1350,15 +1355,18 @@ mod tests {
     }
 
     /// Operator 2026-11-09: a double-clicked exe must leave a fatal boot reason
-    /// on screen. The hold fires only when both console ends are terminals, so a
-    /// redirected launch, `SimpleHarn.vbs`, and a service supervisor never block.
-    /// Falsifier: gating on either end alone (or on neither) flips one assertion.
+    /// on screen. The hold fires only when both console ends are terminals and
+    /// the console window is visible, so a redirected launch, a service
+    /// supervisor, and the hidden `.vbs` launcher (a console without a window)
+    /// never block. Falsifier: dropping any one input, or the visibility term,
+    /// flips an assertion.
     #[test]
-    fn a_fatal_error_holds_only_an_interactive_console() {
-        assert!(console_is_interactive(true, true));
-        assert!(!console_is_interactive(false, true));
-        assert!(!console_is_interactive(true, false));
-        assert!(!console_is_interactive(false, false));
+    fn a_fatal_error_holds_only_a_visible_interactive_console() {
+        assert!(console_is_interactive(true, true, true));
+        assert!(!console_is_interactive(false, true, true));
+        assert!(!console_is_interactive(true, false, true));
+        assert!(!console_is_interactive(true, true, false));
+        assert!(!console_is_interactive(false, false, false));
     }
 
     #[test]

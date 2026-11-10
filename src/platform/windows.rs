@@ -15,6 +15,24 @@ use async_trait::async_trait;
 /// `CREATE_NO_WINDOW`: hidden children (Step 8).
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Whether this process owns a console window a person can actually see.
+///
+/// A launcher that hides the console (`SimpleHarn.vbs`: `WScript.Shell.Run ...,
+/// 0`) still gives the exe a console handle, so the terminal test alone cannot
+/// tell a visible window from an invisible one. `false` also means "no console
+/// window at all": there is nothing to read, so nothing may wait.
+#[must_use]
+pub fn console_window_visible() -> bool {
+    use windows::Win32::System::Console::GetConsoleWindow;
+    use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
+    // Safety: `GetConsoleWindow` takes no arguments and answers the caller's
+    // console window or null; `IsWindowVisible` only reads that window's style.
+    unsafe {
+        let window = GetConsoleWindow();
+        !window.0.is_null() && IsWindowVisible(window).as_bool()
+    }
+}
+
 /// Hides a short-lived control child: the same flag the engine spawn uses,
 /// without the suspended/resume discipline (control commands are not sealed
 /// into a job).

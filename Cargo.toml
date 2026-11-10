@@ -1,6 +1,6 @@
 [package]
 name = "simpleharn"
-version = "1.5.0"
+version = "1.5.1"
 edition = "2021"
 rust-version = "1.88"
 description = "One app managing local inference engines with a simple, reliable, adjustable model swap"
@@ -77,6 +77,7 @@ tray = ["dep:tray-icon"]
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Console",
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",
     "Win32_Security",

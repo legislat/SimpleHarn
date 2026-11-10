@@ -262,9 +262,12 @@ mod tests {
             "the cost cell must carry exactly the checked/unchecked class token"
         );
         assert!(
-            STYLE_CSS.contains(".sh-cost-checked { color: var(--sh-accent-solid); }")
-                && STYLE_CSS.contains(".sh-cost-unchecked { color: var(--sh-warn-ink); }"),
-            "green must be the accent and yellow the warn-ink token, each with its own rule"
+            STYLE_CSS.contains(".sh-cost-checked { color: var(--sh-cost-ink); }")
+                && STYLE_CSS.contains(".sh-cost-unchecked { color: var(--sh-warn-ink); }")
+                && STYLE_CSS.contains("--sh-cost-ink: #536542")
+                && STYLE_CSS.contains("--sh-cost-ink: var(--sh-accent-solid)"),
+            "green must be the cost ink (darker in light, the olive in dark) and yellow \
+             the warn-ink token, each with its own rule"
         );
     }
 
@@ -384,6 +387,10 @@ mod tests {
     fn served_assets_darken_the_checked_box_in_light() {
         assert!(
             STYLE_CSS.contains("input[type=\"checkbox\"] {")
+                && STYLE_CSS.matches("input[type=\"checkbox\"]").count() == 1
+                && !STYLE_CSS.contains("[data-theme=\"light\"] input[type=\"checkbox\"]")
+                && !STYLE_CSS.contains("[data-theme=\"dark\"] input[type=\"checkbox\"]")
+                && !STYLE_CSS.contains(":root:not([data-theme=\"dark\"]) input[type=\"checkbox\"]")
                 && STYLE_CSS.contains("--pico-primary-background: var(--sh-accent-solid);")
                 && STYLE_CSS
                     .contains("--pico-switch-checked-background-color: var(--sh-accent-solid);")
@@ -391,8 +398,8 @@ mod tests {
                     .matches("--pico-switch-checked-background-color:")
                     .count()
                     == 1,
-            "the checked checkbox and switch fill is the olive accent, declared once \
-             for both themes"
+            "the checked checkbox and switch fill is the olive accent on ONE unscoped rule; \
+             a light-scoped copy would pass a substring test, so the absence legs are the pin"
         );
     }
 
@@ -523,8 +530,14 @@ mod tests {
         assert!(
             STYLE_CSS
                 .contains("scrollbar-color: var(--pico-card-border-color) var(--sh-chrome-bg)")
-                && STYLE_CSS.contains(".sh-tablewrap {"),
-            "the table wrapper scrollbar carries the theme border and chrome tokens"
+                && STYLE_CSS.contains(".sh-tablewrap {")
+                && STYLE_CSS.matches(".sh-tablewrap {").count() == 1
+                && !STYLE_CSS.contains("[data-theme=\"light\"] .sh-tablewrap")
+                && !STYLE_CSS.contains("[data-theme=\"dark\"] .sh-tablewrap")
+                && !STYLE_CSS.contains(":root:not([data-theme=\"dark\"]) .sh-tablewrap"),
+            "the table wrapper scrollbar carries the theme border and chrome tokens on \
+             one unscoped rule - a light-scoped or dark-scoped copy would still pass a \
+             substring test, so the absence legs are the pin"
         );
         assert!(
             APP_JS.contains(

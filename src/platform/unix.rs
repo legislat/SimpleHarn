@@ -188,6 +188,14 @@ pub fn host_ram_bytes() -> Option<(u64, u64)> {
 /// seam is a no-op that keeps the call site portable.
 pub fn hide_window(_command: &mut tokio::process::Command) {}
 
+/// Whether this process owns a console window a person can actually see. A
+/// Unix terminal has no hidden-console launcher (the Windows `.vbs` case does
+/// not exist here), so the terminal test alone decides.
+#[must_use]
+pub fn console_window_visible() -> bool {
+    true
+}
+
 /// The host boot id: the kernel's per-boot uuid, trimmed. `None` when `/proc`
 /// cannot answer — the custody gate treats that as absence of permission for
 /// a stamped entry, never as a match.

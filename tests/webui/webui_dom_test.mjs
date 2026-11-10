@@ -887,10 +887,15 @@ const driver = `
     // the tick glyph is hardcoded white and the switch knob is white, both on the
     // checked fill token. With both themes setting --pico-primary-background to
     // their muted chrome plates, input[type="checkbox"] sets the fill and switch
-    // track to --sh-accent-solid across both themes.
+    // track to --sh-accent-solid across both themes. The absence legs are the pin:
+    // a theme-scoped copy would still satisfy the substring checks.
     const checkedBox = css.indexOf('input[type="checkbox"] {');
-    check("checked boxes and switches take the olive fill in both themes",
+    check("checked boxes and switches take the olive fill on one unscoped rule",
       checkedBox >= 0 &&
+        css.indexOf('input[type="checkbox"]') === css.lastIndexOf('input[type="checkbox"]') &&
+        css.indexOf('[data-theme="light"] input[type="checkbox"]') < 0 &&
+        css.indexOf('[data-theme="dark"] input[type="checkbox"]') < 0 &&
+        css.indexOf(':root:not([data-theme="dark"]) input[type="checkbox"]') < 0 &&
         css.indexOf("--pico-primary-background: var(--sh-accent-solid);") > 0 &&
         css.indexOf("--pico-switch-checked-background-color: var(--sh-accent-solid);") > 0 &&
         css.indexOf("--pico-form-element-border-color: var(--pico-card-border-color)") >= 0,
@@ -1031,10 +1036,14 @@ const driver = `
     // The white "border" (operator 2026-11-05): no computed border owned it -
     // the wrapper's horizontal scrollbar trough drew white under the table.
     // The wrapper binds scrollbar-color to the theme's border and chrome tokens.
-    check("the table wrapper scrollbar takes the theme border and chrome tokens, not the white trough",
+    check("the table wrapper scrollbar takes the theme border and chrome tokens on one unscoped rule",
       css.indexOf("scrollbar-color: var(--pico-card-border-color) var(--sh-chrome-bg)") >= 0 &&
-        css.indexOf(".sh-tablewrap {") >= 0,
-      "no warm scrollbar rule");
+        css.indexOf(".sh-tablewrap {") >= 0 &&
+        css.split(".sh-tablewrap {").length === 2 &&
+        css.indexOf('[data-theme="light"] .sh-tablewrap') < 0 &&
+        css.indexOf('[data-theme="dark"] .sh-tablewrap') < 0 &&
+        css.indexOf(':root:not([data-theme="dark"]) .sh-tablewrap') < 0,
+      "no unscoped warm scrollbar rule");
     const servingRowBody = bodyOf("table.sh-models tbody tr.sh-serving {");
     const servingFirstCellBody = bodyOf("table.sh-models tbody tr.sh-serving td:first-child {");
     check("serving rows carry a full-width wash and a 3px start-edge bar in the stylesheet",
@@ -1425,12 +1434,18 @@ const driver = `
     ...fixtures["/har/status"],
     slots: [{ category: "WORK", index: 0, model: "staleone", port: 8111, pid: 1,
       need_gib: 4.0, idle_s: 0, serve_id: null, loading_job: null,
-      launched_at: launchedStamp, stale_config: true, state: "serving" }],
+      launched_at: launchedStamp, stale_config: true, state: "serving" },
+    { category: "WORK", index: 1, model: "loadingone", port: 8112, pid: 2,
+      need_gib: 4.0, idle_s: 0, serve_id: null, loading_job: 7,
+      launched_at: null, stale_config: false, state: "loading" }],
     models: [
       { id: "staleone", engine: "llama", category: "WORK", vram_gb: 4, cost: "fixed",
         launch_floor_gb: null, measured_gb: null, measured_min_gb: null, context: null,
         model_ref: "F:/s.gguf", serve_model: null, cpu_offload: false,
         launched_at: launchedStamp, stale_config: true },
+      { id: "loadingone", engine: "llama", category: "WORK", vram_gb: 4, cost: "fixed",
+        launch_floor_gb: null, measured_gb: null, measured_min_gb: null, context: null,
+        model_ref: "F:/l.gguf", serve_model: null, cpu_offload: false },
       { id: "cleanone", engine: "llama", category: "WORK", vram_gb: 4, cost: "fixed",
         launch_floor_gb: null, measured_gb: null, measured_min_gb: null, context: null,
         model_ref: "F:/c.gguf", serve_model: null, cpu_offload: false,
@@ -1479,6 +1494,8 @@ const driver = `
   check("only the serving resident row carries the .sh-serving class and data-serving=true",
     rowClasses["staleone"] === "sh-serving" &&
       rowServingAttrs["staleone"] === "true" &&
+      rowClasses["loadingone"] === "" &&
+      rowServingAttrs["loadingone"] === null &&
       rowClasses["cleanone"] === "" &&
       rowServingAttrs["cleanone"] === null &&
       rowClasses["unloadedone"] === "" &&
