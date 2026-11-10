@@ -16,6 +16,17 @@ Versioning.
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
+## v1.5.1.4 - 2026-11-10
+
+### Fixed
+
+- A repeated load for a model that is already waiting for a busy slot now joins
+  that queued load instead of superseding it. The duplicate request shares the
+  one job and its outcome, so the ledger shows one row rather than a cancelled
+  attempt followed by a fresh one; a load for a different model still supersedes
+  the queued one, which remains by design. The duplicate caller waits through the
+  same load as the first, exactly as a repeat that arrives while the model is
+  loading.
 ## v1.5.1.3 - 2026-11-10
 
 ### Changed
