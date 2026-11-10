@@ -4,8 +4,14 @@
 # Checks:
 #   1. Cargo.toml declares a version.
 #   2. A latest Git tag exists (a missing tag fails with a clear message).
-#   3. The latest tag equals v<version>, unless -Prepare says this tree is
-#      actively preparing a new release; then the version must exceed the tag.
+#   3. The tag names the crate version. Accepted tag forms
+#      (docs/process/GIT_WORKFLOW.md, "Tag and version naming"):
+#      v<major>.<minor>.<patch> or v<major>.<minor>.<patch>.<hotfix>. The
+#      crate version stays three-part semver; the tag's first three segments
+#      must equal it, so v1.5.1.1 accompanies crate 1.5.1. With -Prepare the
+#      tag itself is not matched: a newer crate version prepares a normal
+#      release, and a crate version equal to the tag core prepares a hotfix
+#      that keeps the crate version.
 #   4. CHANGELOG.md contains the version string.
 #   5. README.md names the latest tag, or the prepared version with -Prepare.
 #   6. No known stale phrase appears in current durable docs or source
@@ -23,10 +29,15 @@
 #      scripts/make-public-asset.ps1 (node scripts/check-doc-facts.mjs).
 #
 # Exit 0 only when every check passes.
+#
+# Test seam: -CompareTag <tag> runs only the check 3 comparison against the
+# Cargo.toml version, prints the verdict, and exits: 0 on a match, 1 with the
+# exact accepted tag forms. It reads no tag from Git and changes nothing.
 
 param(
   [switch]$Prepare,
-  [switch]$SkipDoc
+  [switch]$SkipDoc,
+  [string]$CompareTag
 )
 
 $ErrorActionPreference = 'Continue'
@@ -48,6 +59,56 @@ function Get-VersionKey([string]$v) {
   return $nums[0] * 1000000 + $nums[1] * 1000 + $nums[2]
 }
 
+# Tag grammar of the naming rule (docs/process/GIT_WORKFLOW.md): a tag is
+# v<ma>.<mi>.<pa> or v<ma>.<mi>.<pa>.<hotfix>, the hotfix being a positive
+# integer (a fourth segment of 0 is refused). Returns $null for any other
+# shape. A crate version parses through the same seam with a synthetic v.
+function Get-TagParts([string]$tag) {
+  $m = [regex]::Match(("$tag"), '^v(\d+)\.(\d+)\.(\d+)(?:\.([1-9]\d*))?$')
+  if (-not $m.Success) { return $null }
+  $hotfix = $null
+  if ($m.Groups[4].Success) { $hotfix = [int]$m.Groups[4].Value }
+  return [pscustomobject]@{
+    Major  = [int]$m.Groups[1].Value
+    Minor  = [int]$m.Groups[2].Value
+    Patch  = [int]$m.Groups[3].Value
+    Hotfix = $hotfix
+  }
+}
+
+# The one comparison behind check 3 and the -CompareTag seam. Ok when the
+# tag's first three segments equal the three-part crate version; a fourth
+# tag segment only marks the hotfix form. Kind: exact, hotfix, bad-tag,
+# bad-version, or mismatch. Version is the bare Cargo.toml version (no v).
+function Compare-ReleaseTag([string]$tag, [string]$version) {
+  $vp = Get-TagParts ('v' + $version)
+  if ($null -eq $vp) {
+    return [pscustomobject]@{ Ok = $false; Kind = 'bad-version'; Message =
+      ("Cargo.toml version " + $version + " is not three-part semver X.Y.Z") }
+  }
+  $tp = Get-TagParts $tag
+  if ($null -eq $tp) {
+    return [pscustomobject]@{ Ok = $false; Kind = 'bad-tag'; Message =
+      ("tag " + $tag + " is neither v" + $version + " nor v" + $version + ".<hotfix>") }
+  }
+  if ($tp.Major -ne $vp.Major -or $tp.Minor -ne $vp.Minor -or $tp.Patch -ne $vp.Patch) {
+    return [pscustomobject]@{ Ok = $false; Kind = 'mismatch'; Message =
+      ("tag " + $tag + " names " + $tp.Major + "." + $tp.Minor + "." + $tp.Patch +
+       ", the crate version is " + $version) }
+  }
+  $kind = 'exact'
+  if ($null -ne $tp.Hotfix) { $kind = 'hotfix' }
+  return [pscustomobject]@{ Ok = $true; Kind = $kind; Message =
+    ("tag " + $tag + " matches crate version " + $version +
+     $(if ($kind -eq 'hotfix') { ' (hotfix form)' } else { '' })) }
+}
+
+function Format-AcceptedTagForms([string]$version) {
+  $v = if ($version) { $version } else { '<major>.<minor>.<patch>' }
+  return "accepted forms: v" + $v + " or v" + $v + ".<hotfix> " +
+    "(<hotfix> is a positive integer, for example v" + $v + ".1)"
+}
+
 # 1. Version in Cargo.toml.
 $version = $null
 if (Test-Path 'Cargo.toml') {
@@ -56,6 +117,23 @@ if (Test-Path 'Cargo.toml') {
   if ($m) { $version = $m.Matches[0].Groups[1].Value }
 }
 Report ([bool]$version) ("Cargo.toml declares a version" + $(if ($version) { ": " + $version } else { "" }))
+
+# Test seam: run the check 3 comparison alone against Cargo.toml, then exit.
+# It never reads a tag from Git and changes nothing.
+if ($CompareTag) {
+  if (-not $version) {
+    Write-Output ("FAIL cannot compare tag " + $CompareTag + ": Cargo.toml declares no version")
+    exit 1
+  }
+  $seam = Compare-ReleaseTag $CompareTag $version
+  if ($seam.Ok) {
+    Write-Output ("PASS " + $seam.Message)
+    exit 0
+  }
+  Write-Output ("FAIL " + $seam.Message)
+  Write-Output ("  " + (Format-AcceptedTagForms $version))
+  exit 1
+}
 
 # 2. Latest tag.
 $tag = $null
@@ -70,7 +148,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 Report ([bool]$tag) $(if ($tag) {
   "latest tag found: " + $tag
 } else {
-  "no Git tag found; a release needs an annotated tag v<version> (run git tag -a v<version>)"
+  "no Git tag found; a release needs an annotated tag v<version> or v<version>.<hotfix> (run git tag -a v<version>)"
 })
 
 if (-not $version -or -not $tag) {
@@ -78,12 +156,30 @@ if (-not $version -or -not $tag) {
   exit 1
 }
 
-# 3. Tag equals v<version>, or the tree prepares a newer release.
+# 3. The tag names the crate version, or the tree prepares a new release.
+#    Accepted tag forms: v<X>.<Y>.<Z> or v<X>.<Y>.<Z>.<hotfix>; the first
+#    three segments must equal the three-part crate version (see the header
+#    and docs/process/GIT_WORKFLOW.md). With -Prepare the tag itself is not
+#    matched: a newer crate version prepares a normal release; a crate
+#    version equal to the tag core prepares a hotfix on this crate version.
 if ($Prepare) {
-  $ok = (Get-VersionKey $version) -gt (Get-VersionKey $tag)
-  Report $ok ("preparing a new release: version " + $version + " exceeds tag " + $tag)
+  $vkey = Get-VersionKey $version
+  $tkey = Get-VersionKey $tag
+  if ($vkey -gt $tkey) {
+    Report $true ("preparing a new release: version " + $version + " exceeds tag " + $tag)
+  } elseif ($vkey -eq $tkey) {
+    Report $true ("preparing a hotfix: crate version " + $version +
+      " equals the tag core of " + $tag + "; this is read as hotfix intent, not as a" +
+      " forgotten Cargo.toml bump - if a new release was intended, bump the crate" +
+      " version first; the new tag is v" + $version + ".<hotfix>")
+  } else {
+    Report $false ("preparing a release needs a version above tag " + $tag +
+      ", or an equal core to prepare a hotfix")
+  }
 } else {
-  Report ($tag -eq ("v" + $version)) ("latest tag " + $tag + " equals v" + $version)
+  $cmp = Compare-ReleaseTag $tag $version
+  Report $cmp.Ok ("latest tag " + $cmp.Message +
+    $(if ($cmp.Ok) { "" } else { "; " + (Format-AcceptedTagForms $version) }))
 }
 
 # 4. Changelog entry for the version.

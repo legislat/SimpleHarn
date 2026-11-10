@@ -75,30 +75,73 @@ jobs:
   # loads on a Linux GPU.
   linux-artifact:
     if: github.event_name == 'push'
-    # Pinned, not ubuntu-latest: the runner image sets the artifact's glibc floor,
-    # published in README Requirements. A floating image would move it silently.
+    # Explicit host image, never ubuntu-latest. The host only carries Docker:
+    # the artifact's glibc floor comes from the pinned container base below,
+    # not from the runner image.
     runs-on: ubuntu-24.04
+    env:
+      # Pinned artifact base (RELEASE-LINUX-GLIBC, 2026-11-10). manylinux2014
+      # carries glibc 2.17 and a complete toolchain, so the published binary
+      # needs no distro library newer than the measured floor below: it runs
+      # on Ubuntu 18.04, Debian 9 and RHEL 7 or newer. A static musl build was
+      # probed and rejected: the probed static-pie musl build answered
+      # "Dynamic loading not supported" for libnvidia-ml.so.1 and could not
+      # read NVML, so no musl artifact ships.
+      # The image tag is explicit, never :latest: a base bump is a deliberate,
+      # reviewed change. The same base and floor are on record in
+      # docs/reference/COMPATIBILITY.md and README Requirements.
+      ARTIFACT_BASE: quay.io/pypa/manylinux2014_x86_64:2026.11.07-1
+      # Documented glibc floor: the highest required GLIBC_* symbol version
+      # this base produces (measured with objdump -T, 2026-11-10).
+      # scripts/check-doc-facts.mjs ties this value to README Requirements and
+      # COMPATIBILITY; the floor check below fails if a build needs more, so
+      # the published artifact can never exceed its documented floor silently.
+      GLIBC_FLOOR: '2.16'
+      # Release toolchain for the Linux artifact; keep equal to the toolchain
+      # the other jobs install and to rust-toolchain.toml.
+      RUST_RELEASE_TOOLCHAIN: '1.98.1'
     steps:
       - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@1.98.1
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build headless Linux binary
-        run: cargo build --release --locked
-
-      - name: Package the Linux artifact
+      # The base image carries no Rust, and JS actions cannot execute inside
+      # a glibc-2.17 container, so the build runs through docker run with the
+      # toolchain installed inside the container and pinned by env. Build and
+      # package share one container because the binary lives on container-local
+      # disk: the target directory stays off the checkout.
+      - name: Build, floor-check, and package in the pinned base
         shell: bash
         run: |
           set -euo pipefail
-          ver="${GITHUB_REF_NAME#v}"
-          root="SimpleHarn-${ver}-linux-x64"
-          mkdir -p "dist/${root}"
-          cp target/release/simpleharn "dist/${root}/"
-          cp README.md LICENSE "dist/${root}/"
-          tar -C dist -czf "dist/${root}.tar.gz" "${root}"
-          sha256sum "dist/${root}.tar.gz" | sed 's#dist/##' > "dist/${root}.tar.gz.sha256"
+          mkdir -p dist
+          docker pull "$ARTIFACT_BASE"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/work -w /work \
+            -v "$GITHUB_WORKSPACE/dist":/dist \
+            -e CARGO_HOME=/tmp/cargo -e RUSTUP_HOME=/tmp/rustup -e HOME=/tmp \
+            -e TOOLCHAIN="$RUST_RELEASE_TOOLCHAIN" \
+            -e FLOOR="$GLIBC_FLOOR" \
+            -e GITHUB_REF_NAME="$GITHUB_REF_NAME" \
+            "$ARTIFACT_BASE" bash -euo pipefail -c '
+              export CARGO_TARGET_DIR=/tmp/tgt
+              curl -sSf --proto "=https" --tlsv1.2 https://sh.rustup.rs \
+                | sh -s -- -y --profile minimal --default-toolchain "$TOOLCHAIN" >/dev/null
+              export PATH="$CARGO_HOME/bin:$PATH"
+              cargo build --release --locked
+              max=$(objdump -T /tmp/tgt/release/simpleharn \
+                | grep -oE "GLIBC_[0-9.]+" | sed "s/GLIBC_//" | sort -V | tail -1)
+              echo "measured glibc floor: $max (documented: $FLOOR)"
+              if [ "$(printf "%s\n%s\n" "$FLOOR" "$max" | sort -V | tail -1)" != "$FLOOR" ]; then
+                echo "::error::the artifact requires GLIBC_$max, above the documented floor $FLOOR; re-verify the base and raise the docs and this env value together, never silently."
+                exit 1
+              fi
+              ver="${GITHUB_REF_NAME#v}"
+              root="SimpleHarn-${ver}-linux-x64"
+              mkdir -p "/dist/${root}"
+              cp /tmp/tgt/release/simpleharn "/dist/${root}/"
+              cp /work/README.md /work/LICENSE "/dist/${root}/"
+              tar -C /dist -czf "/dist/${root}.tar.gz" "${root}"
+              sha256sum "/dist/${root}.tar.gz" | sed "s#/dist/##" > "/dist/${root}.tar.gz.sha256"
+            '
 
       - uses: actions/upload-artifact@v4
         with:

@@ -13,7 +13,9 @@
 # not inside it. SHA256SUMS.txt covers the exe and the zip (a file cannot
 # carry the hash of the zip that contains it).
 # The zip is named SimpleHarn-<version-without-v>-win-x64.zip (the version
-# without the leading v), the name the README quick start links.
+# without the leading v), the name the README quick start links. The version
+# argument accepts the three-part tag and the four-segment hotfix tag
+# (v1.5.1.1), so a hotfix release ships SimpleHarn-1.5.1.1-win-x64.zip.
 #
 # Refusals (all hard FAIL):
 #   - the source dir (the exe's folder unless -SourceDir says otherwise)
@@ -26,7 +28,7 @@
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts/make-public-asset.ps1 `
-#     -Version v1.1.3 -ExePath <release-exe> `
+#     -Version v1.5.1.1 -ExePath <release-exe> `
 #     -ExpectedSha256 <sha256> -OutDir <fresh-output-dir>
 # Run from the repository root (README.md, LICENSE, SimpleHarn.vbs, and
 # docs/assets/control-page.png are read here).
@@ -49,8 +51,13 @@ function Report([bool]$ok, [string]$message) {
   else { Write-Output ("FAIL " + $message); $script:allPass = $false }
 }
 
-# 1. Argument shape.
-Report ($Version -match '^v\d+\.\d+\.\d+$') ("version argument names a tag: " + $Version)
+# 1. Argument shape. Accepted tags (docs/process/GIT_WORKFLOW.md, "Tag and
+#    version naming"): v<major>.<minor>.<patch> or the hotfix form
+#    v<major>.<minor>.<patch>.<hotfix>. The zip name drops the leading v, so
+#    -Version v1.5.1.1 yields SimpleHarn-1.5.1.1-win-x64.zip.
+Report ($Version -match '^v\d+\.\d+\.\d+(\.\d+)?$') ("version argument names a tag: " + $Version +
+  $(if ($Version -match '^v\d+\.\d+\.\d+(\.\d+)?$') { "" }
+     else { "; accepted forms: v<major>.<minor>.<patch> or v<major>.<minor>.<patch>.<hotfix> (for example v1.5.1.1)" }))
 $exeFull = $null
 if (Test-Path -LiteralPath $ExePath -PathType Leaf) {
   $exeFull = (Resolve-Path -LiteralPath $ExePath).Path

@@ -15,7 +15,7 @@ and it refuses to overcommit. The product name is SimpleHarn, and the repository
 and the environment names use the `SIMPLEHARN_` prefix.
 
 Current release: **v1.5.1**. Windows 10/11 and Linux x86-64 (headless; glibc
-2.39 or newer, see Requirements), one NVIDIA GPU, single user. Prebuilt
+2.16 or newer, see Requirements), one NVIDIA GPU, single user. Prebuilt
 binaries: see the GitHub Releases page of this repository. The release
 zip holds `simpleharn.exe`, `SimpleHarn.vbs`, `README.md`, `LICENSE`, and
 `docs/assets/control-page.png`. The Linux tar.gz from the same tag carries the
@@ -212,11 +212,18 @@ full policy is in [SECURITY.md](SECURITY.md); the token and bind keys are in
 
 ## Requirements
 
-Windows 10 or 11, or Linux x86-64 with glibc 2.39 or newer, one NVIDIA
-GPU. The prebuilt Linux artifact is built on Ubuntu 24.04, so it runs on
-Ubuntu 24.04 and newer and on Debian 13 and newer; Debian 12, Ubuntu 22.04 and
-RHEL 9 carry older glibc and fail at the loader with
-`version 'GLIBC_2.39' not found`. Build from source on those hosts. The
+Windows 10 or 11, or Linux x86-64 with glibc 2.16 or newer, one NVIDIA
+GPU. The prebuilt Linux artifact is built in a pinned manylinux2014
+container base, whose glibc is 2.17; the artifact itself requires
+`GLIBC_2.16` at most, so it runs on Ubuntu 18.04 and newer, Debian 9 and
+newer, and RHEL 7 and newer. Build from source on older hosts. The tag
+workflow measures the floor with `objdump` on every artifact and fails if
+a build ever needs more than the documented floor. The witness loads the
+NVIDIA driver's `libnvidia-ml.so.1` at runtime, so an installed driver is
+required; without it the witness falls back to `nvidia-smi`. A fully
+static musl build is not shipped: the static-pie musl build produced
+here answered `Dynamic loading not supported` for `libnvidia-ml.so.1`
+and could not read the card through NVML (measured 2026-11-10). The
 `llama` path needs a llama.cpp build that runs `llama-server`
 (`llama-server.exe` on Windows); first run detects one found on PATH. The
 `strata`, `basalt`, and `maya` paths need their engine install and its Python

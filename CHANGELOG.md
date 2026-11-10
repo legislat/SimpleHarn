@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, maintainer]
 source_of_truth_for: [release history]
-last_reviewed: 2026-11-08
+last_reviewed: 2026-11-10
 review_trigger: release
 ---
 
@@ -15,6 +15,29 @@ names they shipped with. The format follows Keep a Changelog. Versions follow Se
 Versioning.
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
+
+## v1.5.1.1 - unreleased
+
+The fourth tag segment is the hotfix counter (`docs/process/GIT_WORKFLOW.md`):
+this release accompanies crate version `1.5.1`, which stays three-part.
+
+### Changed
+
+- Linux artifact portability: the release artifact now builds in a pinned
+  manylinux2014 container base and runs on glibc 2.16 and newer instead of
+  glibc 2.39. The release workflow measures the floor on every artifact and
+  fails above the documented value. A fully static musl artifact was probed
+  and is not shipped: the probed static-pie musl build answered `Dynamic
+  loading not supported` for `libnvidia-ml.so.1` and could not read the card
+  through NVML.
+- Release tags may carry a fourth hotfix segment; the release checker, the
+  doc-facts checker, and the asset builder accept `v<major>.<minor>.<patch>.<hotfix>`.
+- The comment-gate sweep across the source tree and the comment checker.
+- The card suite runs with its test token.
+
+### Fixed
+
+- The lock-path and documentation fixes landed after v1.5.1.
 
 ## v1.5.1 - 2026-11-10
 

@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent]
 source_of_truth_for: [OpenAI-compatible surface scope, known-good configurations]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-10
 review_trigger: behavior-change, release
 ---
 
@@ -291,11 +291,18 @@ suites in CI, and builds its release artifact in CI; the Linux witness reports
 the Windows-authored PowerShell suite remains the Windows runner. mock runs
 where the grant is on.
 
-The prebuilt Linux artifact requires glibc 2.39 or newer: CI builds it on
-Ubuntu 24.04, and `objdump -T` shows `GLIBC_2.39` as its highest required
-symbol version. Debian 12, Ubuntu 22.04 and RHEL 9 are older and fail at the
-loader, so build from source on those hosts. A lower-floor build (container
-base or a musl target) is not shipped yet.
+The prebuilt Linux artifact runs on glibc 2.16 or newer. CI builds it in
+the pinned base `quay.io/pypa/manylinux2014_x86_64` (its glibc is 2.17),
+and `objdump -T` shows `GLIBC_2.16` as the highest required symbol version
+on the measured build (2026-11-10). Ubuntu 18.04, Debian 9 and RHEL 7 or
+newer therefore run the artifact; older hosts build from source. The
+release workflow repeats the measurement on every artifact and fails above
+the floor recorded in `.github/workflows/release-facts.yml`. A fully
+static musl build is not shipped: the witness loads `libnvidia-ml.so.1`
+with dlopen, and a static musl binary returns "Dynamic loading not
+supported" (measured 2026-11-10), so a musl artifact could not read the
+card through NVML. The runtime still needs the NVIDIA driver's
+`libnvidia-ml.so.1`; without it the witness falls back to `nvidia-smi`.
 
 ## 9. Glossary
 

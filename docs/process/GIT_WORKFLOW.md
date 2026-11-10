@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [agent, reviewer, release-operator]
 source_of_truth_for: [git, release]
-last_reviewed: 2026-11-08
+last_reviewed: 2026-11-10
 review_trigger: behavior-change, release
 ---
 
@@ -115,8 +115,9 @@ A release is a task with acceptance criteria. Run the steps in this order:
 1. The gate passes on the release commit (`docs/process/VERIFICATION.md`). Run
    `scripts/check-onboarding.ps1` and require PASS; it is the release-scheduled onboarding
    check that `docs/process/VERIFICATION.md` names.
-2. Bump the `Cargo.toml` version. The version must match the tag. The same commit
-   updates the webui fixture pin: `tests/webui/fixtures/status.json` quotes the same
+2. Bump the `Cargo.toml` version. The version's first three segments must match the tag
+   (see "Tag and version naming" below); a hotfix release keeps the crate version. The same
+   commit updates the webui fixture pin: `tests/webui/fixtures/status.json` quotes the same
    version (the parity test compares them; `release-check.ps1` check 8 enforces it).
 3. Write the dated `CHANGELOG.md` entry. Use the Keep a Changelog structure and record
    user-visible changes only. Public release notes carry no machine paths, no operator
@@ -127,9 +128,11 @@ A release is a task with acceptance criteria. Run the steps in this order:
    changelog, README claim, known stale phrases, `cargo doc` warnings, the webui fixture
    pin, and that public docs carry no machine paths. In `-Prepare`
    mode the README claim must name the version being prepared.
-6. Create the annotated tag.
-7. Run `scripts/release-check.ps1` without `-Prepare` and require PASS. It confirms the
-   tag equals the version.
+ 6. Create the annotated tag (`v<major>.<minor>.<patch>` or the hotfix form
+    `v<major>.<minor>.<patch>.<hotfix>`).
+ 7. Run `scripts/release-check.ps1` without `-Prepare` and require PASS. It confirms the
+    tag names the crate version: the tag is `v<Cargo version>`, or its first three
+    segments equal the crate version and the fourth segment is the hotfix counter.
 7b. Feature release (`x.y.0`) only: run the release card suite in a freed window
     (`release-card/run.ps1 -Version <tag>` from the private handoff repository) and
     require every leg to PASS or be named BLOCKED with its reason. Patch releases are
@@ -147,6 +150,34 @@ A release is a task with acceptance criteria. Run the steps in this order:
    Linux serving smoke is one llama load/serve/unload in WSL2.
 10. Keep and name the rollback artifact: the previous release stays in the fallback
     directory named below.
+
+### Tag and version naming
+
+The naming rule (operator ruling 2026-11-10):
+
+- A release tag is `v<major>.<minor>.<patch>` or `v<major>.<minor>.<patch>.<hotfix>`.
+  The optional fourth segment is the hotfix counter: a fix on a shipped patch line gets
+  its own number instead of racing the semver patch number (`v1.5.1.1` follows `v1.5.1`).
+- `Cargo.toml` stays valid three-part semver; Cargo cannot hold a four-segment version.
+  A hotfix release keeps the crate version, so the tag's first three segments must equal
+  `Cargo.toml`: `v1.5.1.1` accompanies crate `1.5.1`. The hotfix counter lives only in
+  the tag, the changelog heading, the README release claim, and the asset names.
+- Release assets are named from the tag without its leading `v`, so a hotfix release
+  ships `SimpleHarn-1.5.1.1-win-x64.zip` and `SimpleHarn-1.5.1.1-linux-x64.tar.gz`.
+- `scripts/release-check.ps1` accepts both tag shapes and refuses a tag whose first
+  three segments differ from `Cargo.toml`; the failure message names the accepted forms.
+  Use `scripts/release-check.ps1 -CompareTag <tag>` to run that one comparison alone.
+  In `-Prepare` mode the tag does not have to move: a newer crate version prepares a
+  normal release, and a crate version equal to the tag core prepares a hotfix on the
+  current crate version. The equal-core case prints an explicit interpretation line —
+  `preparing a hotfix: crate version <v> equals the tag core of <tag>; this is read as
+  hotfix intent, not as a forgotten Cargo.toml bump - if a new release was intended,
+  bump the crate version first; the new tag is v<v>.<hotfix>` — so a forgotten version
+  bump reads as hotfix intent instead of hiding in a bare PASS.
+- The webui fixture and every `Cargo.toml` comparison stay three-part;
+  `node scripts/check-doc-facts.mjs` takes the release tag (three or four segments)
+  from the latest dated changelog heading and requires its first three segments to
+  equal the crate version.
 
 Rules:
 
