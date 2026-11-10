@@ -879,3 +879,14 @@ recorded here so dated references to ARCHIVED still resolve:
   drop saturation; no pinned hex moves.
   | 2026-11-09 | `this task`
 
+- **A parked load joins its identical twin** (operator ruling 2026-11-10): the
+  earlier `19[5]` WONTFIX ("supersede-is-by-design") is narrowed, not deleted. A
+  repeat load for a model that is already **parked** attaches a second waiter to
+  that queued row, so a double request yields one job, one outcome and one ledger
+  line; the operator saw `7 · Maya-M · Idle cancelled…` followed by
+  `8 · Maya-M · Ready` from two POSTs. A load for a **different** model still
+  supersedes the queued twin, which remains by design. The duplicate caller
+  waits through the same load as the first, consistent with the on-slot attach
+  path.
+  | 2026-11-10 | `this task`
+

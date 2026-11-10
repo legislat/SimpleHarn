@@ -130,6 +130,31 @@ impl ActorState {
                 }
             }
         }
+        // The same attach rule for a parked load: a parked row is not on a slot
+        // (it lives in `pending` while the slot keeps its running job), so the
+        // loop above cannot see it, and a repeat for the same model must not
+        // supersede its own in-flight twin — the idempotency contract says a
+        // repeat while a load is in flight joins that load, never mints a
+        // second row. A different model still falls to the park-and-supersede
+        // path below, which is exactly what it is for.
+        for &s in &slots {
+            if let Some(&job_id) = self.pending.get(&s) {
+                if let Some(job) = self.jobs.get(&job_id) {
+                    if job.kind == JobKind::Load
+                        && !job.terminal
+                        && job.model == model
+                        && job.category == category
+                    {
+                        self.jobs
+                            .get_mut(&job_id)
+                            .expect("invariant: pending names an existing job")
+                            .waiters
+                            .push(reply);
+                        return;
+                    }
+                }
+            }
+        }
         // Target: an empty slot first, else the LRU occupied one, else supersede.
         let idle = |s: usize| self.slots[s].job.is_none();
         let target = slots

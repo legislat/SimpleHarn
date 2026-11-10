@@ -2867,6 +2867,135 @@ fn a_rescan_keeps_a_queue_whose_fingerprint_cannot_show_a_change() {
     );
 }
 
+/// Shared fixture for the parked-repeat pins: one `ActorState` whose single
+/// Work slot keeps its running job (the id names a row the test never holds,
+/// exactly the shape every slot shows when it parks) while the parked row
+/// lives in `pending` and owns no slot. Same scaffold as
+/// `a_rescan_keeps_a_queue_whose_fingerprint_cannot_show_a_change`.
+fn busy_work_slot_state(dir: &std::path::Path) -> ActorState {
+    let (tx, _rx) = mpsc::unbounded_channel::<ActorMsg>();
+    let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
+    adapters.insert(
+        "mock".to_string(),
+        Arc::new(MockAdapter) as Arc<dyn EngineAdapter>,
+    );
+    let mut state = ActorState::empty(
+        crate::config::AppConfig::default(),
+        dir.to_path_buf(),
+        adapters,
+        Arc::new(NeverRuntime) as Arc<dyn crate::engine::EngineRuntime>,
+        Arc::new(LedgerOnlyWitness) as Arc<dyn crate::budget::VramWitness>,
+        tx,
+    );
+    state.slots = vec![Slot {
+        category: CategoryId::Work,
+        index: 0,
+        engine_port: 18_100,
+        occupant: None,
+        // The parked row does not own the slot: some other job is in
+        // flight on it, exactly as parking requires.
+        job: Some(JobId(9_999)),
+    }];
+    state
+}
+
+/// The repeat of a parked model attaches to the parked row instead of
+/// superseding it: `on_swap`'s identical-in-flight attach scans
+/// `slots[s].job`, and a parked row is not on a slot — it lives in `pending`
+/// while the busy slot keeps its running job, so the occupant scan above it
+/// cannot see it. Falsifier: drop the parked attach check and the repeat
+/// falls to the park-and-supersede path: `next_job` mints a second row,
+/// `A` terminalizes with `Cancelled("superseded by a newer load before it
+/// started")`, and the `next_job`, `pending`, and `terminal` asserts all go
+/// red together — the live ledger's `Idle cancelled…` row followed by a fresh
+/// `Ready` row. Ordering against the `Already` loop is not judged here: a
+/// serving occupant and a parked row for the same model cannot coexist, so the
+/// parked check cannot shadow an `Already` answer. The different-model test
+/// below pins that the park-and-supersede path is untouched.
+#[test]
+fn a_repeat_load_of_a_parked_model_attaches_to_its_row() {
+    let dir = crate::testutil::temp_dir("parked-repeat");
+    let yaml = dir.join("park-a.yaml");
+    std::fs::write(&yaml, "engine: mock\nvram_gb: 4\n").expect("seed");
+    let mut state = busy_work_slot_state(&dir);
+    let entry = entry_from(&yaml, "park-a");
+    state.catalog = vec![entry.clone()];
+    let a = state.register_queued_load(0, &entry, Vec::new());
+    state.pending.insert(0, a);
+    let next_before = state.next_job;
+    let waiters_before = state.jobs[&a].waiters.len();
+    let (reply_tx, mut reply_rx) = tokio::sync::oneshot::channel();
+    state.on_swap("park-a".to_string(), CategoryId::Work, reply_tx);
+    assert_eq!(
+        state.next_job, next_before,
+        "the repeat must not mint a second ledger row"
+    );
+    assert_eq!(
+        state.pending.get(&0),
+        Some(&a),
+        "the parked row keeps its queue place"
+    );
+    let row = &state.jobs[&a];
+    assert!(!row.terminal, "the parked row stays in flight");
+    assert_eq!(
+        row.waiters.len(),
+        waiters_before + 1,
+        "the repeat joins the same row as a waiter"
+    );
+    assert!(
+        matches!(
+            reply_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ),
+        "an attach answers nothing before the load finishes"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The other half of the same rule: a repeat only attaches to a parked row
+/// of the SAME model. A different model in the same category still parks and
+/// supersedes, because nothing in flight can serve it. Falsifier: let the
+/// parked attach match any parked Load of the category (drop the model
+/// check) and the different model would join `A`'s row instead: `A` stays
+/// non-terminal with the wrong model's waiter, and the supersede legs go red
+/// here.
+#[test]
+fn a_different_model_still_supersedes_the_parked_one() {
+    let dir = crate::testutil::temp_dir("parked-supersede");
+    let yaml_a = dir.join("park-a.yaml");
+    let yaml_b = dir.join("park-b.yaml");
+    std::fs::write(&yaml_a, "engine: mock\nvram_gb: 4\n").expect("seed a");
+    std::fs::write(&yaml_b, "engine: mock\nvram_gb: 4\n").expect("seed b");
+    let mut state = busy_work_slot_state(&dir);
+    let entry_a = entry_from(&yaml_a, "park-a");
+    let entry_b = entry_from(&yaml_b, "park-b");
+    state.catalog = vec![entry_a.clone(), entry_b.clone()];
+    let a = state.register_queued_load(0, &entry_a, Vec::new());
+    state.pending.insert(0, a);
+    let next_before = state.next_job;
+    let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
+    state.on_swap("park-b".to_string(), CategoryId::Work, reply_tx);
+    let row = &state.jobs[&a];
+    assert!(row.terminal, "a different model must still supersede");
+    assert_eq!(row.outcome.as_deref(), Some("cancelled"));
+    let error = row
+        .error
+        .clone()
+        .expect("the supersede reason rides the row")
+        .to_string();
+    assert!(error.contains("superseded by a newer load"), "{error}");
+    let parked = *state
+        .pending
+        .get(&0)
+        .expect("the newer load parks in the superseded row's place");
+    assert_ne!(parked, a, "the queue place now names a different row");
+    assert_eq!(parked, JobId(next_before), "the place names the newer row");
+    let newer = &state.jobs[&parked];
+    assert!(!newer.terminal, "the newer row waits for the running job");
+    assert_eq!(newer.model, "park-b");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Shared fixture for the Axis-2 resident pins: one `ActorState` with one
 /// resident whose `spawn_config` is a real capture of a real yaml (the state
 /// `install` produces — same fields, taken from the same helper), the file's
