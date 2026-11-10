@@ -16,7 +16,7 @@ Versioning.
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
-## v1.5.1.3 - unreleased
+## v1.5.1.3 - 2026-11-10
 
 ### Changed
 
