@@ -200,7 +200,21 @@ if (version !== null) {
     }
   }
 
-  // 7. make-public-asset.ps1: zip name pattern and package manifest.
+  // 7. README Plans: a shipped capability must not still be listed as a plan.
+  // Linux shipped in 1.5.0 and the shipped artifact ships the same zip name;
+  // the Plans section stayed stale through two releases before a reader
+  // reported it, so the absence is now checked.
+  if (readme !== null) {
+    const plans = readme.split(/^## Plans\s*$/m)[1]?.split(/^## /m)[0] ?? "";
+    check(
+      plans.length > 0 && !/linux/i.test(plans),
+      "README.md",
+      "a Plans section that does not list Linux, which ships in the current release",
+      plans.length === 0 ? "no Plans section" : "Plans still names Linux"
+    );
+  }
+
+  // 8. make-public-asset.ps1: zip name pattern and package manifest.
   const maker = present("scripts/make-public-asset.ps1");
   if (maker !== null) {
     const direct = /SimpleHarn-"\s*\+\s*\$Version\b/;

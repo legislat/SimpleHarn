@@ -279,8 +279,7 @@ Found a problem or have an idea? Open an issue. Contributions are welcome; start
 ## Plans
 
 - Multiple GPU support
-- Linux support (headless; llama, strata, basalt, maya, xolotl and the ninfer container; artifact built by tag CI)
-- More engines
+- More engines and engine recipes
 - UI and user experience enhancements
 
 ## Rename from SimpleHar SE
