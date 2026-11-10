@@ -34,6 +34,9 @@ this release accompanies crate version `1.5.1`, which stays three-part.
   doc-facts checker, and the asset builder accept `v<major>.<minor>.<patch>.<hotfix>`.
 - The comment-gate sweep across the source tree and the comment checker.
 - The card suite runs with its test token.
+- Release tooling accepts a fourth hotfix segment and refuses `.0` in both
+  scripts, the card suite declares `-ReuseStaged`, and the task-schema checker
+  carries a frozen grandfather list for the 26 legacy task files.
 
 ### Fixed
 

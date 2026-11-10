@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [agent, operator]
 source_of_truth_for: [task lifecycle, task schema]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-10
 review_trigger: behavior-change, release
 ---
 
@@ -135,6 +135,22 @@ Template rules:
 - The Decisions section holds links only. Never copy ruling text.
 - Write "none" in an empty field. Do not delete the field.
 - The Next step names one exact first action for the next session.
+
+## Schema grandfather list
+
+`node scripts/check-tasks.mjs` validates every `handoff/tasks/*.md` file against
+this schema. `handoff/tasks/.schema-grandfathered` names the legacy files that
+predate the schema. The default run skips exactly the listed files. The list was
+frozen on 2026-11-10 by operator ruling: the legacy files keep their historical
+field values instead of invented ones.
+
+- A new task file is never added to the list. A file that is not listed is
+  always validated, so the list cannot silently grow.
+- To remove an entry: bring the file into schema conformance, then delete its
+  line. The checker warns about a listed file that now conforms.
+- `node scripts/check-tasks.mjs -Strict` is the sweep command: it ignores the
+  list and reports every failure, which keeps the debt measurable.
+- An absent list skips nothing.
 
 ## Queue row
 

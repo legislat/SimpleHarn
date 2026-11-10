@@ -52,12 +52,16 @@ function Report([bool]$ok, [string]$message) {
 }
 
 # 1. Argument shape. Accepted tags (docs/process/GIT_WORKFLOW.md, "Tag and
-#    version naming"): v<major>.<minor>.<patch> or the hotfix form
-#    v<major>.<minor>.<patch>.<hotfix>. The zip name drops the leading v, so
+#    version naming", the same grammar scripts/release-check.ps1 enforces):
+#    v<major>.<minor>.<patch> or the hotfix form
+#    v<major>.<minor>.<patch>.<hotfix>, the hotfix a positive integer (a
+#    fourth segment of 0 is refused). The zip name drops the leading v, so
 #    -Version v1.5.1.1 yields SimpleHarn-1.5.1.1-win-x64.zip.
-Report ($Version -match '^v\d+\.\d+\.\d+(\.\d+)?$') ("version argument names a tag: " + $Version +
-  $(if ($Version -match '^v\d+\.\d+\.\d+(\.\d+)?$') { "" }
-     else { "; accepted forms: v<major>.<minor>.<patch> or v<major>.<minor>.<patch>.<hotfix> (for example v1.5.1.1)" }))
+$verOk = $Version -match '^v\d+\.\d+\.\d+(?:\.[1-9]\d*)?$'
+Report $verOk ("version argument names a tag: " + $Version +
+  $(if ($verOk) { "" }
+     else { "; accepted forms: v<major>.<minor>.<patch> or v<major>.<minor>.<patch>.<hotfix> " +
+           "(<hotfix> is a positive integer, so a fourth segment of 0 is refused; for example v1.5.1.1)" }))
 $exeFull = $null
 if (Test-Path -LiteralPath $ExePath -PathType Leaf) {
   $exeFull = (Resolve-Path -LiteralPath $ExePath).Path
