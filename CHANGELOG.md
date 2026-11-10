@@ -16,7 +16,7 @@ Versioning.
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
-## v1.5.1.1 - unreleased
+## v1.5.1.1 - 2026-11-10
 
 The fourth tag segment is the hotfix counter (`docs/process/GIT_WORKFLOW.md`):
 this release accompanies crate version `1.5.1`, which stays three-part.
