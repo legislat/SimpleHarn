@@ -74,6 +74,11 @@ fn exact_clean_tag() -> Option<String> {
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    // A tag or branch change rewrites one of these; without them an
+    // incremental build keeps the identity of the previous checkout.
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/packed-refs");
+    println!("cargo:rerun-if-changed=.git/refs/tags");
     println!("cargo:rerun-if-env-changed=SIMPLEHARN_RELEASE_TAG");
     // The operator override stands first so a release build can name its tag
     // without a clean checkout. An override that does not parse falls through
