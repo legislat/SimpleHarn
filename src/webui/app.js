@@ -444,13 +444,43 @@ function statusVersion(status) {
   return typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
 }
 
+// The release identity of the running build (`status_render.rs` stamps the
+// exact tag a tagged clean build embedded into `/har/status.release`, or
+// null). Same honesty rule as the version: an absent, null or blank field is
+// not a release — the page falls back to the crate version and invents
+// nothing.
+function statusRelease(status) {
+  const raw = status ? status.release : null;
+  return typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
+}
+
+// The one number the page shows: the release when the build carried one,
+// else the crate version. One derivation, so header, tab title and footer
+// cannot drift apart.
+function statusIdentity(status) {
+  return statusRelease(status) || statusVersion(status);
+}
+
+// One number stays visible; the tooltip carries every identity the server
+// named, so both truths remain readable without a second badge.
+function identityTitle(status) {
+  const version = statusVersion(status);
+  const release = statusRelease(status);
+  if (version && release) return `version ${version}, release ${release}`;
+  if (version) return `version ${version}`;
+  if (release) return `release ${release}`;
+  return null;
+}
+
 function renderHeader(status) {
   const loaded = status.slots.filter((slot) => slot.model).length;
   // TASK-VERSION-UI (2026-11-06): the page names the build it is. The badge sits
   // beside the title and the tab title follows it; an unknown version keeps the
-  // bare name everywhere.
-  const version = statusVersion(status);
-  document.title = version ? `SimpleHarn v${version}` : "SimpleHarn";
+  // bare name everywhere. RELEASE-IDENTITY: with a release the shown number is
+  // the release; the h1's tooltip then names both identities.
+  const identity = statusIdentity(status);
+  const tooltip = identityTitle(status);
+  document.title = identity ? `SimpleHarn v${identity}` : "SimpleHarn";
   // Both verdicts are computed by the harness (`status_document` reads the registry's
   // own `any_down` / `pending`) and read here as booleans. The page used to decode
   // them from the serde shape of `listeners` — a second brain for a rule the server
@@ -461,8 +491,12 @@ function renderHeader(status) {
   const headline = el(
     "div",
     { class: "sh-headline" },
-    el("h1", { class: "sh-title" }, text("SimpleHarn")),
-    version ? el("span", { class: "sh-version" }, text(`v${version}`)) : null,
+    el(
+      "h1",
+      { class: "sh-title", ...(tooltip === null ? {} : { title: tooltip }) },
+      text("SimpleHarn"),
+    ),
+    identity ? el("span", { class: "sh-version" }, text(`v${identity}`)) : null,
     el(
       "span",
       { class: "sh-badge", "data-tone": loaded > 0 ? "ok" : "none" },
@@ -1060,9 +1094,10 @@ function render() {
   // saved across it (text selection cannot survive a real content change and
   // does not need to; memory-only ticks never reach this function at all).
   const savedScroll = window.scrollY || 0;
-  // TASK-VERSION-UI: the footer names the same version the header badge carries,
-  // read from the status document, never a literal.
-  const version = statusVersion(status);
+  // TASK-VERSION-UI: the footer names the same number the header badge carries,
+  // read from the status document, never a literal. RELEASE-IDENTITY: that
+  // number is the release when the build carried one, else the crate version.
+  const identity = statusIdentity(status);
   const headerHost = document.getElementById("sh-header");
   headerHost.replaceChildren(renderHeader(status));
   const mainHost = document.getElementById("sh-main");
@@ -1115,8 +1150,8 @@ function render() {
     el(
       "footer",
       { class: "sh-footer" },
-      text(version
-        ? `SimpleHarn v${version} — slots, jobs and refusals straight from /har/*`
+      text(identity
+        ? `SimpleHarn v${identity} — slots, jobs and refusals straight from /har/*`
         : "SimpleHarn — slots, jobs and refusals straight from /har/*"),
     ),
   );

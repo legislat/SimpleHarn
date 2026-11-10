@@ -694,6 +694,7 @@
    "booked_ram_gb": 0.0,
    "ram_reserve_gb": 8
   },
+ "release": "1.5.1.1",
  "slots": [
   {
    "category": "WORK",

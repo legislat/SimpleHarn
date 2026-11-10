@@ -2238,6 +2238,46 @@ async fn the_webui_fixture_is_a_document_the_endpoint_can_actually_emit() {
         "the fixture quotes a version the harness has never run"
     );
 
+    // The release identity rides beside the version: the fixture quotes one in
+    // the tag grammar, and the live document answers with null (untagged or
+    // dirty build tree) or exactly such a tag (a tagged checkout embeds it at
+    // build time). The shape is pinned here, never one verdict: asserting a
+    // fixed null would fail the tagged CI checkout that legitimately carries
+    // its tag, and asserting the fixture's own tag would pin this tree's git
+    // state into a test.
+    fn release_tag_shape_ok(tag: &str) -> bool {
+        let mut parts = tag.split('.');
+        let numeric = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+        match (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        ) {
+            (Some(a), Some(b), Some(c), None, None) => numeric(a) && numeric(b) && numeric(c),
+            (Some(a), Some(b), Some(c), Some(d), None) => {
+                numeric(a) && numeric(b) && numeric(c) && numeric(d)
+            }
+            _ => false,
+        }
+    }
+    assert!(
+        fixture["release"]
+            .as_str()
+            .is_some_and(release_tag_shape_ok),
+        "the fixture's release must be a `x.y.z[.h]` tag: {:?}",
+        fixture["release"]
+    );
+    match &live["release"] {
+        Value::Null => {}
+        Value::String(tag) => assert!(
+            release_tag_shape_ok(tag),
+            "the embedded release identity must be a `x.y.z[.h]` tag: {tag:?}"
+        ),
+        other => panic!("`release` must be null or a tag string, got {other}"),
+    }
+
     // `boot` is the one section whose live shape depends on which measures have
     // completed, so it is compared against the fully-stamped variant.
     let first_bind_at = BootMsStamp::default();

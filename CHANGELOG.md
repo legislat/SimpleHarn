@@ -16,6 +16,16 @@ Versioning.
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
+## v1.5.1.2 - unreleased
+
+### Added
+
+- Release identity beside the crate version: a build made from a tagged clean
+  source tree embeds its exact tag, and an untagged or dirty build reports
+  none. `/har/status` now carries `release` next to `version` (null when the
+  build has no identity), the boot banner logs it beside the version, and the
+  control page header shows it when one exists.
+
 ## v1.5.1.1 - 2026-11-10
 
 The fourth tag segment is the hotfix counter (`docs/process/GIT_WORKFLOW.md`):

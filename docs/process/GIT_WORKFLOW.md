@@ -179,6 +179,14 @@ The naming rule (operator ruling 2026-11-10):
   from the latest dated changelog heading and requires its first three segments to
   equal the crate version.
 
+The same tag is the release identity a binary carries. The build script resolves the
+tag that names the built commit exactly, and only from a tracked tree with no local
+changes: a tagged clean build embeds its exact tag, and an untagged or dirty build
+reports no release identity. `/har/status` then carries both facts — `version` stays
+the three-part crate semver and `release` names the embedded tag or null — so a
+running binary always states which tag it came from, or states plainly that no tag
+proves it.
+
 Rules:
 
 - No tag without a changelog entry and a matching version.

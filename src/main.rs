@@ -203,9 +203,21 @@ async fn main() -> ExitCode {
     // single-instance guard or on an invalid config still leaves an artifact that says
     // which build and which process died. Non-secret facts only — the token is
     // reported as presence alone, never its value (the 15[9] posture).
+    // The release identity rides beside the crate version: `build.rs` embeds the
+    // exact tag of a tagged clean build; "none" marks an untagged or dirty build,
+    // which is a legitimate build, not a fault.
+    let release = {
+        let embedded = env!("SIMPLEHARN_RELEASE");
+        if embedded.is_empty() {
+            "none"
+        } else {
+            embedded
+        }
+    };
     tracing::info!(
         target: "simpleharn::boot",
         version = env!("CARGO_PKG_VERSION"),
+        release,
         pid = std::process::id(),
         exe = %std::env::current_exe()
             .map(|path| path.display().to_string())

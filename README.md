@@ -21,6 +21,12 @@ zip holds `simpleharn.exe`, `SimpleHarn.vbs`, `README.md`, `LICENSE`, and
 `docs/assets/control-page.png`. The Linux tar.gz from the same tag carries the
 headless binary and the same docs. Models and engine installs are yours.
 
+A build made from a tagged, clean source tree embeds its exact tag as the
+release identity, and `/har/status` carries both identities: `version` stays
+the three-part crate semver and `release` names that tag or null (an untagged
+or dirty build reports none); the control page header shows the release when
+the build carried one.
+
 > This is a personal harness, built for my own machine and my own setup. Feel free to try
 > it out, give feedback, and contribute.
 

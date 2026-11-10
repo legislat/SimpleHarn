@@ -101,7 +101,12 @@ jobs:
       # the other jobs install and to rust-toolchain.toml.
       RUST_RELEASE_TOOLCHAIN: '1.98.1'
     steps:
+      # fetch-depth: 0 so the exact tag is present on the checkout: `build.rs`
+      # embeds it as the artifact's release identity, and a shallow checkout
+      # would silently stamp no release into the published binary.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # The base image carries no Rust, and JS actions cannot execute inside
       # a glibc-2.17 container, so the build runs through docker run with the

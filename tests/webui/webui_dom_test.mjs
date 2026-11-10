@@ -2160,13 +2160,21 @@ const driver = `
   }
 
   // ---- TASK-VERSION-UI (2026-11-06): the running build names itself ----
-  // The header badge, the tab title and the footer all read the version from the
-  // status document; an absent or blank version renders nothing and falls the
-  // title back to the bare name. The expected strings are computed from the
-  // fixture and a synthetic 9.9.9 - never from a hardcoded crate version.
+  // The header badge, the tab title and the footer all read the displayed
+  // identity from the status document; an absent or blank version renders
+  // nothing and falls the title back to the bare name. The expected strings
+  // are computed from the fixture and a synthetic 9.9.9 - never from a
+  // hardcoded crate version.
+  // RELEASE-IDENTITY: when the document carries a release the shown number is
+  // the release, and the h1's title attribute names both identities; without
+  // one the page behaves exactly as before the release identity landed, so
+  // every version-driven leg below runs release-less.
   {
     const base = { ...fixtures["/har/status"], models: fixtures["/har/models"].data };
     const fixtureVersion = fixtures["/har/status"].version;
+    const fixtureRelease = fixtures["/har/status"].release;
+    const noRelease = { ...base };
+    delete noRelease.release;
     const versionBadges = () =>
       findAll(document.getElementById("sh-header"), "span", "sh-version").map(textOf);
     const footerText = () => {
@@ -2188,14 +2196,20 @@ const driver = `
       if (next.attrs.class !== "sh-version") return "next class=" + next.attrs.class;
       return textOf(next);
     };
-    applyState({ ...base, version: "9.9.9" });
+    // The h1 tooltip: both identities when both exist, the one truth when one
+    // exists, nothing when neither does. The visible number stays single.
+    const titleTip = () => {
+      const h1 = findAll(document.getElementById("sh-header"), "h1", "sh-title")[0];
+      return h1 ? (h1.attrs.title ?? "") : "no h1";
+    };
+    applyState({ ...noRelease, version: "9.9.9" });
     check("a version change re-renders the header badge (no stale string)",
       versionBadges().join("|") === "v9.9.9", versionBadges().join("|"));
     check("a version change re-sets the tab title (no stale string)",
       document.title === "SimpleHarn v9.9.9", JSON.stringify(document.title));
     check("a version change re-names the version in the footer (no stale string)",
       footerText().includes("v9.9.9"), footerText());
-    applyState(base);
+    applyState(noRelease);
     check("the header renders v + the fixture's version beside the title",
       versionBadges().join("|") === "v" + fixtureVersion, versionBadges().join("|"));
     check("the version badge is the immediate next sibling after the title",
@@ -2206,12 +2220,14 @@ const driver = `
       footerText().includes("v" + fixtureVersion) &&
         footerText().includes("slots, jobs and refusals straight from /har/*"),
       footerText());
-    applyState({ ...base, version: "   " });
+    check("with no release the h1 title names the version alone",
+      titleTip() === "version " + fixtureVersion, JSON.stringify(titleTip()));
+    applyState({ ...noRelease, version: "   " });
     check("a blank version renders no version badge",
       versionBadges().length === 0, versionBadges().join("|"));
     check("a blank version falls the tab title back to SimpleHarn",
       document.title === "SimpleHarn", JSON.stringify(document.title));
-    const noVersion = { ...base };
+    const noVersion = { ...noRelease };
     delete noVersion.version;
     applyState(noVersion);
     check("a missing version renders no version badge",
@@ -2229,18 +2245,55 @@ const driver = `
     // guardless page stringifies what it finds: null renders a broken badge (or
     // throws into the render error), and the number 13.1 renders v13.1. A
     // non-string version is no version: no badge, bare tab title, plain footer.
-    applyState({ ...base, version: null });
+    applyState({ ...noRelease, version: null });
     check("a null version renders no badge, bare title and the plain footer",
       versionBadges().length === 0 && document.title === "SimpleHarn" &&
         footerText() === "SimpleHarn \u2014 slots, jobs and refusals straight from /har/*",
       "badges=" + versionBadges().join("|") + " title=" +
         JSON.stringify(document.title) + " footer=" + footerText());
-    applyState({ ...base, version: 13.1 });
+    applyState({ ...noRelease, version: 13.1 });
     check("a numeric version renders no badge, bare title and the plain footer",
       versionBadges().length === 0 && document.title === "SimpleHarn" &&
         footerText() === "SimpleHarn \u2014 slots, jobs and refusals straight from /har/*",
       "badges=" + versionBadges().join("|") + " title=" +
         JSON.stringify(document.title) + " footer=" + footerText());
+
+    // ---- RELEASE-IDENTITY: the exact tag of a tagged clean build ----
+    // The fixture carries a release, so base shows it; the crate version
+    // retreats to the tooltip. The null/absent legs prove the fallback.
+    check("the fixture quotes a release identity in the tag grammar",
+      typeof fixtureRelease === "string" &&
+        /^[0-9]+[.][0-9]+[.][0-9]+([.][0-9]+)?$/.test(fixtureRelease),
+      String(fixtureRelease));
+    applyState(base);
+    check("with a release the header badge shows the release, not the crate version",
+      versionBadges().join("|") === "v" + fixtureRelease, versionBadges().join("|"));
+    check("one number stays visible: exactly one badge beside the title with a release",
+      versionBadges().length === 1 &&
+        badgeAfterTitle() === "v" + fixtureRelease,
+      "badges=" + versionBadges().join("|") + " after=" + badgeAfterTitle());
+    check("with a release the tab title follows the header release",
+      document.title === "SimpleHarn v" + fixtureRelease, JSON.stringify(document.title));
+    check("with a release the footer names the release the header shows",
+      footerText().includes("v" + fixtureRelease), footerText());
+    check("the h1 title carries both identities when both exist",
+      titleTip() === "version " + fixtureVersion + ", release " + fixtureRelease,
+      JSON.stringify(titleTip()));
+    applyState({ ...base, release: null });
+    check("a null release falls the header back to the crate version",
+      versionBadges().join("|") === "v" + fixtureVersion &&
+        document.title === "SimpleHarn v" + fixtureVersion,
+      "badges=" + versionBadges().join("|") + " title=" + JSON.stringify(document.title));
+    const noRel = { ...base };
+    delete noRel.release;
+    applyState(noRel);
+    check("an absent release falls the header back to the crate version",
+      versionBadges().join("|") === "v" + fixtureVersion, versionBadges().join("|"));
+    // The release reads through the same type guard: a non-string release is
+    // no release, and the crate version keeps the badge.
+    applyState({ ...base, release: 13.1 });
+    check("a numeric release is no release: the crate version stays the badge",
+      versionBadges().join("|") === "v" + fixtureVersion, versionBadges().join("|"));
     applyState(base);
   }
 

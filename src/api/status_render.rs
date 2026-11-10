@@ -15,6 +15,19 @@ use std::sync::Arc;
 
 use super::{ApiError, ApiState, ListenerState};
 
+/// The build-time release identity: `build.rs` resolves the exact release tag
+/// of a tagged clean checkout (or the `SIMPLEHARN_RELEASE_TAG` override) and
+/// embeds it as `SIMPLEHARN_RELEASE`. The empty embedded value means the
+/// build carried no release identity — untagged, dirty, or no git — and the
+/// document says so with JSON null. The crate `version` beside it stays the
+/// three-part semver either way; the two facts never replace each other.
+fn release_identity() -> Value {
+    match env!("SIMPLEHARN_RELEASE") {
+        "" => Value::Null,
+        tag => json!(tag),
+    }
+}
+
 /// `GET /har/status`: boot info + slot table + jobs, one call (G13).
 pub(super) async fn har_status(
     State(state): State<Arc<ApiState>>,
@@ -84,6 +97,9 @@ pub(super) async fn render_status_document(state: &ApiState, scheduler: &Schedul
     let verdicts = state.listeners.snapshot();
     let mut document = json!({
         "version": env!("CARGO_PKG_VERSION"),
+        // The release identity of THIS build, beside the crate version — null
+        // when the build was untagged or the tree was dirty at build time.
+        "release": release_identity(),
         "control_addr": state.control_addr,
         "extended_logging": crate::observability::extended_logging(),
         // Non-zero means the on-disk post-mortem artifact is incomplete. The sink
