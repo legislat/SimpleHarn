@@ -97,7 +97,7 @@ impl ActorState {
                         );
                         continue;
                     }
-                    // FINDINGS-06 [8]: an occupant that installed with no id is
+                    // An occupant that installed with no id is
                     // not sentenced to it — every resolve re-runs discovery
                     // (contract on [`ActorState::install`]). The reply itself
                     // stays the current state: a load never waits on a probe.
@@ -159,7 +159,7 @@ impl ActorState {
                     .expect("invariant: the category has at least one slot");
                 // The parked load gets its ledger row now, not when it starts: a
                 // queued load must be visible at `/har/jobs` while its caller waits
-                // (FINDINGS-02 [3]). One queue place per slot, so the load it
+                // One queue place per slot, so the load it
                 // replaces is answered and terminalized rather than left stranded.
                 let queued = self.register_queued_load(target, &entry, vec![reply]);
                 if let Some(old) = self.pending.insert(target, queued) {
@@ -270,7 +270,7 @@ impl ActorState {
     /// in-flight job belongs to that job (the second-generation posture), a different
     /// port is a different generation, and no other resident is ever touched.
     /// The reply is the acceptance ledger every unload-class command gives
-    /// (FINDINGS-07 [5]): what the actor actually armed, never a blanket
+    /// what the actor actually armed, never a blanket
     /// acceptance while nothing moved.
     pub(super) fn on_report_dead_engine(
         &mut self,
@@ -378,21 +378,21 @@ impl ActorState {
 
     /// Shared unload path: free slots start an unload job; a slot with an in-flight
     /// job has that job cancelled **and** — when it still holds an occupant — unloaded
-    /// the moment the cancellation terminalizes (FINDINGS-02 [2]: an unload means
+    /// the moment the cancellation terminalizes (an unload means
     /// cancel *and* unload, never either/or). The occupant survives a cancelled swap
     /// whenever the swap's release was never confirmed (chunk 4 [1] keeps an engine
     /// nobody proved dead installed), so cancelling alone can leave the model loaded
     /// and serving while the caller is told `Done`. A load parked on a targeted slot
     /// is dropped here too: an operator's unload must never be followed by the load
-    /// they abandoned starting on the slot it just freed (FINDINGS-02 [3]).
-    /// The reply reports the facts the command moved (`Reply::Unloaded`,
-    /// FINDINGS-07 [5]) — never a blanket acceptance while nothing moved. A
+    /// they abandoned starting on the slot it just freed.
+    /// The reply reports the facts the command moved (`Reply::Unloaded`)
+    /// — never a blanket acceptance while nothing moved. A
     /// repeat command therefore moves nothing it can report: re-arming a slot
-    /// already armed behind the same job is a set no-op (FINDINGS-09 [1]), and
+    /// already armed behind the same job is a set no-op, and
     /// cancelling a job that already carries `CancelRequested` cancels nothing
     /// new. Cancelling an in-flight UNLOAD job is not a `jobs_cancelled` fact
     /// either: it removes an unloading commitment rather than a load, and the
-    /// re-armed release rides `unloading` (FINDINGS-09 [2]).
+    /// re-armed release rides `unloading`.
     fn unload_slots(&mut self, slots: Vec<usize>, reply: Waiter) {
         let mut unloading = 0usize;
         let mut jobs_cancelled = 0usize;
@@ -424,7 +424,7 @@ impl ActorState {
                     // Flagged before the cancel: it may terminalize the job inline,
                     // and that finish is exactly where the flag is consumed. The
                     // set's answer IS the count: only a slot not armed until now
-                    // gained a commitment from this command (FINDINGS-09 [1]).
+                    // gained a commitment from this command.
                     if job_live
                         && self.slots[slot].occupant.is_some()
                         && self.unload_after_finish.insert(slot)

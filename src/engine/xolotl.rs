@@ -64,7 +64,7 @@ const CURATED_ENV: &str = "GGML_NO_BACKTRACE";
 const PATH_ENV_CHECKS: &[&str] = &["STRATA_SERVE_DSPARK", "STRATA_DSPARK_KEEP"];
 
 /// The profile fields that claim a harness-owned decision — the xolotl voice
-/// of the strata `PROFILE_POLICY_FIELDS` table (FINDINGS-22 [1] / `DECISIONS`
+/// of the strata `PROFILE_POLICY_FIELDS` table (the `DECISIONS`
 /// LOCKED "external engines obey only harness-owned configuration"). The
 /// renderer structurally cannot emit one; reaching this leg means a renderer
 /// bug, and the launch is refused anyway.

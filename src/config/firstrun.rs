@@ -5,7 +5,7 @@
 //! box's card). The ruling: when no config file exists, the harness probes the real
 //! system, materializes the file beside the exe, and from then on the file is the
 //! truth. Every probe degrades to the documented default with a loud log line —
-//! a wedged driver can neither fail boot nor stall the listeners (FINDINGS-14 \[1]
+//! a wedged driver can neither fail boot nor stall the listeners (the
 //! bind-before-driver doctrine holds: the probe runs on the blocking pool behind a
 //! hard budget, and the bind itself happens later, in `run()`).
 //!
@@ -151,7 +151,7 @@ pub fn ensure_created(cfg: &AppConfig, path: &Path) -> std::io::Result<bool> {
     let root = serde_json::to_value(cfg).map_err(std::io::Error::other)?;
     let text = serde_json::to_string_pretty(&root).map_err(std::io::Error::other)?;
     // The same gate and unique-temp discipline the API's config write-back uses
-    // (FINDINGS-07 [3]); the publish itself refuses to replace (never-overwrite).
+    // the publish itself refuses to replace (never-overwrite).
     let _gate = crate::model::writeback::acquire_write_gate();
     if path.exists() {
         return Ok(false);

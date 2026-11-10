@@ -5,7 +5,7 @@
 //! suite had the same defect: a temp path keyed by process id alone is shared by
 //! all the tests in that binary, and `#[tokio::test]` runs them concurrently, so
 //! one test's `remove_dir_all` deletes another's catalog YAMLs mid-swap (flaky
-//! `unknown model` failure, review 2026-10-26).
+//! `unknown model` failure).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

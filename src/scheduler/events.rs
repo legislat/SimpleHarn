@@ -268,7 +268,7 @@ impl ActorState {
         // the bytes that anchor captured.
         let serve_id = discovered_id;
         if serve_id.is_none() {
-            // FINDINGS-06 [8]: a discovery miss used to be invisible — the slot
+            // A discovery miss used to be invisible — the slot
             // reported the model as serving while every forward silently
             // carried the harness name. Name the model and what was tried, and
             // point at the recovery this file already runs for it.
@@ -500,7 +500,7 @@ impl ActorState {
     }
 
     /// Retries serve-id discovery for an occupant that installed with none
-    /// (FINDINGS-06 [8], contract on [`ActorState::install`]): one
+    /// (contract on [`ActorState::install`]): one
     /// [`crate::engine::EngineRuntime::discover_model_id`] per spawn at a time, off the
     /// actor, answered back as [`ActorMsg::ServeIdRefreshed`] whatever the
     /// probe's exit — so a resolve never waits on or fails because of the
@@ -530,7 +530,7 @@ impl ActorState {
         });
     }
 
-    /// Folds a re-discovery answer back onto its occupant (FINDINGS-06 [8]).
+    /// Folds a re-discovery answer back onto its occupant.
     ///
     /// # Arguments
     ///
@@ -539,7 +539,7 @@ impl ActorState {
     ///   engine that was installed with a real id.
     /// * `discovered` — the id the engine now reports, `None` for continued
     ///   silence (named ONCE per unchanged silence state per spawn, the
-    ///   reconcile doctrine of FINDINGS-11 [2]; the next resolve retries).
+    ///   reconcile doctrine; the next resolve retries).
     ///
     /// # Returns
     ///
@@ -563,7 +563,7 @@ impl ActorState {
         };
         let Some(id) = discovered else {
             // Warn on the transition INTO silence, never on every landed
-            // silence (FINDINGS-11 [2]): a client hammering a permanently
+            // silence: a client hammering a permanently
             // silent engine used to log ~0.5 warns/s/slot forever.
             if self.serve_id_silence_warned.insert((port, generation)) {
                 tracing::warn!(

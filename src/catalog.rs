@@ -25,7 +25,7 @@ fn ref_aliases(model_ref: &str) -> Vec<String> {
 ///
 /// The variants are exhaustive on purpose: a caller cannot reach an entry without
 /// handling [`Resolution::Ambiguous`] first, so a colliding catalog can never be
-/// answered by whichever yaml happened to sort first (FINDINGS-11 \[4]). That is the
+/// answered by whichever yaml happened to sort first. That is the
 /// whole point of the type — an ambiguity is a catalog defect the operator must fix,
 /// not a tie for the harness to break silently.
 #[derive(Debug, Clone, PartialEq)]
@@ -85,15 +85,15 @@ fn classify<'a>(mut hits: Vec<&'a ModelEntry>) -> Resolution<'a> {
 /// the queue line names "duplicate names resolve scan-first"):
 ///
 /// ```text
-/// // catalog order: a/qwen3-0.6b.yaml (AUX), b/qwen3-copy.yaml (WORK)
+/// catalog order: a/qwen3-0.6b.yaml (AUX), b/qwen3-copy.yaml (WORK)
 /// match resolve("qwen3-0.6b", &models) {
 ///     Resolution::Found(entry)      => unreachable!(), // neither wins
 ///     Resolution::Ambiguous(both)   => assert_eq!(both.len(), 2),
 ///     Resolution::None              => unreachable!(),
 /// }
-/// // a unique query is unaffected, and a lower tier never overrides a higher one:
-/// // resolve("Qwen3-0.6B", &models) is Ambiguous too (tier 2 claims both), while
-/// // resolve("embeddinggemma-2.gguf", &models) stays Found(one).
+/// a unique query is unaffected, and a lower tier never overrides a higher one:
+/// resolve("Qwen3-0.6B", &models) is Ambiguous too (tier 2 claims both), while
+/// resolve("embeddinggemma-2.gguf", &models) stays Found(one).
 /// ```
 pub fn resolve<'a>(query: &str, models: &'a [ModelEntry]) -> Resolution<'a> {
     let trimmed = query.trim();
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn duplicate_names_are_ambiguous_and_name_both_yamls() {
-        // The primary shape of FINDINGS-11 [4]: two files whose `name:` is byte-identical.
+        // The primary shape: two files whose `name:` is byte-identical.
         // Both claim tier 1, so neither may win — the queue line's "duplicate names
         // resolve scan-first".
         let models = vec![

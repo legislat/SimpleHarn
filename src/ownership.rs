@@ -13,7 +13,7 @@
 //! name only if the ledger rules accept it: the pre-reap is gated on the shared
 //! [`valid_container_name`] rule alone (it must stay able to destroy a stale
 //! container from an earlier run before this one has a claim), while the kill reap
-//! and the boot reclaim require the positive claim (FINDINGS2-0910 \[3], 2026-10-29:
+//! and the boot reclaim require the positive claim:
 //! a claim is minted only once `command.spawn()` really started a client, and is
 //! retracted if the spawn is nevertheless reported as failed, so a load that never
 //! reached the engine leaves no ownership evidence behind). Both — with the adapter
@@ -119,7 +119,7 @@ pub fn boot_reap_decision(engine: &str, name: &str, claimed: bool) -> ReapDecisi
 /// The persisted record of container names this harness started: the ownership
 /// evidence behind [`boot_reap_decision`]. Written (atomically, temp + rename) when
 /// [`ProcessRuntime`](crate::process::ProcessRuntime) has a client *actually
-/// started* — never at spawn intent (FINDINGS2-0910 \[3]) — cleared when a release is
+/// started* — never at spawn intent — cleared when a release is
 /// confirmed or the spawn is reported as failed, and read at boot, so a container can
 /// only be reclaimed if an earlier lifetime of *this* harness started it and died
 /// before releasing it. A missing or corrupt ledger reads as no claims: absence of

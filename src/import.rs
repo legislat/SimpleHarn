@@ -86,7 +86,7 @@ fn strata_import(profile_path: &Path) -> Result<StrataImport, String> {
             )
         })?;
     let str = |key: &str| -> Option<&str> { root.get(key).and_then(serde_json::Value::as_str) };
-    // The honesty channel (review 25 [4]): a MAPPED key the renderer's shape
+    // The honesty channel: a MAPPED key the renderer's shape
     // cannot carry is reported like an unmapped one — never dropped without a
     // line — and nested unmapped keys are audited one level down ([1]), since
     // a live profile turned out to carry `vision.threads` through the gap.
@@ -112,7 +112,7 @@ fn strata_import(profile_path: &Path) -> Result<StrataImport, String> {
         }
     }
     // `exe` is the one required key, so each unusable shape is refused under
-    // its own true name (review 26 [2]): "declares no exe" must not accuse a
+    // its own true name: "declares no exe" must not accuse a
     // value that is present but misshapen, and an empty exe must not import to
     // an empty knob line that only refuses at load.
     match str("exe") {
@@ -275,7 +275,7 @@ fn strata_import(profile_path: &Path) -> Result<StrataImport, String> {
             }
             // server.py:1939 reads an ABSENT gpu as falsy, while the renderer's
             // token-absent default is true — an omitted key imported silently
-            // would flip the encoder CPU→GPU (review 26 [1]). The faithful
+            // would flip the encoder CPU→GPU. The faithful
             // token for an absent key is the explicit false the engine ran.
             None => tokens.push("gpu=false".to_string()),
         }
@@ -431,14 +431,14 @@ pub struct ApplyOutcome {
     /// How many key lines the merge actually changed (appended or rewritten).
     /// A field re-emitted with the value the line already publishes is NOT
     /// counted: the write-back keeps such a line byte-verbatim, and a partial
-    /// re-apply must not be reported as a full rewrite (REV9-03).
+    /// re-apply must not be reported as a full rewrite.
     pub changed: usize,
     /// How many stale `strata_*` keys (including `strata_config`) the merge
     /// deleted.
     pub removed: usize,
     /// True when the profile declares no `model_name`, so the row's own
     /// `serve_model` was kept: surfaced as a summary note, never silently
-    /// skipped (REV9-02).
+    /// skipped.
     pub serve_model_absent: bool,
     /// True when the row already carried the block byte-for-byte: the commit
     /// short-circuited and nothing reached the disk.
@@ -556,7 +556,7 @@ pub fn apply_strata_row(profile_path: &Path, row_path: &Path) -> Result<ApplyOut
     }
     writeback::commit_verified(row_path, &original, &text)
         .map_err(|e| format!("cannot apply to target row {target}: {e}"))?;
-    // REV9-03: the honest count. A field whose emitted value is exactly the
+    // The honest count: a field whose emitted value is exactly the
     // value the row's line already publishes was kept byte-verbatim by the
     // write-back, so its line did not change and it is not counted.
     let changed = import
@@ -666,7 +666,7 @@ mod tests {
         let _ = std::fs::remove_file(profile);
     }
 
-    /// Review 25 [4]: every MAPPED key whose JSON shape the renderer cannot
+    /// Every MAPPED key whose JSON shape the renderer cannot
     /// carry is reported on the not-mapped line — the module promise is that
     /// the operator can merge the output blind, so a present-but-wrong-type
     /// key may never simply vanish.
@@ -711,7 +711,7 @@ mod tests {
         let _ = std::fs::remove_file(profile);
     }
 
-    /// Review 25 [4], the worse-than-silent arm: a non-object `vision` that
+    /// The worse-than-silent arm: a non-object `vision` that
     /// strips `--vision` from the args line AND renders no block switches
     /// vision off with nothing printed. The token must survive the import.
     #[test]
@@ -729,7 +729,7 @@ mod tests {
         let _ = std::fs::remove_file(profile);
     }
 
-    /// Review 26 [1]: server.py reads an absent `vision.gpu` as falsy, the
+    /// Server.py reads an absent `vision.gpu` as falsy, the
     /// renderer's token-absent default is true — the import must spell the
     /// false the engine ran, never leave the default to materialize a GPU.
     #[test]
@@ -750,7 +750,7 @@ mod tests {
         let _ = std::fs::remove_file(profile);
     }
 
-    /// Review 26 [2]: `exe` is required, and each unusable shape meets its own
+    /// `exe` is required, and each unusable shape meets its own
     /// true refusal — "declares no exe" must not misname a present value.
     #[test]
     fn an_unusable_exe_is_refused_under_its_own_true_name() {
@@ -1143,7 +1143,7 @@ mod tests {
         );
     }
 
-    /// REV9-01: a mapped string key that is PRESENT but blank meets the same
+    /// A mapped string key that is PRESENT but blank meets the same
     /// door as an empty `exe` — refused under its own name, never merged as an
     /// empty knob. An absent optional key is NOT this door (the fixed-point
     /// profile applies without `cwd`/`tokenizer` happily).
@@ -1188,7 +1188,7 @@ mod tests {
         );
     }
 
-    /// REV9-02: a profile that declares no `model_name` must say so on the
+    /// A profile that declares no `model_name` must say so on the
     /// apply path — the flag rides the outcome and the summary names it —
     /// because the row keeps its own `serve_model` and silence reads like a
     /// replacement.
@@ -1215,7 +1215,7 @@ mod tests {
         );
     }
 
-    /// REV9-03: a partial re-apply counts only the lines that actually moved.
+    /// A partial re-apply counts only the lines that actually moved.
     /// The old shape reported the emitted field count, so a one-knob re-apply
     /// claimed a full rewrite; and an `engine: strata` line beside a strata row
     /// is kept byte-verbatim, so it is not counted either.

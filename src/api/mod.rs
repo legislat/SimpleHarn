@@ -9,7 +9,7 @@
 //!   normal job, else `400` — the listener never guesses a model;
 //! - `/har/unload` bodies are strict: unparseable is `400`, both scopes at once is
 //!   `400`, never an implicit unload-all (v3.3 CRITICAL fix); the reply reports what
-//!   the actor actually did, never a blanket `unloading` (FINDINGS-07 \[5]/\[6]);
+//!   the actor actually did, never a blanket `unloading`;
 //! - proxy responses stream through byte-for-byte, SSE included;
 //! - `/har/*` lives on the one control listener; the control router has no request
 //!   timeout because `/har/load` deliberately waits through the load (Step 12
@@ -84,7 +84,6 @@ use axum::http::Method;
 /// The largest request body the proxy accepts. A chat/embeddings request is text
 /// plus, at most, a few base64 images; 64 MiB is generous for that and keeps the
 /// buffered `Json<Value>` path from turning one POST into several GiB
-/// (FINDINGS-06 [7]).
 const PROXY_BODY_LIMIT: usize = 64 * 1024 * 1024;
 
 /// Connect budget for the proxy's upstream client: a stalled handshake fails fast
@@ -95,18 +94,18 @@ const PROXY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Per-read budget for the proxy's upstream client: a live engine that keeps
 /// producing bytes is never reaped, while a socket that stops answering for ten
 /// minutes is a dead serve. Per-read, not a total timeout, so a long SSE generation
-/// is not cut mid-stream after the 200 (FINDINGS-06 [6]).
+/// is not cut mid-stream after the 200.
 const PROXY_READ_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// The largest body any `/har/*` control route accepts. Every control body is a
 /// small JSON object, so the proxy's ceiling must not be reachable from the control
-/// surface (FINDINGS-06 [7]).
+/// surface.
 const CONTROL_BODY_LIMIT: usize = 64 * 1024;
 
 /// One value on the SSE bus. `Closed` is the terminal sentinel the pump publishes
 /// when it stops for any reason (scheduler gone, panic): every attached stream ends
 /// so the page falls back to polling instead of staying silently frozen behind
-/// keepalives (review 2026-11-02, MED).
+/// keepalives.
 #[derive(Clone)]
 enum StateEvent {
     /// No document has been published yet.
@@ -244,9 +243,9 @@ impl ApiError {
         }
     }
 
-    /// Classifies a model-file write-back failure (FINDINGS-13 [10], released from
-    /// DEFERRED by the change-side quote ruling — the ruling added a failure mode
-    /// that is a caller error, and it was surfacing as `500 internal`).
+    /// Classifies a model-file write-back failure (released from DEFERRED by
+    /// the change-side quote ruling — the ruling added a failure mode that is
+    /// a caller error, and it was surfacing as `500 internal`).
     ///
     /// The module's own sentence is never re-worded. For the two **config-state**
     /// classes the caller still owes what the module deliberately does not carry —
@@ -269,8 +268,8 @@ impl ApiError {
     ///
     /// `reason` is what the *variant* carries and what the ring receives; the
     /// `500 internal` sentence reaches the client body only through `error_body`,
-    /// which withholds the OS text of the two harness-failure classes (FINDINGS-05
-    /// [6]) — the verbatim `to_string()` comparisons above and beside this table
+    /// which withholds the OS text of the two harness-failure classes — the
+    /// verbatim `to_string()` comparisons above and beside this table
     /// are statements about `reason`, unchanged by that withholding.
     pub(crate) fn from_writeback(file: &std::path::Path, error: WritebackError) -> Self {
         match error {
@@ -347,7 +346,7 @@ pub(crate) fn readiness_timeout_answer(reason: &str) -> Option<String> {
 /// OpenAI-compatible `error` envelope with the same values.
 ///
 /// The two harness-failure classes carry OS-level failure text — absolute paths
-/// into model yamls, log files, the engine executable (FINDINGS-05 [6]). That
+/// into model yamls, log files, the engine executable. That
 /// text is the operator's diagnostic, not the client's: it goes to
 /// `tracing::error!` (ring + log file) and the client receives a stable
 /// sentence that keeps the class prefix and points at the harness log. The
@@ -576,7 +575,7 @@ impl BootTimings {
     }
 }
 
-/// The guard's evidence classes (FINDINGS2-0507 [3]): the four refusals that used to
+/// The guard's evidence classes: the four refusals that used to
 /// leave no ring entry at all, each deduplicated per path since the last successful
 /// command re-armed it.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -618,7 +617,7 @@ impl GuardRefusal {
 /// Per-`(class, path)` guard-refusal evidence, one per [`ApiState`] (so per process,
 /// and fresh at boot: the first refusal after a restart is always reported).
 ///
-/// The two maps are bounded by construction (FINDINGS-BATCH-2026-10-28M [2]): at most
+/// The two maps are bounded by construction: at most
 /// [`GUARD_TRACKED_PATHS_PER_CLASS`] keys per class in `reported` and at most one entry
 /// per class in `overflow`, so neither a repeat flood nor a distinct-path flood can grow
 /// this state or the ring past a constant per re-arm window.
@@ -632,7 +631,7 @@ struct GuardTrace {
     overflow: BTreeMap<GuardRefusal, GuardOverflow>,
 }
 
-/// The beyond-the-cap tally for one class (FINDINGS-BATCH-2026-10-28M [2]).
+/// The beyond-the-cap tally for one class.
 #[derive(Default, Clone, Copy)]
 struct GuardOverflow {
     /// Distinct refused paths that were collapsed instead of tracked.
@@ -647,7 +646,7 @@ struct GuardOverflow {
 /// `auth_reason` and consults neither the token nor route membership, so the three
 /// structural classes are reachable **pre-auth on arbitrary paths** — dedup by
 /// `(class, path)` alone turned 1000 bogus paths into 1000 ring lines and 1000 map
-/// entries (FINDINGS-BATCH-2026-10-28M [2], Attack 1). Past this cap a class emits one
+/// entries. Past this cap a class emits one
 /// fold line and counts the rest.
 const GUARD_TRACKED_PATHS_PER_CLASS: usize = 8;
 
@@ -720,7 +719,7 @@ pub struct ApiState {
     /// Guard-refusal evidence state, shared by every clone of this state (one per
     /// process).
     ///
-    /// The TRUE bound, stated exactly (FINDINGS-BATCH-2026-10-28M [2] killed the earlier
+    /// The TRUE bound, stated exactly (an earlier note claimed
     /// "a refusal flood costs the ring a bounded number of lines", which was false — the
     /// structural classes fire pre-auth on arbitrary paths, so path cardinality has to be
     /// bounded too): with Extended Logging **off** (the shipped default) one re-arm
@@ -735,7 +734,7 @@ pub struct ApiState {
     proxy: reqwest::Client,
     /// The latest SSE bus value, published once per scheduler push by
     /// [`ApiState::ensure_state_pump`]. A `watch` channel is the coalescing bound:
-    /// a slow SSE client sees the latest value, never a backlog (FINDINGS-OPEN N1).
+    /// a slow SSE client sees the latest value, never a backlog.
     state_events: Arc<tokio::sync::watch::Sender<StateEvent>>,
     /// One-shot guard for the state pump: the first SSE connection starts it, and
     /// every later connection reuses it.
@@ -784,7 +783,7 @@ impl ApiState {
             guard_trace: Arc::new(Mutex::new(GuardTrace::default())),
             proxy: reqwest::Client::builder()
                 // A total `timeout` covers the response body, so it cut a long SSE
-                // generation mid-stream after the 200 (FINDINGS-06 [6]). `read_timeout`
+                // generation mid-stream after the 200. `read_timeout`
                 // is per-read: a live engine that keeps producing bytes is never
                 // reaped, while a stalled socket still fails in bounded time.
                 .connect_timeout(PROXY_CONNECT_TIMEOUT)
@@ -805,7 +804,7 @@ impl ApiState {
     }
 
     /// Starts the one state pump that builds the merged document once per scheduler
-    /// push and publishes it to every SSE client (FINDINGS-OPEN N1). Idempotent: the
+    /// push and publishes it to every SSE client. Idempotent: the
     /// first caller wins, and a caller with no Tokio runtime (a sync unit test) leaves
     /// the flag unset so a later async caller can start it.
     fn ensure_state_pump(self: &Arc<Self>) {
@@ -837,7 +836,7 @@ impl ApiState {
         });
     }
 
-    /// Reports a guard refusal to the ring (FINDINGS2-0507 [3]) — the refusals that
+    /// Reports a guard refusal to the ring — the refusals that
     /// used to answer and vanish, while benign 200s filled the same ring.
     ///
     /// Threat model, stated plainly, because the ring is the operator's only
@@ -968,7 +967,7 @@ impl ApiState {
             })
             .collect();
         // The collapsed paths are reported here rather than one line each, which is the
-        // whole point of the cap (FINDINGS-BATCH-2026-10-28M [2]).
+        // whole point of the cap.
         for (class, entry) in &folded {
             if entry.paths > 0 {
                 parts.push(format!(
@@ -1112,7 +1111,7 @@ async fn health() -> Json<Value> {
     Json(json!({ "status": "ok" }))
 }
 
-/// The `409` for a catalog that claims one identity twice (FINDINGS-11 [4]).
+/// The `409` for a catalog that claims one identity twice.
 ///
 /// Names every colliding entry's yaml so the operator can fix the catalog without
 /// guessing which file the harness picked: a wrong-quantization serve, a 404 pointing
@@ -1175,8 +1174,8 @@ where
             // which re-resolves name→entry find-first (scheduler/mod.rs). Two
             // entries sharing a `name:` therefore serve the wrong twin under the
             // requested identity (one GGUF, one booking) with a green 200 even
-            // when the client's own query matched exactly one of them (review
-            // FINDINGS-FIXTRACK [1]). Refuse any Found whose name is duplicated
+            // when the client's own query matched exactly one of them. Refuse any
+            // Found whose name is duplicated
             // in the catalog, naming every colliding file.
             let twins: Vec<&ModelEntry> = catalog
                 .iter()
@@ -1235,9 +1234,9 @@ async fn har_load(
 /// one slot (T12.1), `{}` every occupied slot (T12.4, the explicit unload-all),
 /// garbage `400` (the v3.3 CRITICAL fix was about *unparseable* bodies, never an
 /// implicit unload-all), and both scopes at once `400` rather than a silently
-/// wider category kill (FINDINGS-07 [6]). Unloading a loading slot cancels the
+/// wider category kill. Unloading a loading slot cancels the
 /// load (T8). The reply reports what the actor actually did — `unloading`,
-/// `cancelled` or `nothing_unloaded` (FINDINGS-07 [5]).
+/// `cancelled` or `nothing_unloaded`.
 async fn har_unload(
     State(state): State<Arc<ApiState>>,
     body: Result<Json<Value>, JsonRejection>,
@@ -1281,7 +1280,7 @@ async fn har_unload(
     })
 }
 
-/// The honest reply shape for `/har/unload` (FINDINGS-07 [5]): `unloading` names
+/// The honest reply shape for `/har/unload`: `unloading` names
 /// slots whose release the actor committed to (the release itself still lands on
 /// the job ledger, GOTCHAS: a 200 is an acceptance, never a release), `cancelled`
 /// names a command that only cancelled in-flight or parked loads, and
@@ -1319,7 +1318,7 @@ fn unload_reply(scope: (&str, Value), reply: Reply) -> Result<Value, ApiError> {
 
 /// The pump body: one merged document per scheduler push, published to every SSE
 /// subscriber. Skipping the build while nobody is attached keeps an idle page from
-/// costing an actor round-trip per tick (review 2026-11-02, LOW).
+/// costing an actor round-trip per tick.
 async fn pump_state(state: Arc<ApiState>) {
     let mut pushes = state.scheduler.subscribe();
     publish_state(&state).await;
@@ -1356,7 +1355,7 @@ async fn publish_state(state: &ApiState) {
 ///
 /// The document is built ONCE per scheduler push by [`ApiState::ensure_state_pump`]
 /// and published through a `watch` channel; `WatchStream` is the coalescing bound, so
-/// a slow reader sees the latest value and never queues documents (FINDINGS-OPEN N1).
+/// a slow reader sees the latest value and never queues documents.
 /// The pump's `Closed` sentinel ends the stream, which is the page's cue to poll.
 async fn har_events(
     State(state): State<Arc<ApiState>>,
@@ -1383,7 +1382,7 @@ fn state_event(doc: &Value) -> Event {
 
 /// The routes whose bodies come from the engine, not from the harness. A `404`
 /// here is the engine's own answer. The client must receive it byte-for-byte
-/// (proxy pass-through, FINDINGS-06 [9]), so the envelope rewrite below never
+/// (proxy pass-through), so the envelope rewrite below never
 /// touches these three paths.
 const PROXY_PASSTHROUGH_PATHS: [&str; 3] =
     ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"];
@@ -1392,8 +1391,8 @@ const PROXY_PASSTHROUGH_PATHS: [&str; 3] =
 ///
 /// An unknown route answers `404` from the router fallback, and a wrong method
 /// answers `405` from the method router. Both are plain-text answers, and a
-/// client could not branch on a missing `code` — the same contract FINDINGS-05
-/// [3] fixed for body rejections. Only those two statuses are rewritten, and
+/// client could not branch on a missing `code` — the same contract fixed for
+/// body rejections. Only those two statuses are rewritten, and
 /// only while the body is still axum's (no content type, or `text/plain`). A
 /// `404` on a proxy pass-through path is the engine's answer, not the harness's,
 /// so it is never touched. Every other status, and every response that is
@@ -1540,7 +1539,7 @@ pub fn control_router(api: Arc<ApiState>) -> Router {
         .route("/har/config/logging", post(har_config_logging))
         .route("/har/config/model", post(har_config_model))
         // `/har/*` bodies are small JSON objects; the proxy's ceiling must not be
-        // reachable from the control surface (FINDINGS-06 [7]).
+        // reachable from the control surface.
         .layer(DefaultBodyLimit::max(CONTROL_BODY_LIMIT));
     Router::new()
         .merge(category_router(Arc::clone(&api), control_category))

@@ -19,7 +19,7 @@
 //! Nothing on this thread may wait on the actor without a bound: the pump thread owns
 //! the hidden window, and the menu is shown by a modal `TrackPopupMenu` loop running
 //! on it, so an unbounded `block_on` freezes the icon, the menu and the Exit item
-//! together (FINDINGS-15 \[3]). Every wait goes through `bounded`, and Exit touches
+//! together. Every wait goes through `bounded`, and Exit touches
 //! no runtime at all (`signal_shutdown`).
 //!
 //! The Win32 message pump is the module's documented `unsafe`: one dedicated thread
@@ -53,10 +53,10 @@ const TRAY_ICON_GRAY: &[u8] = include_bytes!("assets/tray_gray.rgba");
 const REFRESH_MS: u32 = 2_000;
 /// `CREATE_NO_WINDOW`: opening the Web UI must not flash a console (defect E5).
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-/// How long one status fetch may hold the pump (FINDINGS-15 [3]): same number as the
+/// How long one status fetch may hold the pump: same number as the
 /// cadence on purpose, so a wedged actor costs at most one tick instead of the icon.
 const REFRESH_BUDGET: Duration = Duration::from_millis(2_000);
-/// How long one menu command may hold the modal menu loop (FINDINGS-15 [3]): long
+/// How long one menu command may hold the modal menu loop: long
 /// enough for a real unload to answer, short enough that a stalled actor cannot hold
 /// the operator's menu — and never the Exit item, which is not a scheduler command.
 const MENU_BUDGET: Duration = Duration::from_millis(5_000);
@@ -71,7 +71,7 @@ const MENU_BUDGET: Duration = Duration::from_millis(5_000);
 /// lying, and every verdict is milliseconds away. After it, a `Pending` category is a
 /// supervisor that never spoke, which is exactly what amber means.
 const BOOT_GRACE: Duration = Duration::from_millis(2_000);
-/// Hover text for a tick with no scheduler verdict (FINDINGS-15 [1]). Kept inside the
+/// Hover text for a tick with no scheduler verdict. Kept inside the
 /// 128 wchar `szTip` cap the tray-icon crate enforces.
 const NO_VERDICT_TIP: &str =
     "SimpleHarn — scheduler gave no verdict; listener states still decide the colour";
@@ -113,7 +113,7 @@ pub struct TraySignal {
     /// Some category is still `Pending` and `BOOT_GRACE` has elapsed — amber.
     pub pending_after_grace: bool,
     /// This tick could not read the scheduler at all. "No verdict" is the same
-    /// vocabulary as `Pending`, so it is the same colour (FINDINGS-15 \[1]).
+    /// vocabulary as `Pending`, so it is the same colour.
     pub status_unreachable: bool,
 }
 
@@ -178,7 +178,7 @@ fn command_for(id: &str) -> Option<Command> {
 /// Spawns the tray thread. Returns nothing; the tray dies with the process.
 ///
 /// A tray that cannot be built — menu, icon, or window — logs one error line and
-/// the harness continues headless (FINDINGS-15 \[6]): the icon is a view, and
+/// the harness continues headless: the icon is a view, and
 /// losing it never takes the serving process with it. The only panic is the
 /// thread-spawn invariant below.
 pub fn spawn(
@@ -272,8 +272,8 @@ fn run(ctx: TrayCtx) -> Result<(), String> {
 }
 
 /// Dispatches menu picks: same commands the HTTP handlers send, no tray-only path.
-/// Every operator-initiated action reports its own failure (FINDINGS-15 [7]) and
-/// every wait on the actor is bounded (FINDINGS-15 [3]).
+/// Every operator-initiated action reports its own failure and
+/// every wait on the actor is bounded.
 fn handle_menu(id: MenuId) {
     let Some(ctx) = CTX.get() else {
         return;
@@ -302,15 +302,15 @@ fn handle_menu(id: MenuId) {
 }
 
 /// Opens the control page without a console window (defect E5). A spawn that never
-/// happened used to be invisible (FINDINGS-15 [7]): a missing `cmd.exe` now lands in
+/// happened used to be invisible: a missing `cmd.exe` now lands in
 /// the ring, where `/har/log` can answer "why did nothing open?".
 ///
 /// The `CreateProcessW` behind `spawn()` runs on the **caller's** thread, and this
 /// caller is the pump thread that owns the hidden window: a hung process-creation path
 /// (AV minifilter, broken shell association, reparse driver) would freeze the icon, the
-/// menu and the Exit item together — the same wedge FINDINGS-15 [3] put a budget on the
-/// actor waits for, but no budget can interrupt a wedged syscall. So the spawn is handed
-/// to a short-lived thread and the pump returns to pumping (FINDINGS2-15 [3]).
+/// menu and the Exit item together — the same wedge the actor's budgeted waits cover,
+/// but no budget can interrupt a wedged syscall. So the spawn is handed
+/// to a short-lived thread and the pump returns to pumping.
 fn open_web_ui(ctx: &TrayCtx) {
     let url = ctx.control_url.clone();
     if let Err(error) = std::thread::Builder::new()
@@ -342,7 +342,7 @@ fn open_web_ui(ctx: &TrayCtx) {
 ///
 /// The two ways an operator's click can fail are the actor refusing (the scheduler's
 /// own error) and the actor never answering (the bound expiring). Both used to be
-/// dropped on the floor (FINDINGS-15 [7]), leaving the icon unchanged and the ring
+/// dropped on the floor, leaving the icon unchanged and the ring
 /// with nothing to say about it.
 fn send_menu_command<T>(
     runtime: &Handle,
@@ -363,7 +363,7 @@ fn send_menu_command<T>(
     }
 }
 
-/// The Exit path: synchronous and unconditional (FINDINGS-15 [3]).
+/// The Exit path: synchronous and unconditional.
 ///
 /// It touches the `watch::Sender` and nothing else — no runtime handle, no
 /// `block_on`, no actor — so it cannot queue behind a wedged scheduler. The click
@@ -379,7 +379,7 @@ fn signal_shutdown(ctx: &TrayCtx) {
     }
 }
 
-/// Runs one future on the tray thread for at most `budget` (FINDINGS-15 [3]).
+/// Runs one future on the tray thread for at most `budget`.
 ///
 /// Every wait on the actor in this module goes through here. `None` means the bound
 /// expired: the future was dropped (its request is abandoned, which is what a
@@ -455,7 +455,7 @@ fn refresh(tray: &TrayIcon, memo: &mut TickMemo) {
             None
         }
     };
-    // FINDINGS-15 [1]: there is no early `return` on this path any more. A missing
+    // There is no early `return` on this path any more. A missing
     // snapshot still goes through the decision, so a `Down` listener paints red even
     // with the actor gone, and the icon is never frozen on the colour it last earned.
     let tick = tick(&ctx.listeners, status.as_ref(), Instant::now());
@@ -484,8 +484,8 @@ struct Tick {
     tooltip: String,
 }
 
-/// The whole tick decision, factored out of [`refresh`] so the no-freeze rule of
-/// FINDINGS-15 [1] is unit-reachable without a live tray icon: `status` is `None`
+/// The whole tick decision, factored out of [`refresh`] so the no-freeze rule
+/// is unit-reachable without a live tray icon: `status` is `None`
 /// when the fetch failed or timed out, and the registry is still consulted.
 ///
 /// # Arguments
@@ -512,13 +512,13 @@ fn tick(
 
 /// The tray colour for one tick, decided from the listener signal first and the
 /// snapshot second; precedence red > amber > yellow > green > gray (Step 15;
-/// operator ruling "A + amber" 2026-10-28; no-freeze rule FINDINGS-15 \[1]).
+/// the "A + amber" policy; no-freeze rule).
 ///
 /// # Arguments
 ///
 /// * `status` - the scheduler snapshot, or `None` when this tick read produced no
 ///   verdict. It is consulted only after red and amber are ruled out, so a `None`
-///   can never freeze or soften the colour (FINDINGS-15 \[1]).
+///   can never freeze or soften the colour.
 /// * `signal` - the listener verdicts, plus whether the status read failed.
 ///
 /// # Examples
@@ -571,7 +571,7 @@ pub fn tray_state(status: Option<&SchedulerStatus>, signal: &TraySignal) -> Tray
     }
 }
 
-/// The red state's reason, in the one sentence the operator needs (FINDINGS2-15 [2]).
+/// The red state's reason, in the one sentence the operator needs.
 ///
 /// `ListenerState::Down { reason }` carries the port and the bind error — the whole
 /// story of the colour the icon is showing — and until now it lived only in the
@@ -703,7 +703,7 @@ pub fn tooltip(status: &SchedulerStatus, down_reason: Option<&str>) -> String {
     fit_soltip(&head, &category_line(status))
 }
 
-/// Hover text for a tick whose status fetch produced nothing (FINDINGS-15 [1]). The
+/// Hover text for a tick whose status fetch produced nothing. The
 /// colour is still decided by the registry, so the reason must be too: a red icon with
 /// an actor gone still has to say which listener died.
 fn dead_tooltip(down_reason: Option<&str>) -> String {
@@ -1105,7 +1105,7 @@ mod tests {
 
     #[test]
     fn a_status_failure_never_freezes_the_colour_and_never_suppresses_red() {
-        // FINDINGS-15 [1]: with the scheduler unreachable the registry is STILL
+        // With the scheduler unreachable the registry is STILL
         // evaluated. Falsifier: restore the early `return` on a failed status fetch
         // (the `None` arm bails before the decision) and the red row below fails.
         let registry = registry_with(None, Some(CategoryId::Aux));
@@ -1118,7 +1118,7 @@ mod tests {
             "a `Down` must surface even when /har/status is unreachable"
         );
         // Pre-fix this asserted exact equality with `NO_VERDICT_TIP`, which pinned the
-        // FINDINGS2-15 [2] defect: a red icon whose hover said nothing about why. The
+        // Defect: a red icon whose hover said nothing about why. The
         // pin's point (the no-verdict sentence survives an actor that is gone) is kept
         // as a prefix leg, and the reason the colour is red must now be in the text.
         assert!(
@@ -1188,7 +1188,7 @@ mod tests {
         );
         let text = tooltip(&errored, None);
         assert!(text.contains("need 50 GiB"), "was: {text}");
-        // FINDINGS-15 [4]: the error used to be APPENDED after the four-category list,
+        // The error used to be APPENDED after the four-category list,
         // which made it the first casualty of the shell's 128-unit `szTip` cap.
         assert!(
             text.find("need 50 GiB") < text.find("WORK:"),
@@ -1265,7 +1265,7 @@ mod tests {
         );
     }
 
-    /// FINDINGS2-15 [1]: the header tells the operator "Left click does nothing", and
+    /// The header tells the operator "Left click does nothing", and
     /// tray-icon's default is the opposite (`menu_on_left_click: true`, lib.rs:209) —
     /// with a menu attached, `WM_LBUTTONDOWN` pops the modal menu whose items unload
     /// models. The contract is enforced at the builder, so this is an inspection pin:
@@ -1292,10 +1292,10 @@ mod tests {
         );
     }
 
-    /// FINDINGS2-15 [3]: `CreateProcessW` runs on the caller's thread, and the menu
+    /// `CreateProcessW` runs on the caller's thread, and the menu
     /// dispatch IS the pump thread — so the open-the-page spawn has to leave it. A hung
     /// shell path (AV minifilter, broken association) would freeze icon + menu + Exit
-    /// together, the same wedge FINDINGS-15 [3] budgets the actor waits against, except
+    /// together, the same wedge the actor's budgets guard, except
     /// no budget can interrupt a wedged syscall. Inspection pin: the process spawn may
     /// not come back inline. Falsifier: run `opener.spawn()` directly in `open_web_ui`
     /// and the last assertion fails.
@@ -1334,7 +1334,7 @@ mod tests {
 
     #[test]
     fn a_stalled_call_hits_the_bound_and_the_caller_survives() {
-        // FINDINGS-15 [3]: the pump must come back from a future that never
+        // The pump must come back from a future that never
         // completes, say so, and stay usable. Falsifier: remove the timeout in
         // `bounded` (or raise `MENU_BUDGET` past the park below) and this hangs.
         let runtime = tokio::runtime::Runtime::new().expect("runtime");
@@ -1371,7 +1371,7 @@ mod tests {
 
     #[test]
     fn a_refused_command_is_logged_not_dropped() {
-        // FINDINGS-15 [7]: the four `let _ =` sites used to swallow everything. A
+        // The four `let _ =` sites used to swallow everything. A
         // scheduler refusal (actor gone) must reach the ring with the action named.
         let runtime = tokio::runtime::Runtime::new().expect("runtime");
         let handle = SchedulerHandle::test_dummy();
@@ -1395,7 +1395,7 @@ mod tests {
 
     #[test]
     fn exit_signals_shutdown_while_an_actor_call_is_still_parked() {
-        // FINDINGS-15 [3]: Exit must never queue behind the actor. The menu path for
+        // Exit must never queue behind the actor. The menu path for
         // Exit touches only the watch sender, so a call parked in another thread —
         // the exact shape of a wedged actor holding the pump — cannot delay it.
         let runtime = tokio::runtime::Runtime::new().expect("runtime");

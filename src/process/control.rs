@@ -1,7 +1,7 @@
 //! The env-scrub and control half: the OS baseline a harness child may keep,
 //! the one assembly that builds a child environment over it, and the ONE
 //! place a harness-internal control command is built and run. The scrub rule
-//! (FINDINGS2-0910 [4]) is owned by the item docs that ride each item below.
+//! is owned by the item docs that ride each item below.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::process::Stdio;
@@ -110,8 +110,8 @@ fn baseline_fallback(name_upper: &str) -> Option<String> {
 ///
 /// Applies to `LaunchSpec`-driven engine spawns and, with an empty `spec_env`, to
 /// the harness-internal WSL control commands built by [`run_control_command`] —
-/// nothing spawned by this module inherits the harness environment any more
-/// (FINDINGS2-0910 [4]). Shared by the spawn site and the tests so the tests
+/// nothing spawned by this module inherits the harness environment any more.
+/// Shared by the spawn site and the tests so the tests
 /// exercise the real production assembly.
 pub(super) fn engine_child_env<I>(
     source: I,
@@ -131,7 +131,7 @@ where
 
 /// What a harness-internal control command may carry: exactly the OS baseline
 /// ([`OS_ENV_BASELINE`]) and nothing else — no `SIMPLEHARN_TOKEN`, no `PYTHONPATH`,
-/// no stray harness name (FINDINGS2-0910 [4]).
+/// no stray harness name.
 ///
 /// The earlier ruling here was "control commands run harness code, not operator
 /// config, so they keep inheriting"; that justified the *inbound* direction only.
@@ -163,7 +163,7 @@ const CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
 /// The ONE site through which a harness-internal control command is built and run:
 /// hidden (`CREATE_NO_WINDOW`), `kill_on_drop` so a timed-out client cannot
 /// accumulate as an orphan, and with the scrubbed [`control_child_env`] rather than
-/// the inherited environment (FINDINGS2-0910 [4]). Both WSL control commands go
+/// the inherited environment. Both WSL control commands go
 /// through here; neither may build its own [`Command`], which is what made the
 /// asymmetry between engine children and control commands possible in the first
 /// place.

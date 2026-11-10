@@ -46,7 +46,7 @@ pub enum Command {
     /// serves, or a slot a live job owns, moves nothing: the successor and the
     /// in-flight job are not this death, and no other resident is ever
     /// touched. The reply reports what the command actually armed, like every
-    /// unload-class command (FINDINGS-07 \[5\]).
+    /// unload-class command.
     ReportDeadEngine {
         model: String,
         category: CategoryId,
@@ -57,7 +57,7 @@ pub enum Command {
     Cancel { job: JobId },
     /// Unload every occupant of a category; a loading slot in it is cancelled
     /// first and unloaded when that cancel terminalizes (T8 semantics: unload
-    /// during load = cancel, cleanup completes; FINDINGS-02 \[2]: never cancel
+    /// during load = cancel, cleanup completes \[2]: never cancel
     /// *or* unload, always both).
     Unload { category: CategoryId },
     /// Unload one model's slot (T12.1); a loading swap for it is cancelled, and

@@ -6,8 +6,8 @@
 //! names the port and the reason. The supervisor in `main` retries dead listeners;
 //! a successful rebind flips the entry back to `Serving`.
 //!
-//! Every category carries a verdict from the moment the registry exists (FINDINGS-14
-//! \[7] + FINDINGS-15 \[2], operator ruling "A + amber" 2026-10-28): a fresh registry is
+//! Every category carries a verdict from the moment the registry exists (the
+//! operator's "A + amber" verdict policy): a fresh registry is
 //! `Pending` in all four, so "no supervisor has spoken for this category yet" is a
 //! visible verdict rather than a missing key. Consumers therefore never ask whether a
 //! category is *present* (the rejected Fork B) — they ask which of the verdicts it
@@ -35,16 +35,15 @@ pub enum ListenerState {
 
 impl ListenerState {
     /// THE no-verdict predicate — the single home of the `Pending` test, shared by
-    /// [`ListenerRegistry::pending`] and the §0.2 boot gate (FINDINGS-BATCH-2026-10-28E
-    /// \[2]) so no consumer can re-implement the match and drift from it.
+    /// [`ListenerRegistry::pending`] and the §0.2 boot gate, so no consumer can re-implement the match and drift from it.
     #[must_use]
     pub fn is_pending(&self) -> bool {
         matches!(self, Self::Pending)
     }
 
     /// THE down predicate — the single home of the `Down` test, shared by
-    /// [`ListenerRegistry::any_down`] and the one-snapshot `/har/status` document
-    /// (FINDINGS2-0507 \[6]), so no consumer re-implements the match and the red badge
+    /// [`ListenerRegistry::any_down`] and the one-snapshot `/har/status` document,
+    /// so no consumer re-implements the match and the red badge
     /// cannot be derived twice from two different instants.
     #[must_use]
     pub fn is_down(&self) -> bool {
@@ -151,7 +150,7 @@ mod tests {
 
     #[test]
     fn a_fresh_registry_is_pending_in_every_category() {
-        // FINDINGS-14 [7] / FINDINGS-15 [2] pin: absence is unrepresentable, so no
+        // The amber verdict pin: absence is unrepresentable, so no
         // consumer needs a presence check. Falsifier: un-seed `new()` and every
         // assertion below fails (empty map, no `Pending`, no names to report).
         let registry = ListenerRegistry::new();

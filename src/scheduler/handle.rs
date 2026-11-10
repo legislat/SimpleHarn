@@ -80,19 +80,18 @@ pub enum Reply {
     /// The command was accepted with nothing further to report (cancel, reload).
     Done,
     /// An accepted unload command, reporting what the actor actually did at accept
-    /// (FINDINGS-07 \[5]): never a blanket `Done` while nothing moved. The release
+    /// never a blanket `Done` while nothing moved. The release
     /// itself stays job-verified — this is an acceptance ledger, not release proof.
     Unloaded {
         /// Slots whose occupant the actor committed to free: unload jobs started
         /// now, plus occupants armed to unload behind the in-flight job this
         /// command cancelled. A commitment counts only when it is new — a
         /// repeat command that would re-arm an already-armed slot reports `0`
-        /// (FINDINGS-09 \[1]).
         unloading: usize,
         /// In-flight LOADS cancelled and parked loads dropped by this command.
         /// Cancelling an in-flight Unload job is not this: it removes an
         /// unloading commitment rather than a load, and rides `unloading`
-        /// instead (FINDINGS-09 \[2]). A re-entered cancel of an already
+        /// instead. A re-entered cancel of an already
         /// cancel-requested job counts nowhere: it moved nothing.
         jobs_cancelled: usize,
     },

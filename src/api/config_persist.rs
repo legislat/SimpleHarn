@@ -36,7 +36,7 @@ impl ApiState {
     /// file, so keeping the old verdict would re-assert a claim about bytes the file
     /// no longer holds.
     ///
-    /// The write-back runs on a blocking thread (FINDINGS-07 \[8]): the handler's
+    /// The write-back runs on a blocking thread: the handler's
     /// async worker must not park on the gated read-patch-copy-rename, while the
     /// `persisted` answer still means what it always meant — the handler waits for
     /// the leg's verdict before replying, so `/har/config/default` keeps its
@@ -150,11 +150,11 @@ impl PersistOutcome {
 /// a per-process unique temp: two handlers reach this function (`/har/config/default`
 /// and `/har/config/model`'s dangling-default clear) on separate workers, and an
 /// ungated read-modify-write onto one fixed temp lost one of their fields while both
-/// answered `persisted: true` (FINDINGS-07 [3]).
+/// answered `persisted: true`.
 ///
 /// It is the synchronous core by design — [`ApiState::set_default_model`] runs it
 /// inside `tokio::task::spawn_blocking`, so the gate is held on a blocking thread
-/// where parking is allowed and the reactor never is (FINDINGS-07 [8]).
+/// where parking is allowed and the reactor never is.
 ///
 /// Returns a [`PersistOutcome`]: only the `Landed` leg may answer
 /// `persisted: true`. `LandedUnverified` means the rename landed and the
@@ -166,7 +166,7 @@ pub(super) fn persist_default_model(
     category: CategoryId,
     model: Option<&str>,
 ) -> PersistOutcome {
-    // One critical section with every yaml rewrite (FINDINGS-07 [3]): the second
+    // One critical section with every yaml rewrite: the second
     // writer can no longer read the ORIGINAL while the first one is between its
     // patch and its rename, which is how a persisted field used to vanish from disk.
     let _gate = crate::model::writeback::acquire_write_gate();
@@ -179,8 +179,8 @@ pub(super) fn persist_default_model(
         Err(error) => {
             // Silent before: the only difference between this arm and the one above
             // is that the file could not be read at all, and both rewrite the whole
-            // file from the boot snapshot, so both must say so (FINDINGS-07 [2]'s
-            // unlogged arm).
+            // file from the boot snapshot, so both must say so: this arm was the
+            // unlogged one.
             tracing::warn!(error = %error, path = %path.display(), "config file missing or unreadable; writing from boot config");
             serde_json::to_value(config).expect("invariant: config serializes")
         }
@@ -225,7 +225,7 @@ pub(super) fn persist_default_model(
     let text = serde_json::to_string_pretty(&root).expect("invariant: JSON serializes");
     // Unique per (process, sequence), mirroring the yaml temp in `model::writeback`:
     // on the fixed name a second writer truncated the first one's temp, so one
-    // rename failed while the other's content landed (FINDINGS-07 [3]).
+    // rename failed while the other's content landed.
     let tmp = path.with_extension(format!(
         "json.{}.{}.sh.tmp",
         std::process::id(),
@@ -262,8 +262,8 @@ pub(super) fn persist_default_model(
         tracing::error!(error = %error, "cannot persist default_model: rename failed");
         return PersistOutcome::NotLanded;
     }
-    // The symmetric leg the yaml writer has had since D4 and this one lacked
-    // (FINDINGS2-0507 [7]): `rename()` returning `Ok` is the OS accepting the move, not
+    // The symmetric leg the yaml writer has had since D4 and this one lacked:
+    // `rename()` returning `Ok` is the OS accepting the move, not
     // proof the bytes landed. This is the one file the harness re-reads at boot under
     // `deny_unknown_fields`, so a silent-short write is a harness that will not start —
     // `persisted: true` may not be cheaper than the truth. Re-read, re-parse, and
@@ -271,7 +271,7 @@ pub(super) fn persist_default_model(
     // The test arm corrupts the bytes this verification is about to read (valid JSON,
     // different tree), so the `persisted:false` leg of the pin is produced by the real
     // `read_back == root` comparison rather than a hard-set verdict — a rubber-stamped
-    // compare has to be caught by the pin (FINDINGS-BATCH-2026-10-28M, item 6 note).
+    // compare has to be caught by the pin.
     #[cfg(test)]
     config_corrupt_if_armed(&path);
     let read_back = match std::fs::read_to_string(&path)
@@ -339,8 +339,8 @@ fn validate_published_config(root: &Value) -> Vec<ConfigError> {
     }
 }
 
-/// Paths whose post-rename verification read is preceded by a byte corruption
-/// (FINDINGS2-0507 [7]); see [`config_corrupt_if_armed`], which is shaped after the
+/// Paths whose post-rename verification read is preceded by a byte corruption;
+/// see [`config_corrupt_if_armed`], which is shaped after the
 /// write-back module's `corrupt_if_armed`.
 #[cfg(test)]
 fn config_read_back_faults() -> &'static Mutex<Vec<std::path::PathBuf>> {
@@ -364,7 +364,7 @@ pub(crate) fn release_config_read_back_fault(path: &std::path::Path) {
         .retain(|armed| armed != path);
 }
 
-/// The arm's bite (FINDINGS-BATCH-2026-10-28M, item 6 coverage note): between the
+/// The arm's bite: between the
 /// rename and the verification read, rewrite the file with **different but valid**
 /// bytes, so production's own `read_back == root` comparison is what refuses the
 /// `persisted: true`. Hard-setting a verdict here instead would have left the
@@ -398,7 +398,7 @@ fn config_corrupt_if_armed(path: &std::path::Path) {
 /// key is a caller mistake (400), never an implicit clear. The persisted value is the
 /// catalog entry's canonical `name`, not the caller's spelling: `catalog::resolve`
 /// accepts case-insensitive names and GGUF aliases, while the scheduler and the boot
-/// check compare `m.name == model` exactly (FINDINGS-06 [5]).
+/// check compare `m.name == model` exactly.
 pub(super) async fn har_config_default(
     State(state): State<Arc<ApiState>>,
     body: Result<Json<Value>, JsonRejection>,
@@ -494,9 +494,9 @@ pub(super) async fn har_config_model(
     let mut edits: Vec<(&str, Option<String>)> = Vec::new();
     let mut requested_category: Option<CategoryId> = None;
     // A present-but-non-string `category` read as absent through
-    // `and_then(Value::as_str)`: the same defect FINDINGS2-0507 [5] fixed for `cpu`
+    // `and_then(Value::as_str)`: the same defect class already fixed for `cpu`
     // below — a client that asked for two changes got one and an "edited" saying
-    // both. The parity rule (07[10]) forbids one field's type bug living one arm
+    // both. The parity rule forbids one field's type bug living one arm
     // from its sibling's fix, so a wrong-typed `category` is a named 400, before
     // any write.
     match body.get("category") {
@@ -506,7 +506,7 @@ pub(super) async fn har_config_model(
                 .map_err(|reason| ApiError::BadRequest { reason })?;
             requested_category = Some(category);
             edits.push(("category", Some(category.to_string())));
-            // FINDINGS-12 [1]: a surviving `is_embedding_model: true` beside the new
+            // A surviving `is_embedding_model: true` beside the new
             // non-EMB `category:` is an `EmbeddingCategoryConflict` that makes the next
             // scan DROP the whole file — one dropdown click deleted the model while the
             // endpoint answered success. The two facts are one fact, so the removal
@@ -528,8 +528,8 @@ pub(super) async fn har_config_model(
     // dropped `"true"`/`1`/`"yes"` silently and the request still answered
     // `{"status":"edited"}` — a client that asked for two changes got one, reported as
     // success. The in-file sibling `har_config_logging` 400s a non-bool `enabled` for
-    // exactly this, and 07[10] established the in-file parity rule
-    // (FINDINGS2-0507 [5]). The type is checked before the engine gate, so a malformed
+    // exactly this, and 07[10] established the in-file parity rule.
+    // The type is checked before the engine gate, so a malformed
     // body gets the same answer regardless of the row it named.
     let cpu = match body.get("cpu") {
         Some(Value::Bool(value)) => Some(*value),
@@ -561,7 +561,7 @@ pub(super) async fn har_config_model(
     // One rewrite for every edit: calling `set_flag_on_file` per key would leave
     // the file half-edited (category moved, alias still there) if a write failed
     // between the two — 1g's non-atomic defect, not replicated here.
-    // FINDINGS-07 [8]: the gated rewrite and the fingerprint that feeds the
+    // The gated rewrite and the fingerprint that feeds the
     // re-baseline note run together on a blocking thread — the request worker
     // never parks on the yaml's read-modify-rename. The order the interlock
     // depends on survives intact: the write completes, the stat reads the bytes
@@ -602,7 +602,7 @@ pub(super) async fn har_config_model(
     // (v3.3 §-behavior, kept). Only ITS OWN slot: `unload(old_category)` freed every
     // occupant of the old category, so retagging one AUX model killed the other
     // five's engines and whatever WORK held, in-flight generations included
-    // (FINDINGS-07 [1]). A retag of a never-loaded model is the idempotent `Done`
+    // A retag of a never-loaded model is the idempotent `Done`
     // the actor already guarantees for `unload_model` (pinned by scheduler_actor's
     // T12.2 test), which is why the old inner catalog-name test — meant to skip
     // that no-op — is gone: it never asked whether the moved model was loaded, only
@@ -702,7 +702,7 @@ pub(super) async fn har_config_model(
 /// only; every boot starts with it off.
 ///
 /// The body is buffered through the same `Result<Json<Value>, JsonRejection>`
-/// wall as every sibling POST (FINDINGS-05 [3]): a bare `Json<Value>` handed
+/// wall as every sibling POST: a bare `Json<Value>` handed
 /// axum's default `text/plain` rejection straight to the client, breaking the
 /// documented `{code,message}` + OpenAI-envelope contract on this one route.
 pub(super) async fn har_config_logging(

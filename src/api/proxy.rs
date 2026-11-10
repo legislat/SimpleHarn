@@ -118,7 +118,7 @@ async fn ensure_target(
 }
 
 /// Picks the serving occupant for a no-`model` request: MRU by last proxy use,
-/// with untouched occupants sorted by their ACTUAL load time (FINDINGS-06 [1]:
+/// with untouched occupants sorted by their ACTUAL load time:
 /// `slot.loaded_at`, never a fabricated instant that underflows on a young
 /// process). `None` when the category serves nothing.
 pub(super) fn pick_loaded_occupant(
@@ -243,8 +243,8 @@ async fn swap_for_port(
         // to a load that finishes `Loaded(receipt)`; `Done` is the cancel/reload reply
         // and `Unloaded` belongs to the unload commands.
         // Fabricating `0` here handed the proxy `127.0.0.1:0` — a connect failure three
-        // layers from the cause, and a port number that belongs to no listener
-        // (FINDINGS2-0507 [10]). An answer that names no port is an invariant
+        // layers from the cause, and a port number that belongs to no listener.
+        // An answer that names no port is an invariant
         // violation, and it is reported as one.
         Reply::Done | Reply::Unloaded { .. } => {
             return Err(ApiError::Internal {
@@ -310,7 +310,7 @@ async fn proxy(
         reason: format!("body must be JSON: {rejection}"),
     })?;
     let (model, port, serve_id) = ensure_target(&listener, &body).await?;
-    // FINDINGS-06 [10]: forward the request target the client actually sent.
+    // Forward the request target the client actually sent.
     // `uri.path()` alone silently dropped the query string, so an engine-side
     // `?api-key=` or engine-specific flag never arrived. `path_and_query()` is
     // path + `?` + query (an empty `?` included); with no query present its bytes

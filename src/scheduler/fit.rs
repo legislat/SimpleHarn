@@ -101,7 +101,7 @@ pub(super) async fn run_fit_version_leg(
     // first probe), never guessed past: a missing calculator is one warn and
     // that group's ladder stands — no version message, no rows, no silence
     // about why. Async stat: no synchronous fs on the worker either, the
-    // FINDINGS2-04 [2] discipline this whole file keeps for its actor turn.
+    // Discipline this whole file keeps for its actor turn.
     let tool_present = match tokio::fs::try_exists(&tool.program).await {
         Ok(present) => present,
         Err(error) => {

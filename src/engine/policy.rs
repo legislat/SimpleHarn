@@ -72,7 +72,7 @@ pub(crate) const MAYA_RENDERED_PROFILES_ROOT: &str = ".simpleharn/maya-profiles"
 pub(crate) const XOLOTL_RENDERED_PROFILES_ROOT: &str = ".simpleharn/xolotl-profiles";
 
 /// The CLOSED allow-list of `extra_args` option words an operator may pass
-/// through to llama-server (FINDINGS2-0910 [1]): the inversion of the old
+/// through to llama-server: the inversion of the old
 /// `HARNESS_OWNED_FLAGS` denial list, which could only ever name ten of the
 /// pinned build's ~200 options and therefore left the harness-owned decisions —
 /// which weights serve, the bind host/port, the key, the transport, the served

@@ -433,7 +433,7 @@ async fn a_rescan_reports_a_stranded_container_once_across_the_actor() {
 
 #[test]
 fn actor_state_construction_never_scans_the_catalog() {
-    // FINDINGS-14 [1], boot-thread pin: the constructor that `Scheduler::start`
+    // Boot-thread pin: the constructor that `Scheduler::start`
     // funnels through — including the `ActorState::empty` path it delegates to —
     // must return against a dir holding a valid model with the catalog still
     // empty. Re-introducing the scan into the constructor (the pre-bind stall)
@@ -483,7 +483,7 @@ fn actor_state_construction_never_scans_the_catalog() {
 
 #[tokio::test]
 async fn actor_task_performs_the_initial_scan() {
-    // FINDINGS-14 [1], actor-side pin: the scan `ActorState::new` no longer runs
+    // Actor-side pin: the scan `ActorState::new` no longer runs
     // must still happen — as the first thing the actor task does. A command sent
     // immediately after `start()` (here the catalog read) queues behind the scan
     // on the unbounded channel and observes its result; no sleep or timing
@@ -529,7 +529,7 @@ async fn actor_task_performs_the_initial_scan() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_command_during_an_in_flight_rescan_is_answered() {
-    // FINDINGS-13 [6]: the reload scan parks on a test-only seam; while it is
+    // The reload scan parks on a test-only seam; while it is
     // in flight the actor must keep answering commands, and the reload reply
     // may resolve only when the new catalog is APPLIED (never when the scan
     // was dispatched — the /har/rescan contract). Pre-fix (the inline scan),
@@ -607,7 +607,7 @@ async fn a_command_during_an_in_flight_rescan_is_answered() {
 
 #[tokio::test]
 async fn an_unavailable_engine_is_dropped_and_named() {
-    // The audit verdict shipped with this batch (FINDINGS-13 [3] follow-up): no
+    // The audit verdict pin: no
     // fixture publishes an engine its adapter map lacks, and such an entry can
     // only ever die later as `no adapter registered` — so the actor refuses it
     // at apply time, DROPPING it with a typed, page-visible reason.
@@ -793,12 +793,12 @@ impl ActorState {
 }
 
 /// A persist the disk refuses must not leave memory booking what disk denied
-/// (Fork C, closing FINDINGS-13 [4]'s warn-only tail): the warn fires AND the
+/// (closing the warn-only tail): the warn fires AND the
 /// catalog entry's measured triple drains to its none state. The entry is a
 /// `llama` row so the persist really carries the stamped triple — non-offload
 /// engines never mint the stamp (`only_offload_engines_stamp_measured_offload`).
 /// The wedged-drive handle is Windows-only, so the test is gated like its
-/// writeback sibling (FINDINGS-BATCH-2026-10-28 [7]).
+/// writeback sibling.
 #[cfg(windows)]
 #[tokio::test]
 async fn a_refused_measured_persist_drains_the_triple_from_memory() {
@@ -906,7 +906,7 @@ async fn a_refused_measured_persist_drains_the_triple_from_memory() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// FINDINGS2-04 [1]: the fold books the row that owns the spawn-era FILE, while the
+/// The fold books the row that owns the spawn-era FILE, while the
 /// drain keyed `name && file`. Wherever the file's row answers to a different name
 /// than the spawn-era string, the drain missed the very row it exists to clear:
 /// memory kept booking a footprint the disk refused for the whole serve window
@@ -1003,7 +1003,7 @@ async fn the_refused_persist_drain_follows_the_file_the_fold_booked() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// FINDINGS2-04 [3]: a spawn whose anchor carries `file: None` passed the serving
+/// A spawn whose anchor carries `file: None` passed the serving
 /// and anchor checks and returned early WITHOUT retiring the sampler — the one
 /// reading class that left the task walking the witness every `measured_sample_s`
 /// until its 24 h deadline while the actor discarded every reading it produced.
@@ -1069,7 +1069,7 @@ async fn a_synthetic_anchor_retires_the_sampler_that_has_nowhere_to_write() {
     );
 }
 
-/// FINDINGS-BATCH-2026-10-28L [L-2]: the install-time `serve_model` verdict read the
+/// The install-time `serve_model` verdict read the
 /// LIVE catalog by name, minutes after `begin_spawn`. Under a mid-serve reload that
 /// rewrites the row's `serve_model`, the warning was computed against yaml the
 /// running process was never launched from — a false warning, or a missed one — and
@@ -1128,12 +1128,12 @@ fn the_serve_model_verdict_is_judged_against_the_spawn_era_row() {
     );
 }
 
-/// FINDINGS2-04 [2]: `apply_catalog` ran `self.cfg.llama_server_exe.exists()` inside
+/// `apply_catalog` ran `self.cfg.llama_server_exe.exists()` inside
 /// the single writer's turn — the last synchronous `std::fs` touch on the actor.
 /// The exe path is operator config, so that stat can park the actor behind a
 /// sleeping USB or a disconnected NAS volume with the listener already bound, and
 /// every command, `/har/status` poll and tray tick queues behind it (the A1-class
-/// stall FINDINGS-14 [1]/13 [6] moved the scans off-thread for). The verdict now
+/// stall moved the scans off-thread for). The verdict now
 /// travels in from the blocking leg. Falsifier: restore the stat inside
 /// `apply_catalog` and the first leg fails (an absent binary reports itself even
 /// when the scan leg said nothing), and the file-wide count leg fails.
@@ -1219,8 +1219,8 @@ fn the_actor_applies_the_binary_verdict_it_is_handed_and_never_stats_for_one() {
 
 /// The reconcile must not drain a triple that a newer reading already replaced
 /// (the stale-failure race: two persist tasks land out of order), and the
-/// exact-match guard covers the `Option<bool>` shape dimension itself
-/// (FINDINGS-BATCH-2026-10-28F [2]): equal `(high, low)` with a mismatched
+/// exact-match guard covers the `Option<bool>` shape dimension itself:
+/// equal `(high, low)` with a mismatched
 /// stamp shape drains nothing, in either direction. Falsifier: neutering the
 /// `entry.measured_offload == offload` comparison fails the shape legs below.
 #[test]
@@ -1981,7 +1981,7 @@ async fn an_unparsable_status_shape_falls_back_to_the_witness_loop() {
 /// non-process engine is never touched, and figures
 /// `measurable_figure` would drop (sub-quantum, larger than the card)
 /// return `None` WITHOUT a message — the M1 doctrine that a consumed
-/// one-shot silently skips the witness stand-in (review 2026-10-31).
+/// one-shot silently skips the witness stand-in.
 #[tokio::test]
 async fn a_refused_measurement_never_consumes_the_sampler() {
     let (tx, mut rx) = mpsc::unbounded_channel::<ActorMsg>();
@@ -2235,7 +2235,7 @@ async fn a_process_tree_measurement_lands_as_per_process_and_replaces_the_range(
 /// `measurable_figure` refuses (negative, beyond the card) and a reading
 /// that lost its uncontested window are both visible drops that book
 /// nothing — the one-shot does not retry, so silence here would be a lost
-/// measurement (review 2026-10-31, M1 doctrine).
+/// measurement — doctrine.
 #[tokio::test]
 async fn a_nonsense_process_measurement_books_nothing_and_names_itself() {
     let capture = install_warn_capture();
@@ -2493,7 +2493,7 @@ async fn a_container_without_a_report_falls_back_to_the_witness_loop() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// FINDINGS-13 [3]'s fold half: two rows answering to one identity. The reading
+/// The fold half: two rows answering to one identity. The reading
 /// belongs to the file the engine was spawned from, and the reconcile of a refused
 /// persist may only drain that same row — never the twin whose bytes the refused
 /// write never touched. The catalog order puts the twin FIRST so any name-keyed
@@ -2829,7 +2829,7 @@ fn a_rescan_keeps_a_queue_whose_fingerprint_cannot_show_a_change() {
         state.jobs[&id].error
     );
 
-    // KEEP 4: the dispatch-to-apply corner (FINDINGS-07 [8] fix round [3]):
+    // KEEP 4: the dispatch-to-apply corner:
     // row A parked M at dispatch (its file gathered pre-edit), the scan
     // held, an operator edit landed, and row B parked the same model before
     // the scan landed. B's fingerprint is newer than any stat gathered
@@ -2940,7 +2940,7 @@ fn entry_from(path: &std::path::Path, name: &str) -> ModelEntry {
 
 /// Mirrors the off-actor gather a real reload performs: the resident capture
 /// files plus the queued models' new-catalog entry files, stat'ed here on the
-/// test thread (production stats on a blocking thread — FINDINGS-07 [8]).
+/// test thread (production stats run on a blocking thread).
 fn drift_stats_for(state: &ActorState, catalog: &crate::model::scan::Catalog) -> DriftStats {
     let queued_at_dispatch: HashSet<JobId> = state.queued_load_candidates().into_iter().collect();
     let queued = state.queued_models_for(&queued_at_dispatch);
@@ -2970,8 +2970,8 @@ fn rescan(state: &mut ActorState, yaml: &std::path::Path, name: &str) {
     state.apply_catalog(catalog, None, &drift);
 }
 
-/// The yaml fingerprint alone carries the `stale_config` verdict since
-/// FINDINGS-25 retired the dormant profile leg: an unchanged row never
+/// The yaml fingerprint alone carries the `stale_config` verdict; the dormant
+/// profile leg is retired: an unchanged row never
 /// accuses, and an edit to the resident's own row ambers on the refresh
 /// turn with no other capture anywhere — the same amber, the same
 /// unload + reload gesture. Falsifier: dropping the yaml leg from
@@ -4574,7 +4574,7 @@ async fn a_folded_footprint_never_credits_a_cross_slot_replacement() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// T6-d (GSC-01, review 2026-11-06): the credit is the largest of THIS SPAWN's
+/// T6-d (GSC-01): the credit is the largest of THIS SPAWN's
 /// own readings, never the range-merge result. The spawn starts on a row that
 /// already carries the previous launch's persisted pair (68.4 / 68.3 — the
 /// `MeasuredAnchor` seeds its range from it), then lands ONE small witness
@@ -4674,7 +4674,7 @@ async fn a_stale_persisted_pair_never_rides_the_release_credit() {
 ///
 /// Falsifier: move the verdict computation into `snapshot` (any spelling) and
 /// the net plus both probes fire; inject an inert `Path::new(f).metadata()` and
-/// the net fires (FINDINGS-BATCH-2026-10-28P [P-1]'s M-E).
+/// the net fires.
 #[test]
 fn the_snapshot_reads_the_cached_verdict_and_never_stats() {
     let source = include_str!("status.rs");
@@ -4736,7 +4736,7 @@ fn production_half(source: &str) -> &str {
     &source[..cut]
 }
 
-/// FINDINGS-07 [8] structural net: the reload turn's drift rounds in
+/// Structural net: the reload turn's drift rounds in
 /// `catalog.rs` judge only pre-gathered evidence. `apply_catalog` (the single
 /// writer's turn) and both rounds it runs contain no filesystem token at all —
 /// every stat that moves a `stale_config` verdict or a queued-row retirement
@@ -4789,7 +4789,7 @@ fn the_drift_rounds_judge_only_pre_gathered_evidence() {
     }
 }
 
-/// P-4 (FINDINGS-BATCH-2026-10-28P): the re-baseline table documented at
+/// P-4: the re-baseline table documented at
 /// [`ActorState::on_model_file_written`] claims a CLOSED set of legitimate model-
 /// yaml mutators — the measured persist (`scheduler/measured.rs`, its note riding
 /// the success path) and `har_config_model`'s flag edit (api, its note sent before the
@@ -4917,7 +4917,7 @@ fn the_late_release_watch_bounds_at_exactly_one_window() {
     ));
 }
 
-/// REV8-01: the watch is scoped to the uninstalled spawn. An occupant carrying this
+/// The watch is scoped to the uninstalled spawn. An occupant carrying this
 /// very `(port, generation)` is what `/har/status` reports as serving, so the watch
 /// stays out; any other occupant (or none) leaves it armed.
 #[test]
@@ -4972,7 +4972,7 @@ enum LateAnswer {
     StillHeld,
     /// A newer spawn owns that port now: the ticket is stale.
     Superseded,
-    /// REV8-03: the evidence check never returns — the hard outer timeout is the
+    /// The evidence check never returns — the hard outer timeout is the
     /// only thing that can end the watch.
     Wedged,
 }
@@ -5102,7 +5102,7 @@ impl crate::engine::EngineRuntime for LateWatchRuntime {
             (answer, outcome)
         };
         if answer == LateAnswer::Wedged {
-            // REV8-03: the call is recorded and then never answers. The lock went
+            // The call is recorded and then never answers. The lock went
             // back first, so the test can still read what this fake recorded while the
             // watch is stuck inside the runtime call.
             std::future::pending::<()>().await;
@@ -5236,7 +5236,7 @@ fn seated_occupant(name: &str, ticket: &SpawnTicket) -> Occupant {
     }
 }
 
-/// The REV8-01 shape: a `Serving` row whose OWN spawn is the slot's installed
+/// The installed-occupant shape: a `Serving` row whose OWN spawn is the slot's installed
 /// occupant, held non-terminal so a cancel can reach it — the cancel-of-a-serving-
 /// model case where G12 keeps the occupant installed if the reap cannot prove the
 /// death, and `/har/status` goes on reporting the model as serving.
@@ -5489,7 +5489,7 @@ async fn a_cancel_the_reap_could_not_prove_watches_its_ticket_late() {
     );
 }
 
-/// REV8-01, the shape the first cut's comment got wrong: a cancel that reached
+/// A shape the first cut's comment got wrong: a cancel that reached
 /// `Serving` and whose own reap could not prove the death keeps G12's posture — the
 /// occupant stays installed and `/har/status` still reports the model serving — so no
 /// late watch is armed on that ticket and no warn contradicts the page. Falsifier:
@@ -5746,7 +5746,7 @@ async fn an_unproven_release_watches_one_window_and_then_reports_and_stops() {
     );
 }
 
-/// REV8-03: a `release_confirmed` that never returns cannot hold the watch past its
+/// A `release_confirmed` that never returns cannot hold the watch past its
 /// one window either. The hard outer timeout (the same window, plus one poll of slack
 /// so the in-loop check stays the ordinary exit) ends the task and emits that single
 /// bound warning. Falsifier: drop the outer timeout and no warning ever arrives — the
@@ -9784,7 +9784,7 @@ fn a_stale_epoch_fit_answer_is_dropped_at_the_door() {
 }
 
 /// One WORK slot holding one occupant of `(port, generation)`, for the
-/// serve-id fold-door pins (FINDINGS-11 [1]): fold answers land as direct
+/// serve-id fold-door pins: fold answers land as direct
 /// calls, so the never-called runtime is never reached.
 fn serve_id_state(port: u16, generation: u64, serve_id: Option<&str>) -> ActorState {
     let BootWiring {
@@ -9829,7 +9829,7 @@ fn serve_id_state(port: u16, generation: u64, serve_id: Option<&str>) -> ActorSt
     state
 }
 
-/// Silence re-discovery warns captured for one model name (FINDINGS-11 [2]).
+/// Silence re-discovery warns captured for one model name.
 fn silence_warns(capture: &Arc<Mutex<Vec<CapturedWarn>>>, model: &str) -> usize {
     capture
         .lock()
@@ -9844,7 +9844,7 @@ fn silence_warns(capture: &Arc<Mutex<Vec<CapturedWarn>>>, model: &str) -> usize 
 
 #[test]
 fn a_serve_id_answer_for_a_replaced_generation_is_dropped_at_the_door() {
-    // FINDINGS-11 [1], the sibling of `a_stale_epoch_fit_answer_is_dropped_at_the_door`:
+    // The sibling of `a_stale_epoch_fit_answer_is_dropped_at_the_door`:
     // the occupant on this port was replaced mid-probe, so an answer naming
     // the dead generation describes an engine that no longer exists and may
     // not patch the one that does.
@@ -9865,7 +9865,7 @@ fn a_serve_id_answer_for_a_replaced_generation_is_dropped_at_the_door() {
 
 #[test]
 fn a_serve_id_answer_is_refused_over_an_occupant_that_already_has_one() {
-    // FINDINGS-11 [1], the second guard: an id that landed at install (or
+    // The second guard: an id that landed at install (or
     // an earlier probe) is the engine's word for THIS spawn — a later
     // answer, however fresh, may not overwrite it, and a fold that
     // overwrites would report a publish for a change that never happened.
@@ -9887,7 +9887,7 @@ fn a_serve_id_answer_is_refused_over_an_occupant_that_already_has_one() {
 
 #[test]
 fn silence_warns_once_per_spawn_and_a_changed_outcome_arms_the_warn_again() {
-    // FINDINGS-11 [2], mirroring `the_reconcile_warns_once_and_an_unchanged_set_never_re_warns`:
+    // Mirroring `the_reconcile_warns_once_and_an_unchanged_set_never_re_warns`:
     // every resolve of an id-less occupant re-runs discovery, so a client
     // hammering a permanently silent engine used to log one warn per landed
     // silence (~0.5/s/slot forever). The warn marks the CHANGE into silence.

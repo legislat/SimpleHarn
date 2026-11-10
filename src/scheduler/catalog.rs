@@ -31,9 +31,8 @@ async fn scan_models_dir(dir: PathBuf) -> Result<Catalog, String> {
 /// during the single writer's turn: `llama_server_exe` is operator config, so a
 /// `Path::exists()` there parks the actor behind a sleeping USB or a disconnected NAS
 /// volume while the listener is already bound — every command, `/har/status` poll and
-/// tray tick queues behind it, the A1-class stall FINDINGS-14 [1] and FINDINGS-13 [6]
-/// moved the scans off-thread for. This was the last `std::fs` touch on the actor
-/// (FINDINGS2-04 [2]).
+/// tray tick queues behind it; the A1-class stall moved the scans off-thread
+/// for. This was the last `std::fs` touch on the actor.
 ///
 /// # Arguments
 ///
@@ -81,8 +80,8 @@ pub(super) fn missing_binary_error(
 
 /// The filesystem evidence one catalog application judges: the resident captures
 /// and the queued rows' files, stat'ed **off the actor** by [`gather_drift_stats`]
-/// on the reload's blocking legs (FINDINGS-07 [8] — the scan half moved off-thread
-/// in FINDINGS-13 [6]/FINDINGS2-04 [2]; these stats were the reload turn's last
+/// on the reload's blocking legs (the scan half moved off-thread earlier; these
+/// stats were the reload turn's last
 /// inline `std::fs`).
 ///
 /// Keyed by path, with a three-state answer the drift rounds must respect:
@@ -123,7 +122,7 @@ impl ActorState {
     /// Rescans `ModelConf` and cross-checks `default_model`s (§0.2 step 6, Step 9)
     /// off the actor's own thread: the whole synchronous filesystem walk
     /// (`read_dir`, one read per yaml, one stat per model) runs on a blocking
-    /// thread so the single writer never parks on disk (FINDINGS-13 [6]). The
+    /// thread so the single writer never parks on disk. The
     /// caller applies the result with [`ActorState::apply_catalog`] — at boot
     /// before the first message, on reload when the result returns as
     /// [`super::ActorMsg::CatalogLoaded`].
@@ -139,11 +138,11 @@ impl ActorState {
     /// engine its adapter map lacks, and a load for one could only ever die later
     /// as `no adapter registered`, so early refusal is strictly better), the
     /// configured `llama-server.exe` verdict (gathered off-thread by
-    /// [`ActorState::scan_blocking`], never by a stat in this function —
-    /// FINDINGS2-04 [2]) is carried into the report, every `default_model` must
+    /// [`ActorState::scan_blocking`], never by a stat in this function)
+    /// is carried into the report, every `default_model` must
     /// resolve, and the drift rounds ([`ActorState::invalidate_queued_loads`],
     /// [`ActorState::refresh_stale_markers`]) judge only the `drift` evidence
-    /// gathered off-thread on the reload's blocking legs (FINDINGS-07 [8]) — this
+    /// gathered off-thread on the reload's blocking legs — this
     /// turn performs zero filesystem calls.
     pub(super) fn apply_catalog(
         &mut self,
@@ -443,10 +442,10 @@ impl ActorState {
     /// `stale_config` verdict is recomputed for every resident: the yaml it launched
     /// from, re-stat'ed **off-thread** by [`super::gather_drift_stats`] on the reload's
     /// blocking legs, against the install-time capture. The status/SSE path reads
-    /// this cache and performs zero fs syscalls (FINDINGS2-04 [2]'s one-stat-per-event
+    /// this cache and performs zero fs syscalls (the one-stat-per-event
     /// rule extended to the marker; pinned by the api-side hidden-file counter-probe,
     /// and the reload turn's own stat-free shape by
-    /// `the_drift_rounds_judge_only_pre_gathered_evidence` — FINDINGS-07 [8]).
+    /// `the_drift_rounds_judge_only_pre_gathered_evidence`).
     ///
     /// Verdict rules, stated plainly:
     /// - no capture (synthetic row): never accuses; absence of evidence is not
@@ -466,7 +465,7 @@ impl ActorState {
     /// profile file any more (strata's profile is
     /// harness-rendered L3 bytes, and ninfer's is the cksum-verified staged
     /// script — both drift-proof by construction), so `queue_fingerprint` →
-    /// `spawn_config` is the entire `stale_config` story (FINDINGS-25). Only the
+    /// `spawn_config` is the entire `stale_config` story. Only the
     /// yaml re-baselines on a harness write-back; a resident with no capture is
     /// never accused.
     pub(super) fn refresh_stale_markers(&mut self, drift: &DriftStats) {
@@ -493,8 +492,8 @@ impl ActorState {
     /// edit must never amber their own model). The legitimate mutators are a CLOSED
     /// set — the measured persist (`measured.rs`'s fold success path) and
     /// `har_config_model`'s rewrite (api, note sent before its reload) — and the
-    /// closure is pinned by `the_writeback_mutator_set_stays_closed_to_the_rebaseline_table`
-    /// (FINDINGS-BATCH-2026-10-28P [P-4]): a new writer must register here with its
+    /// closure is pinned by `the_writeback_mutator_set_stays_closed_to_the_rebaseline_table`:
+    /// a new writer must register here with its
     /// note, or the amber accuses the harness of its own edit.
     ///
     /// A verdict already `true` is never erased: only a clean resident re-baselines.
@@ -527,7 +526,7 @@ impl ActorState {
     /// The parked (queued, un-armed) Load intents — the same candidate set
     /// [`ActorState::invalidate_queued_loads`] judges, shared so the reload
     /// dispatch gathers stats for exactly the rows the apply turn will read and
-    /// carries the ids back in [`DriftStats::queued_at_dispatch`] (FINDINGS-07 [8]).
+    /// carries the ids back in [`DriftStats::queued_at_dispatch`].
     pub(super) fn queued_load_candidates(&self) -> Vec<JobId> {
         self.pending
             .values()
@@ -552,7 +551,7 @@ impl ActorState {
 
     /// The capture files of every current resident — the paths the marker round
     /// compares, collected actor-side from slot state only (no fs); the stats
-    /// themselves are off-thread ([`super::gather_drift_stats`], FINDINGS-07 [8]).
+    /// themselves are off-thread ([`super::gather_drift_stats`]).
     pub(super) fn drift_capture_files(&self) -> Vec<PathBuf> {
         self.slots
             .iter()
@@ -603,7 +602,7 @@ impl ActorState {
     /// at all — it is not in `DriftStats::queued_at_dispatch`, and no stat
     /// gathered before its birth can ever speak for it (pinned there, KEEP 4).
     /// The stats ride in with the catalog application as [`DriftStats`], gathered
-    /// off-thread on the reload's blocking legs (FINDINGS-07 [8]); this turn reads
+    /// off-thread on the reload's blocking legs; this turn reads
     /// only the map.
     ///
     /// Budget no-leak: a never-armed row books nothing (`reserves_vram` excludes

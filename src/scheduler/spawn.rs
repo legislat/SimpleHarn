@@ -677,13 +677,14 @@ impl ActorState {
     ///
     /// * `job_id` — the job that is terminalizing on an unconfirmed release. Nothing is
     ///   watched when the job never spawned (it owes no release) and when its ticket is
-    ///   the slot's installed occupant (REV8-01, [`ActorState::late_watch_names_an_orphan`]).
+    ///   the slot's installed occupant (see [`ActorState::late_watch_names_an_orphan`]).
     ///
     /// The task is deliberately NOT parked on `job.tasks`: `finish` aborts those on the
     /// very step that terminalizes the job, which is the instant this watch starts (the
     /// same reason as the R9 C1 snapshot). Its bound is one `release_timeout_s` window
-    /// polled at `RELEASE_POLL`, and REV8-03 wraps the loop in a hard outer timeout of
-    /// the same window plus one poll, so even a `release_confirmed` that never returns
+    /// polled at `RELEASE_POLL`, and a hard outer timeout of
+    /// the same window plus one poll wraps the loop, so even a `release_confirmed`
+    /// that never returns
     /// cannot hold the task past its bound: no unbounded task exists.
     pub(super) fn spawn_late_release_watch(&self, job_id: JobId) {
         let Some((ticket, model, installed)) = self.jobs.get(&job_id).and_then(|job| {
@@ -698,7 +699,7 @@ impl ActorState {
             return;
         };
         if !Self::late_watch_names_an_orphan(installed.as_ref(), &ticket) {
-            // REV8-01: this ticket is what the slot still reports as installed. The
+            // This ticket is what the slot still reports as installed. The
             // occupant is the operator-visible record, the runtime entry must not be
             // talked about as gone while the page says serving, and the next restart or
             // swap owns this ticket again — so no watch, and no new warning either.
@@ -710,7 +711,7 @@ impl ActorState {
             let started = tokio::time::Instant::now();
             // The inner loop is the ordinary path: it returns `Err(())` only when the
             // window is spent with nobody warned yet, and `Ok(())` when it already named
-            // its own outcome. REV8-03: the outer timeout is the hard backstop for a
+            // its own outcome. The outer timeout is the hard backstop for a
             // `release_confirmed` that never returns — the bound cannot be outlived from
             // inside the runtime call either. Both bound exits share one warning below,
             // so exactly one warn is ever emitted for the spent window.
@@ -718,7 +719,7 @@ impl ActorState {
                 loop {
                     match runtime.release_confirmed(&ticket).await {
                         Ok(true) => {
-                            // REV8-02: a state claim, never a causation claim. `Ok(true)`
+                            // A state claim, never a causation claim. `Ok(true)`
                             // is also what the runtime answers for a port it never owned
                             // and for an entry already replaced, so this watch cannot
                             // credit itself with clearing anything.

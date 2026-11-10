@@ -140,7 +140,7 @@ pub(super) struct SamplerCtx {
 pub(super) struct MeasuredAnchor {
     /// The yaml that owns this reading, by **file** identity. A reload that renames the
     /// row keeps the bytes and moves the name, and a re-minted twin steals the name, so
-    /// the name is not an identity a fold may write to (FINDINGS-13 [3]). `None` = the
+    /// the name is not an identity a fold may write to. `None` = the
     /// row had no backing file when this engine spawned, so nothing on disk owns the
     /// reading and the fold stays closed.
     pub(super) file: Option<PathBuf>,
@@ -153,8 +153,8 @@ pub(super) struct MeasuredAnchor {
     /// in-memory pair the moment a stamp no longer matches — from silently re-seeding
     /// an accumulated range from the one process still on the card.
     pub(super) range: Option<(f64, f64)>,
-    /// The `serve_model` the row declared when this engine was launched
-    /// (FINDINGS-BATCH-2026-10-28L [L-2]). The install-time mismatch verdict is about
+    /// The `serve_model` the row declared when this engine was launched.
+    /// The install-time mismatch verdict is about
     /// the process on the card, so it is judged against these bytes: a reload landing
     /// inside the cold-start window must not manufacture or erase the warning, and a
     /// same-name twin must not lend this one its id.
@@ -233,8 +233,7 @@ impl MeasuredAnchor {
     }
 }
 
-/// The serve_model mismatch verdict, decided against the SPAWN-era row
-/// (FINDINGS-BATCH-2026-10-28L [L-2]).
+/// The serve_model mismatch verdict, decided against the SPAWN-era row.
 ///
 /// Taking the anchor instead of the catalog is the whole point: the pre-fix site read
 /// `self.catalog.iter().find(|m| m.name == job.model)` minutes after `begin_spawn`, so
@@ -293,7 +292,7 @@ impl ActorState {
         // The row that owns this reading is the spawn-era FILE, never whichever entry
         // answers to the name now: a reload that renames the yaml keeps the bytes and
         // moves the name, and a re-minted twin steals it, so only the file the engine
-        // was launched from may receive the write (FINDINGS-13 [3]).
+        // was launched from may receive the write.
         let Some((spawned_job, anchor)) = self
             .jobs
             .iter()
@@ -306,7 +305,7 @@ impl ActorState {
         let Some(path) = anchor.file.clone() else {
             // Synthetic row at spawn: no operator file exists, so nothing may be
             // written and nothing may be booked against a name nobody owns. The sampler
-            // still has to be retired here (FINDINGS2-04 [3]): without this line the
+            // still has to be retired here: without this line the
             // task keeps walking the witness every `measured_sample_s` until its 24 h
             // deadline while the actor discards every reading it returns — the same
             // orphan class the row-gone branch below closes, reached from the other
@@ -356,8 +355,8 @@ impl ActorState {
         // 2026-11-06: booked 12.0, held 68.4). Stamp the largest of THIS SPAWN's
         // OWN readings (`plan.high` of each fold, running max) on the slot
         // occupant, matched by spawn ticket: the persisted seed the range merge
-        // above uses is excluded, so a stale pair can never be credited (GSC-01,
-        // review 2026-11-06) — the merged `high` stays exactly where it belongs,
+        // above uses is excluded, so a stale pair can never be credited (GSC-01) —
+        // the merged `high` stays exactly where it belongs,
         // in the catalog row and the persist. Admission projects the release from
         // the own-reading figure; placed before the row-idempotence early return
         // on purpose: the credit speaks for the process the card still holds, not
@@ -496,7 +495,7 @@ impl ActorState {
                         "cannot persist the measured range"
                     );
                     // Warn alone left memory booking a range the file never got
-                    // (FINDINGS-13 [4]'s degraded tail): hand the exact refused
+                    // (the degraded tail): hand the exact refused
                     // figure back to the actor, which drains it from the catalog.
                     // The file rides with it so the drain can only land on the row
                     // this write targeted — never on a same-name twin.
@@ -699,7 +698,7 @@ impl ActorState {
     ) {
         if !self.serving_uncontested(model, ticket) {
             // The one-shot does not retry — the sampler ends when it sends — so a
-            // drop here must be visible (review 2026-10-31, M1: the last silent
+            // drop here must be visible (the last silent
             // consumption of this figure rode the witness baseline).
             tracing::warn!(
                 model,
@@ -748,7 +747,7 @@ impl ActorState {
     /// engine's pid plus its
     /// direct children. Same guard order as [`Self::on_engine_report`] — the
     /// reading must still own an uncontested serving window (a drop is visible
-    /// because the sampler's one-shot does not retry; review 2026-10-31, M1),
+    /// because the sampler's one-shot does not retry),
     /// and the figure must be one this card could carry. The two sources keep
     /// their own provenance and never upgrade each other (doctrine 12): the
     /// engine's status answer folds under `EngineStatus` with
@@ -920,8 +919,8 @@ impl ActorState {
     /// grandfathering rule honest: a `measured_gb` with no stamp books, so a row the
     /// disk refused must not keep a stamp claiming a provenance it never got.
     ///
-    /// The row is found by the same key the fold used, the spawn-era FILE
-    /// (FINDINGS2-04 [1]): keying this leg `name && file` while the fold is keyed
+    /// The row is found by the same key the fold used, the spawn-era FILE:
+    /// keying this leg `name && file` while the fold is keyed
     /// file-only made the name clause the single divergence point — a reload that
     /// renames the yaml leaves the fold booking the file's row and this drain missing
     /// it, so memory keeps a triple the disk refused for the whole serve window

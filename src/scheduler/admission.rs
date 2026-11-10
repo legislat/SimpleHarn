@@ -71,7 +71,7 @@ impl ActorState {
     /// Creates the ledger row of a load that has not started yet — `kind: Load`,
     /// non-terminal, state `Idle`, holding its waiters. Every load begins here, so a
     /// parked one is already on the ledger while its caller waits, instead of being a
-    /// request with no row and no answer (FINDINGS-02 [3]).
+    /// request with no row and no answer.
     ///
     /// # Arguments
     ///
@@ -131,8 +131,8 @@ impl ActorState {
             gate_target: None,
             // The yaml as the catalog saw it, statted inline once per
             // registration on the park path: `apply_catalog` itself is now
-            // zero-fs (FINDINGS-07 [8]), so this is the reload flow's one
-            // surviving inline stat. Accepted as-is (FINDINGS-12-P): it rides
+            // zero-fs, so this is the reload flow's one
+            // surviving inline stat. Accepted as-is: it rides
             // a file the just-applied scan already read, moves no engine and
             // no volume, and an offload would add a second read or couple
             // queue registration to scan internals for one `metadata` call.
@@ -218,7 +218,7 @@ impl ActorState {
     /// Arms a registered load row: takes over its slot, books the need, records the
     /// occupant it must release, and starts the witness sample that drives `Admit`.
     /// Arming clears any unload still queued behind a cancelled swap on that slot
-    /// (FINDINGS-02 [2]): a load the operator asked for after pressing Unload is the
+    /// a load the operator asked for after pressing Unload is the
     /// later instruction.
     pub(super) fn start_queued_load(&mut self, job_id: JobId, slot: usize, mut entry: ModelEntry) {
         self.unload_after_finish.remove(&slot);

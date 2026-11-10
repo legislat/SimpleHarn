@@ -6,7 +6,7 @@
 //! is never published; its lines are named (D3, operator doctrine: "better not
 //! publish anything blindly"), while the scan itself stays non-fatal (§0.2 step 6).
 //!
-//! Catalog-trust rules (FINDINGS-13 \[2]/\[3]/\[7]/\[8]): identity is the yaml FILE
+//! Catalog-trust rules: identity is the yaml FILE
 //! STEM — a `name:` key is legacy-optional and only legal when it equals the stem,
 //! because that value is the one component of a yaml that reaches a filesystem path
 //! (the engine log name); a llama entry whose local `model:` or declared `mmproj:`
@@ -64,11 +64,11 @@ pub enum ScanKind {
     /// A yaml file the scan refuses to publish (Fork C doctrine): it carried at
     /// least one problem line — then the `reason` names every offending line — or it
     /// parsed clean but yielded **no keys at all**, which the `reason` says outright
-    /// (FINDINGS2-13 \[2]; the shape `commit_verified` refuses as `EmptyFile`).
+    /// (the shape `commit_verified` refuses as `EmptyFile`).
     InvalidYaml,
     /// Two published rows collapse to one harness identity, so every name-keyed
     /// path — `/har/load`, the write-back, the measured fold — would silently prefer
-    /// whichever row the scan order happened to put first (FINDINGS-13 \[3]). Warn-only
+    /// whichever row the scan order happened to put first. Warn-only
     /// like the other report classes: **both** files publish and **both** are reported,
     /// naming every claimant; the API's `409` stays the refusal, so nothing here is a
     /// boot-style rejection of a file that is otherwise loadable.
@@ -222,8 +222,8 @@ const CONSUMED_KEYS: &[&str] = &[
 /// golden-yaml test enforces that every member is actually read.
 pub(crate) const SILENT_KEYS: &[&str] = &["bak"];
 
-/// The `host:` key is inert by policy, not by accident (FINDINGS-13 [8]): the
-/// harness forces the loopback bind itself (FINDINGS-09 [1], §5).
+/// The `host:` key is inert by policy, not by accident: the
+/// harness forces the loopback bind itself (§5).
 const HOST_POLICY_HINT: &str =
     "engine host is harness-forced (loopback, \u{a7}5) \u{2014} this key does nothing";
 
@@ -253,8 +253,8 @@ pub(crate) fn inert_key_reason(key: &str, engine: &str) -> String {
 ///
 /// The comment rule, exactly (`split_value_comment` is the one owner of it):
 /// a `#` opens a comment only when an ASCII **space** precedes it outside quotes.
-/// Two deliberate consequences, symmetric on both sides of the reader/writer pair
-/// (FINDINGS-BATCH-2026-10-28B \[1]/\[7]): a **tab never opens a comment**
+/// Two deliberate consequences, symmetric on both sides of the reader/writer pair:
+/// a **tab never opens a comment**
 /// (`key:\t# note` publishes `# note` as the value), and leading whitespace is
 /// trimmed *before* the walk, so a `#` at the very start of the value text is
 /// value too (`key: # tail` publishes `# tail`). Quote such a value (`"# tail"`)
@@ -387,8 +387,8 @@ fn strip_comment(value: &str) -> String {
     split_value_comment(value).0.to_string()
 }
 
-/// The torture set both layers are pinned against (FINDINGS-BATCH-2026-10-28B
-/// [2]): every value-text shape whose boundary the reader and the writer must
+/// The torture set both layers are pinned against: every value-text shape whose
+/// boundary the reader and the writer must
 /// agree on, paired with the value the reader publishes. The cross-layer pins in
 /// `writeback` feed each published value back through the writer and demand a
 /// byte-identical document, so a writer-local comment parser cannot survive the
@@ -421,7 +421,7 @@ pub(crate) const TORTURE_SHAPES: &[(&str, &str)] = &[
     (" \u{540d}\u{524d}", "\u{540d}\u{524d}"),
     (" \u{2192}\u{2192} 4096 # arrows", "\u{2192}\u{2192} 4096"),
     (" caf\u{65}\u{301} # morning", "caf\u{65}\u{301}"),
-    // The peel-edge class FINDINGS2-13 [1] found: the quote peel happens AFTER the
+    // The peel-edge class: the quote peel happens AFTER the
     // slice is trimmed, so a published value may legitimately carry edge whitespace
     // or a residual quote pair. Every one of these must round-trip byte-exactly.
     (" \"a b \" # tail", "a b "),
@@ -608,12 +608,12 @@ pub fn scan_dir(dir: &Path) -> Catalog {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.display().to_string());
-        // Identity is the file stem (FINDINGS-13 [3]/[7]): the stem is the only
+        // Identity is the file stem: the stem is the only
         // name-shaped value that reaches a `File::create` path as `log_name`. Tying
         // identity to the file is what makes a `name:`-key twin unconstructable; it
         // does NOT stop a whitespace-suffixed stem (`qwen3.yaml` beside `qwen3 .yaml`,
         // which `from_flat` trims to one name) from collapsing, and that case is what
-        // the `DuplicateName` post-pass below reports (FINDINGS2-13 [3]).
+        // the `DuplicateName` post-pass below reports.
         let stem = path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
@@ -656,7 +656,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
         }
         if map.is_empty() {
             // The same Fork C voice as the gate above, and the mirror of
-            // `commit_verified`'s `EmptyFile` refusal (FINDINGS2-13 [2]): the
+            // `commit_verified`'s `EmptyFile` refusal: the
             // write-back will not produce a zero-key model file, so the scan must
             // not invent one either. Without this, `blank.yaml` publishes as a
             // spawnable-looking `engine: llama` row named by its file stem with no
@@ -750,7 +750,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                         }
                     }
                 }
-                // Existence traces (FINDINGS-13 [2]): the stat the size needs is
+                // Existence traces: the stat the size needs is
                 // the same stat that proves the file is there — take it once and
                 // refuse a llama entry launched against nothing, before admission
                 // can evict a resident for the doomed spawn. `scheme://` sentinels
@@ -838,7 +838,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                         // A row that already carries the imported surface only
                         // needs its `strata_config` line deleted — name that
                         // door, not the import bridge it does not need; the
-                        // adapter refuses the same sentence (review 25 [7]).
+                        // adapter refuses the same sentence.
                         let reason = if template {
                             crate::engine::strata::mutual_exclusion_sentence(profile)
                         } else {
@@ -1159,13 +1159,13 @@ pub fn scan_dir(dir: &Path) -> Catalog {
             }
         }
     }
-    // One identity may belong to exactly one row (FINDINGS-13 [3]). `from_flat` trims
+    // One identity may belong to exactly one row. `from_flat` trims
     // the stem it is handed, so two files can collapse to one name — `qwen3.yaml`
     // beside `qwen3 .yaml` — and every name-keyed path would then answer for the model
     // with whichever row the scan order put first: `/har/load` would load one engine
     // and the measured fold would book this launch's footprint into the other's bytes.
     // Report every claimant and publish every claimant — the scan's posture is "name
-    // the problem, keep the file visible" (FINDINGS-13 [1] Fork A), never a boot-style
+    // the problem, keep the file visible", never a boot-style
     // rejection — and the API's `409` stays the place an ambiguous query is refused.
     let mut claimants: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for model in &catalog.models {
@@ -1313,8 +1313,7 @@ mod tests {
         assert_eq!(map.get("model").map(String::as_str), Some("F:/a#b.gguf"));
     }
 
-    /// THE boundary rule at the helper level (FINDINGS-13 [8] Fork B, tightened by
-    /// FINDINGS-BATCH-2026-10-28B [1]): the comment begins at the first space-`#`
+    /// THE boundary rule at the helper level: the comment begins at the first space-`#`
     /// of the **normalized** value text, outside quotes, and the tail is verbatim
     /// from that cut; the value is trimmed and unquoted. Leading whitespace can
     /// therefore never manufacture a comment (` # tail` is the value `# tail`), a
@@ -1369,7 +1368,7 @@ mod tests {
         }
     }
 
-    /// FINDINGS-BATCH-2026-10-28B [10]: `unquote` peels one byte per side, which
+    /// `unquote` peels one byte per side, which
     /// is only a char-boundary-safe operation because the accepted quotes are
     /// ASCII. Pinned with multi-byte content between the quotes so the assumption
     /// is tested, not just documented.
@@ -1386,7 +1385,7 @@ mod tests {
 
     #[test]
     fn invalid_keys_and_duplicates_are_reported_not_dropped() {
-        // FINDINGS-13 [9]: `-` is a *valid* key character (the documented charset
+        // `-` is a *valid* key character (the documented charset
         // wins), so the invalid-key half needs a genuinely illegal shape — a space.
         let (map, problems) = parse_flat_yaml("bad key: 1\ngood: 1\ngood: 2\ngpu-layers: 99\n");
         assert_eq!(problems.len(), 2, "{problems:?}");
@@ -1395,7 +1394,7 @@ mod tests {
         assert!(map.contains_key("gpu-layers"), "a hyphenated key parses");
     }
 
-    /// FINDINGS-13 [9], both directions pinned: the parser accepts exactly the
+    /// Both directions pinned: the parser accepts exactly the
     /// charset its doc comment promises — `[A-Za-z_][A-Za-z0-9_-]*` — and rejects
     /// everything else, so neither side of the contract can drift again.
     #[test]
@@ -1540,7 +1539,7 @@ mod tests {
         }
     }
 
-    /// FINDINGS-13 [9] + Fork C boundary: a hyphenated key is a *key*, not a
+    /// The hyphenated-key rule: a hyphenated key is a *key*, not a
     /// problem line — an unconsumed one publishes with the UnknownKey warn.
     /// (`cache_type_k` uses an underscore, so `gpu-layers` is a genuinely unknown
     /// hyphenated key.)
@@ -1715,7 +1714,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS2-13 [2] — the zero-key hole, closed in the direction the doctrine
+    /// The zero-key hole, closed in the direction the doctrine
     /// points: a `.yaml` the acceptance gate treats as a config but which yields no
     /// keys at all publishes nothing **and is reported**, exactly as
     /// `commit_verified` refuses to write it (`EmptyFile`). Before the gate these two
@@ -1911,7 +1910,7 @@ mod tests {
 
     #[test]
     fn a_zero_vram_gb_file_is_named_not_silently_dropped() {
-        // FINDINGS-12 [2]: `vram_gb: 0` books the model free at admission, so the
+        // `vram_gb: 0` books the model free at admission, so the
         // scan must refuse it — and name the file, as it does for every sibling
         // reject, so /har/status says which yaml the operator has to fix.
         let dir = crate::testutil::temp_dir("scan-vram0");
@@ -2012,7 +2011,7 @@ mod tests {
             "noext",
             ".yaml",
             "m.yamlx",
-            // The write-back temp shape (FINDINGS-BATCH-2026-10-28 [5]): a killed
+            // The write-back temp shape: a killed
             // write can never leave a scannable file behind.
             "qwen3.yaml.4242.7.sh.tmp",
         ] {
@@ -2102,7 +2101,7 @@ mod tests {
         assert!(catalog.errors.is_empty(), "{:?}", catalog.errors);
     }
 
-    /// FINDINGS-13 [3]: the twin class dies here — a `name:` that contradicts the
+    /// The twin class dies here — a `name:` that contradicts the
     /// file is refused with the exact operator-actionable sentence, not resolved by
     /// pick-one.
     #[test]
@@ -2142,7 +2141,7 @@ mod tests {
         assert_eq!(catalog.models[0].name, "x");
     }
 
-    /// FINDINGS-13 [2]: a llama entry launched at a GGUF that is not on disk is
+    /// A llama entry launched at a GGUF that is not on disk is
     /// refused AND named — the eviction-before-doomed-spawn hole.
     #[test]
     fn a_llama_entry_with_a_missing_model_file_is_dropped_and_named() {
@@ -2444,7 +2443,7 @@ mod tests {
                 catalog.errors
             );
         }
-        // Review 25 [7]: a row that already carries the imported surface only
+        // A row that already carries the imported surface only
         // needs its `strata_config` line deleted, so the scan names the
         // mutual-exclusion door, not a re-import the row does not need.
         assert!(
@@ -2735,7 +2734,7 @@ mod tests {
         );
     }
 
-    /// FINDINGS-13 [8]: the unknown key is *said*, never swallowed — and never
+    /// The unknown key is *said*, never swallowed — and never
     /// fatal: the entry still publishes (README: preserved for reference).
     #[test]
     fn an_unknown_key_warns_and_the_entry_still_publishes() {
@@ -3306,7 +3305,7 @@ mod tests {
 
     /// The `.basalt` pack is the weights file the launch spawns against: a
     /// missing one is the same `ModelPathMissing` door as llama's `model:`
-    /// (FINDINGS-13 [2] class — refuse before admission can evict a victim for
+    /// (same class — refuse before admission can evict a victim for
     /// the doomed spawn), not a generic typed reject. Falsifier: mapping every
     /// `BasaltRowError::Bad` to `Other` reports the right file under the wrong
     /// kind.
@@ -3985,7 +3984,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Review 2026-10-31 (H1): the fold's persist→rescan round trip. The writer
+    /// The fold's persist→rescan round trip. The writer
     /// (`MeasuredData::edits` in the scheduler) stamps every serving model with the
     /// measured quartet; the scanner must read those keys back silently — a
     /// harness-written key reported as "not read by the harness" is a false
@@ -4247,9 +4246,9 @@ mod tests {
 
     /// Two files, one identity: `from_flat` trims the stem it is handed, so
     /// `qwen3.yaml` beside `qwen3 .yaml` publishes twice under one name — the shape
-    /// FINDINGS-13 [3] named when it asked for the `seen_names` twin of
+    /// named when it asked for the `seen_names` twin of
     /// `seen_containers`. Both rows publish (the scan reports, it never silences:
-    /// FINDINGS-13 [1] Fork A keeps the old bytes visible) and **both** files are
+    /// the old bytes stay visible) and **both** files are
     /// reported, each naming every claimant, so neither wins by scan order. Falsifier:
     /// delete the post-pass and the error list is empty with two rows under one name;
     /// report only the later claimant (the `seen_containers` shape) and the first file

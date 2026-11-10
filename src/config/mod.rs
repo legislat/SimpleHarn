@@ -246,7 +246,7 @@ pub(crate) const MAX_TIMEOUT_S: u64 = ONE_DAY_SECS;
 
 /// One declarative category: slot count, listener, and policy as data (DESIGN Step 5).
 ///
-/// `deny_unknown_fields` (FINDINGS-11 \[1]): the categories carry all the safety policy and
+/// `deny_unknown_fields`: the categories carry all the safety policy and
 /// the file is hand-edited, so a key typo must fail the boot like any other invalid value —
 /// silently defaulting `"max_model": 6` to `max_models: 1` or `"evictable": ["WORK"]` to an
 /// empty list is the D1 defect this file's module doc promises against.
@@ -426,8 +426,7 @@ pub fn config_path_from_env() -> Option<String> {
     std::env::var("SIMPLEHARN_CONFIG").ok()
 }
 
-/// The log-level knob from the process environment: `SIMPLEHARN_LOG` (review
-/// R1R-01 lineage — this knob is the forensic lever named by FINDINGS-15 \[8\]).
+/// The log-level knob from the process environment: `SIMPLEHARN_LOG`.
 /// The value alone is not enough for its consumer: it is read inside
 /// `observability::init`, before a subscriber exists, where a `tracing::warn!`
 /// would reach the no-op dispatcher — so an invalid value is reported by the
@@ -515,7 +514,6 @@ pub struct LlamaEngineConfig {
 /// redaction marker that reports only whether auth is enforced (`REDACTED(present)`
 /// / `REDACTED(absent)`) — presence is reportable, the value never is, so no
 /// `?config` line can ever put the crown jewel into the `/har/log` ring
-/// (FINDINGS-15 \[9]).
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AppConfig {
@@ -1290,7 +1288,7 @@ impl AppConfig {
         }
         // Same shape as the per-model `load_timeout` key (model/mod.rs): a u64 rejects
         // nan/inf outright, and the ceiling guards a typo that would park a load job in
-        // readiness forever (FINDINGS-11 [6]).
+        // readiness forever.
         if self.load_timeout_s == 0 || self.load_timeout_s > MAX_TIMEOUT_S {
             errors.push(ConfigError::Invalid {
                 field: "load_timeout_s".to_string(),
@@ -1831,7 +1829,7 @@ mod tests {
         );
     }
 
-    /// FINDINGS-15 [9] pin (a): the crown jewel never rides `Debug`. Falsifier: put
+    /// Pin (a): the crown jewel never rides `Debug`. Falsifier: put
     /// `Debug` back on the derive list and the sentinel shows up in the text.
     #[test]
     fn the_config_debug_never_prints_the_control_token() {
@@ -1848,7 +1846,7 @@ mod tests {
         );
     }
 
-    /// FINDINGS-15 [9] pin (d): the marker encodes presence, so a constant
+    /// Pin (d): the marker encodes presence, so a constant
     /// placeholder fails here — `None` and `Some` must read differently, and the
     /// unconfigured config must not claim `present`.
     #[test]
@@ -1876,7 +1874,7 @@ mod tests {
         assert_ne!(set, open, "presence is the reportable half of the fact");
     }
 
-    /// FINDINGS-15 [9] pin (c): the redaction is a needle, not a blackout — every
+    /// Pin (c): the redaction is a needle, not a blackout — every
     /// other field still prints, by name and with its value. Falsifier: an impl
     /// that stops listing fields (or redacts more than the token) drops a name, a
     /// value, or trips the single-marker count.
@@ -1991,7 +1989,7 @@ mod tests {
             .contains("listener"));
     }
 
-    /// FINDINGS-15 [9] pin (b): the exposure the finding named is the ring, so this
+    /// Pin (b): the exposure the finding named is the ring, so this
     /// pin runs the ring's own storage path. `RingLayer::on_event` records every
     /// field as `format!("{value:?}")` and hands the entry to `ring_push` — the one
     /// choke point a captured event passes through — so pushing exactly the field a
@@ -2000,8 +1998,8 @@ mod tests {
     ///
     /// The ring is a single process-global `static` shared with
     /// `observability::tests::ring_caps_at_capacity_and_reports_drops`, which drains
-    /// it and asserts the eviction counter (FINDINGS-BATCH-2026-10-28I [2]: 18/20
-    /// co-scheduled runs failed before this was fixed). Two defences, both kept: the
+    /// it and asserts the eviction counter (before this was fixed, 18/20
+    /// co-scheduled runs failed). Two defences, both kept: the
     /// pin takes `lock_ring_for_test` so the two never interleave, and it asserts by
     /// **set difference** over a before/after snapshot — never by total length,
     /// position, or a count of what anyone else wrote, so a future ring writer cannot
@@ -2626,7 +2624,7 @@ mod tests {
 
     #[test]
     fn category_typos_are_refused_not_silently_defaulted() {
-        // FINDINGS-11 [1], mirroring `unknown_field_is_an_error_not_a_silent_default` one
+        // Mirroring `unknown_field_is_an_error_not_a_silent_default` one
         // level down: the categories hold the whole safety policy and are hand-edited, so
         // `"max_model": 6` must fail the boot instead of quietly booting a one-slot AUX.
         let err = parse_mutated(|root| root["categories"][2]["max_model"] = serde_json::json!(6))
@@ -2857,10 +2855,10 @@ mod tests {
 
     #[test]
     fn vram_reserve_must_be_finite_and_non_negative() {
-        // FINDINGS-11 [2]: the reserve is the headroom kept unreachable by admission. The
+        // The reserve is the headroom kept unreachable by admission. The
         // budget subtracts it from the total, so a negative value *grows* the budget the more
         // reserve the operator asks for. serde_json refuses the `1e999` spelling as "number out
-        // of range" (settled here, as FINDINGS-11 [3] asked), so +inf reaches the struct only
+        // of range" (settled here, as asked), so +inf reaches the struct only
         // the way NaN does: hand-built, from a test or a future API-patched config.
         let inf = AppConfig {
             vram_reserve_gb: f64::INFINITY,
@@ -2920,7 +2918,7 @@ mod tests {
 
     #[test]
     fn witness_tolerance_must_be_finite_and_non_negative() {
-        // FINDINGS-11 [2]: the tolerance is the band of witness disagreement that is not a
+        // The tolerance is the band of witness disagreement that is not a
         // re-sample trigger. The settle gate accepts `baseline + tolerance`, so an inf
         // tolerance makes that test always true and deletes the last check before a spawn.
         // +inf arrives hand-built, as in `vram_reserve_must_be_finite_and_non_negative`.
@@ -2952,7 +2950,7 @@ mod tests {
 
     #[test]
     fn vram_total_ceiling_must_be_finite_and_positive() {
-        // FINDINGS-11 [3]: the old `<= 0.0` form was false for exactly the two values that
+        // The old `<= 0.0` form was false for exactly the two values that
         // make the ledger ceiling meaningless. +inf arrives hand-built, as in
         // `vram_reserve_must_be_finite_and_non_negative`.
         let inf = AppConfig {
@@ -2985,7 +2983,7 @@ mod tests {
 
     #[test]
     fn release_timeout_refuses_zero() {
-        // FINDINGS-11 [5]: the reaper kills the victim first, so a zero deadline loses the
+        // The reaper kills the victim first, so a zero deadline loses the
         // model it meant to free and never spawns the new one.
         let zero = AppConfig::parse("{\"release_timeout_s\": 0}").expect("parses");
         assert!(
@@ -2998,7 +2996,7 @@ mod tests {
 
     #[test]
     fn settle_timeout_refuses_zero() {
-        // FINDINGS-11 [5]: same shape as release_timeout_s, one step later — by the time the
+        // Same shape as release_timeout_s, one step later — by the time the
         // settle gate runs the eviction has already happened.
         let zero = AppConfig::parse("{\"settle_timeout_s\": 0}").expect("parses");
         assert!(
@@ -3119,7 +3117,7 @@ mod tests {
 
     #[test]
     fn load_timeout_is_bounded_below_and_at_one_day() {
-        // FINDINGS-11 [6]: the per-model `load_timeout` key already carries this ceiling
+        // The per-model `load_timeout` key already carries this ceiling
         // (model/mod.rs); this field is its default, so it needs the same bound.
         let day = AppConfig::parse("{\"load_timeout_s\": 86400}").expect("parses");
         assert!(day.validate().is_empty(), "86_400 is the inclusive ceiling");
@@ -3134,7 +3132,7 @@ mod tests {
 
     #[test]
     fn public_port_zero_is_refused() {
-        // FINDINGS-11 [7]: port 0 binds an ephemeral listener, so /har/status and the tray
+        // Port 0 binds an ephemeral listener, so /har/status and the tray
         // report a green category no client can address at the documented port — and 0 is the
         // harness's own "no port" sentinel, which hides the slot from the no-`model` proxy.
         let zero =
@@ -3152,7 +3150,7 @@ mod tests {
 
     #[test]
     fn engine_port_zero_is_refused() {
-        // FINDINGS-11 [7]: `--port 0` hands the engine an OS-chosen ephemeral port while the
+        // `--port 0` hands the engine an OS-chosen ephemeral port while the
         // harness probes :0 until the readiness deadline and the kill path keys the port the
         // engine does not hold. The list length must equal max_models, or the plan
         // auto-assigns and the pinned 0 never reaches validation.

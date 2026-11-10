@@ -2,7 +2,8 @@
 // dependencies. A source comment states the invariant and the reason; the
 // durable ledger owns the history. This checker flags internal-history
 // references inside line and block comments: task IDs, finding IDs, rule IDs,
-// private-layer paths, ruling dates, and release-version pins.
+// private-layer paths, ruling dates, ledger finding IDs ("FINDINGS-12"),
+// review references ("review 25 [4]"), and release-version pins.
 //
 // Modes: report mode is the default and always exits 0 with a per-file count;
 // pass -Fail to exit 1 while any non-allowlisted hit remains.
@@ -26,6 +27,12 @@ const FAIL_MODE = process.argv.slice(2).some((a) => /^(-{1,2}fail)$/i.test(a));
 const PATTERNS = [
   { name: "task-id", re: /TASK-[A-Z]/ },
   { name: "finding-id", re: /\bF-\d+\b/ },
+  { name: "finding-ledger", re: /\bFINDINGS-\d+\b/ },
+  // Ledger variants: FINDINGS2-0910, FINDINGS-BATCH-2026-10-28B, REV9-01.
+  { name: "finding-ledger-variant", re: /\b(?:FINDINGS\d+-|FINDINGS-BATCH-|REV\d+-)\d/ },
+  // A review citation is "review <n>" with at most three digits, so a dated
+  // cite like "review 2026-10-26" (a four-digit year) is not a review number.
+  { name: "review-ref", re: /\breview\s+\d{1,3}\b/i },
   { name: "rule-id", re: /\bR\d+-\d+\b/ },
   { name: "handoff-path", re: /handoff\//i },
   { name: "ruling-date", re: /ruling\s+20\d\d-/i },

@@ -152,7 +152,7 @@ struct EngineProc {
     /// never terminate the successor that inherited the port.
     generation: u64,
     /// The launch argv, kept only so the probe fast-fail can say WHICH path the
-    /// early-exited engine was launched against (FINDINGS-13 [2]'s companion: an
+    /// early-exited engine was launched against (the companion rule: an
     /// engine that dies on a deleted model must name it, not just its exit code).
     argv: Vec<String>,
     /// The child's OS pid captured at spawn. `Child::id()` reports `None` once
@@ -649,7 +649,7 @@ impl EngineRuntime for ProcessRuntime {
         // runtime never invents one. Every reap stays ownership-scoped, in two
         // parts: the shared name rule gates the pre-reap below, and the claim
         // ledger — minted only on a spawn that really started — gates the kill
-        // reap and the boot reclaim (FINDINGS2-0910 [3]).
+        // reap and the boot reclaim.
         let container = match &ticket.kind {
             ResourceKind::Container { name } => Some(name.clone()),
             ResourceKind::ChildProcess => None,
@@ -664,7 +664,7 @@ impl EngineRuntime for ProcessRuntime {
             // docker could resolve as a container-ID prefix can never reach
             // `docker rm -f` from here. It is deliberately NOT a ledger write: the
             // claim that authorizes future reaping is minted only once a client
-            // actually started (FINDINGS2-0910 [3]), so a load that failed before the
+            // actually started, so a load that failed before the
             // spawn leaves no ownership evidence behind. A refused name reaps nothing.
             if valid_container_name(name) {
                 reap_container(&self.wsl_distro, &self.wsl_user, name).await;
@@ -688,7 +688,7 @@ impl EngineRuntime for ProcessRuntime {
         // file name is filesystem-bare, so keep-N bounds one model's pair of
         // classes and two models cannot prune each other through a raw-vs-clean
         // split. Names that sanitize identically (`a b` / `a_b`) share one pool
-        // by design — the accepted rule of the staged profiles (review 25 [3]).
+        // by design — the accepted rule of the staged profiles.
         let pool = sanitize_slug(&spec.log_name);
         prune_model_logs(&self.logs_dir, &pool, ENGINE_LOG_KEEP);
         let epoch = SystemTime::now()
@@ -748,14 +748,14 @@ impl EngineRuntime for ProcessRuntime {
             // Nothing is written as ownership evidence before the seal, so a
             // failed seal retracts nothing: the frozen child dies here with no
             // claim, no custody record, and no instruction executed (the
-            // success-path-only rule of FINDINGS2-0910 [3], now enforced by
+            // success-path-only rule, now enforced by
             // ordering alone).
             let _ = child.kill().await;
             return Err(SpawnError::SpawnFailed { reason });
         }
         // The claim is the positive ownership evidence the boot reclaim demands, so it
         // is minted HERE — only once a client really started and stands sealed in its
-        // kill job (FINDINGS2-0910 [3]).
+        // kill job.
         // Minting it before the spawn let a load that failed at `create_dir_all`,
         // the log file or the spawn itself leave `ninfer-claims.json` holding a name
         // this harness never started, which then passed all three boot gates and
@@ -870,7 +870,7 @@ impl EngineRuntime for ProcessRuntime {
             self.tree.terminate_group(&engine.job);
             // A confirmed reap retires the duty forever: re-kills (cancel,
             // release-retry) must not re-run `docker rm` (review, 2026-10-26).
-            // An UNCONFIRMED reap re-arms on the next explicit kill (REV7-01),
+            // An UNCONFIRMED reap re-arms on the next explicit kill,
             // so a failed `docker rm` cannot burn the slot until boot; the
             // ledger and the generation verdict keep every retry scoped.
             let duty = should_reap(
@@ -883,7 +883,7 @@ impl EngineRuntime for ProcessRuntime {
             duty
         };
         // A detached WSL container survives its client process: reap it by name —
-        // but the LEDGER, not the ticket, is the reap authority (FINDINGS2-0910 [3]).
+        // but the LEDGER, not the ticket, is the reap authority.
         let action = match duty {
             Some(name) => {
                 let claimed = self
@@ -992,7 +992,7 @@ impl EngineRuntime for ProcessRuntime {
                 /// the ledger still holds the claim: the container may still
                 /// hold the card, so entry and claim stay (see the return
                 /// contract of [`reap_container`]). Carries the held entry's
-                /// container name (REV7-04: it is always present here).
+                /// container name (it is always present here).
                 ReapUnconfirmed(String),
             }
             let outcome = {
@@ -1005,14 +1005,14 @@ impl EngineRuntime for ProcessRuntime {
                         ReleaseOutcome::Superseded
                     }
                     TableVerdict::Ours => {
-                        // REV7-04: one lookup for the held entry. REV7-02: a
-                        // container entry holds the release only while the
+                        // One lookup for the held entry. A container entry holds
+                        // the release only while the
                         // ledger still backs it with a claim AND its reap has
                         // not confirmed. With no claim there is no ownership
                         // evidence left to preserve (boot reclaim already
                         // refuses the name), so the plain G12 pair decides and
                         // the SkipUnclaimed shape must not burn the slot until
-                        // boot; REV7-01's explicit re-kill is the live retry.
+                        // boot; the explicit re-kill is the live retry.
                         let entry = engines
                             .get(&ticket.port)
                             .expect("invariant: the verdict above just read Ours for this port");
@@ -1045,7 +1045,7 @@ impl EngineRuntime for ProcessRuntime {
                         // ownership claim ends -- a later hand-started
                         // container reusing the name can never inherit a claim
                         // this harness no longer needs. An entry the ledger
-                        // does not hold (the SkipUnclaimed shape, REV7-02)
+                        // does not hold (the SkipUnclaimed shape)
                         // gets nothing written to its name: `unclaim` persists
                         // only a claim it actually removes.
                         self.claims
@@ -1211,7 +1211,7 @@ impl EngineRuntime for ProcessRuntime {
         // `log_name` RAW as the instance identity, so BOTH forensic classes are
         // keyed under the sanitized stem and one per-model keep-N bounds the
         // pair. Names that sanitize identically share one pool by design, the
-        // accepted rule of the staged profiles (review 25 [3]).
+        // accepted rule of the staged profiles.
         let prefix = sanitize_slug(model);
         let epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1331,7 +1331,7 @@ fn looks_like_local_path(candidate: &str) -> bool {
 /// The argv positions that carry a model file come from the `EnginePolicy`
 /// table's `path_markers` cells (llama `-m <path>`, strata `--config <path>`);
 /// a missing file at one of these slots turns the bare exit status of a
-/// fast-fail into the file the operator must restore (FINDINGS-13 [2]'s
+/// fast-fail into the file the operator must restore (the
 /// load-path companion); the catalog is never mutated from here (operator
 /// ruling — a transient deletion must not silently rewrite the page).
 fn early_exit_report(argv: &[String], status: &str) -> (String, Option<String>) {

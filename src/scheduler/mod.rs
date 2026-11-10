@@ -82,7 +82,7 @@ const IDLE_TICK: Duration = Duration::from_secs(2);
 /// (`events.rs`), the elastic card ladder, and the RAM ladder (`occupant.rs`).
 const SAMPLER_LIFETIME_BOUND: Duration = Duration::from_secs(86_400);
 /// What a parked load is answered with when the job it waited behind leaves the slot
-/// occupied (FINDINGS-02 [3]). `Cancelled` is the variant that fits: the API maps it
+/// occupied. `Cancelled` is the variant that fits: the API maps it
 /// to 409 (a conflict the caller can retry once the slot is free), the ledger records
 /// it under outcome `cancelled` so `fault_of` never pins a red headline on a load the
 /// card was simply busy for, and the message names the fact the client can act on —
@@ -97,7 +97,7 @@ impl Scheduler {
     /// the scan of `models_dir` (§0.2 step 6, re-run by [`Command::Reload`]) happens
     /// **on the actor task, never on the boot thread** — `start()` returns while it
     /// is still pending, so the boot thread reaches `TcpListener::bind` unblocked
-    /// (FINDINGS-14 \[1]: an operator-chosen `modelconf_dir` can live on a sleeping
+    /// (an operator-chosen `modelconf_dir` can live on a sleeping
     /// USB or a disconnected `\\NAS` volume, and a wedged pre-bind scan would stall
     /// the listeners and `/har/status` while the already-held single-instance guard
     /// refuses the operator's relaunch — the same stall the A6 precedent in
@@ -166,8 +166,8 @@ struct Occupant {
     /// unreadable at install: no capture, and the verdict never accuses on absence
     /// of evidence (same posture as the queued row's KEEP legs).
     spawn_config: Option<(PathBuf, crate::model::FileFingerprint)>,
-    /// The cached verdict the snapshot reads (zero fs on the status path,
-    /// FINDINGS2-04 [2]): refreshed at install, on the reload turn
+    /// The cached verdict the snapshot reads (zero fs on the status path):
+    /// refreshed at install, on the reload turn
     /// ([`ActorState::refresh_stale_markers`]) and on the harness's own
     /// [`ActorState::on_model_file_written`] — never anywhere else.
     stale_config: bool,
@@ -211,12 +211,12 @@ struct ActorState {
     /// crash-looping load — rather than a job-scoped handle.
     snapshot_in_flight: HashSet<String>,
     /// `(port, generation)` of every `serve_id` re-discovery in flight
-    /// (FINDINGS-06 [8]): one probe per spawn at a time — the next resolve of
+    /// one probe per spawn at a time — the next resolve of
     /// an id-less occupant retries, but never piles concurrent `GET /v1/models`
     /// calls behind a slow engine.
     serve_id_refresh: HashSet<(u16, u64)>,
     /// `(port, generation)` of every occupant whose re-discovery silence has
-    /// already been named (FINDINGS-11 [2]): the warn marks the CHANGE into
+    /// already been named: the warn marks the CHANGE into
     /// silence, the same doctrine as the R5 reconcile dedupe — a permanently
     /// silent engine hammered by resolves logs one warn per spawn, never one
     /// per probe. A landed id clears the mark (the silence state ended, so a
@@ -262,12 +262,12 @@ struct ActorState {
     /// Last proxy-side use per model (idle sweep input, Step 5).
     last_used: HashMap<String, Instant>,
     /// Slots holding a queued (parked) load, T3.4, mapped to the ledger row registered
-    /// when it parks (FINDINGS-02 [3]): its model, waiters and state all live on that
+    /// when it parks: its model, waiters and state all live on that
     /// row, and [`ActorState::start_pending`] arms the same row rather than creating
     /// a second one.
     pending: HashMap<usize, JobId>,
     /// Slots whose occupant an operator's unload must still free once the in-flight
-    /// job it cancelled terminalizes (FINDINGS-02 [2]: unload = cancel *and* unload).
+    /// job it cancelled terminalizes: unload = cancel *and* unload.
     unload_after_finish: HashSet<usize>,
     /// Waiters attached to rescans whose off-thread scan has not landed yet, each
     /// stamped with the dispatch sequence of the scan they wait behind.
@@ -298,7 +298,7 @@ struct Slot {
 /// does**, before it takes any message: commands, ticks and reads queue behind it on
 /// the unbounded channel, exactly as when the scan ran synchronously in
 /// [`ActorState::new`] — but its filesystem work runs on a blocking thread
-/// (FINDINGS-13 [6]) while the actor task still *awaits* it before entering the
+/// while the actor task still *awaits* it before entering the
 /// loop (the 4389a0a ordering: scan first, everything queues behind). What a
 /// stalled `modelconf_dir` volume can no longer delay: the listener bind, the
 /// tray's start, and boot readiness. What still queues behind the first scan:
@@ -443,7 +443,7 @@ async fn actor_loop(mut state: ActorState, mut rx: mpsc::UnboundedReceiver<Actor
 impl ActorState {
     /// Builds the actor state **without scanning**: the initial catalog scan belongs
     /// to [`actor_loop`], never to the thread that calls [`Scheduler::start`]
-    /// (FINDINGS-14 [1]). Identical to [`ActorState::empty`]; kept as the canonical
+    /// Identical to [`ActorState::empty`]; kept as the canonical
     /// constructor the boot path funnels through.
     fn new(
         cfg: AppConfig,
@@ -565,12 +565,12 @@ impl ActorState {
                 self.publish();
             }
             Command::Reload => {
-                // FINDINGS-13 [6]: dispatch the scan off-thread and park the
+                // Dispatch the scan off-thread and park the
                 // waiter; the actor keeps answering ticks, events and every other
                 // command against the old catalog until the result lands as
                 // `ActorMsg::CatalogLoaded`, which is also what resolves the
                 // waiter — so `/har/rescan` still means "new catalog applied".
-                // FINDINGS-07 [8] finishes the half: the marker/queue round used
+                // The same discipline finishes the half: the marker/queue round used
                 // to stat its drift evidence inline on the apply turn; it now
                 // travels in the same message, stat'ed on this task's blocking
                 // legs (`drift_capture_files`/`queued_load_candidates` read only
@@ -651,7 +651,7 @@ impl ActorState {
             // A load still queued — registered at park time, never armed — spawned
             // nothing and owes no release, so the `Reap -> Idle` edges the graph
             // requires of a working state do not apply: answer it from `Idle` and let
-            // go of its queue place, or it could still start on a later finish (FINDINGS-02 [3]).
+            // go of its queue place, or it could still start on a later finish.
             self.finish_queued_load(job_id, Err(error), "cancelled");
             return;
         }
@@ -749,7 +749,6 @@ impl ActorState {
                     // The predecessor did not free the slot, so the queued load will
                     // never start on its own: answer it and take its queue place, or it
                     // would fire unbidden on some later finish of this slot
-                    // (FINDINGS-02 [3]).
                     self.finish_queued_load(
                         queued,
                         Err(SchedulerError::Cancelled(PARKED_SLOT_NOT_FREED.to_string())),
@@ -758,7 +757,7 @@ impl ActorState {
                 }
             }
             // The unload the operator asked for while this job was in flight takes the
-            // occupant the cancel could not free (FINDINGS-02 [2]). The cancel's own
+            // occupant the cancel could not free. The cancel's own
             // release may already have done that, in which case the flag is only
             // consumed: a slot is never unloaded twice.
             if self.unload_after_finish.remove(&slot) && self.slots[slot].occupant.is_some() {
@@ -854,7 +853,7 @@ impl ActorState {
     /// unloaded, cancelled, refused as an unknown model, or stranded by a predecessor
     /// that kept the occupant. Its waiters are answered and the row recorded with the
     /// note the caller gives, so `/har/jobs` shows what became of a queued load
-    /// (FINDINGS-02 [3]). `finish` performs no state steps, which is what keeps this
+    /// `finish` performs no state steps, which is what keeps this
     /// legal from `Idle`: the reap edges belong to jobs that actually started.
     ///
     /// Removes the slot's queue place when it still points at this row, so a queued
@@ -1121,7 +1120,7 @@ mod retention_tests {
             spawn_config: None,
             stale_config: false,
             // An id stands for the fixture: without it the resolve would arm
-            // the FINDINGS-06 [8] re-discovery task, and the sync pins run with
+            // the serve-id re-discovery task, and the sync pins run with
             // no reactor.
             serve_id: Some(name.to_string()),
             measure: None,

@@ -1,7 +1,7 @@
 //! The wire half: the mailbox vocabulary, the step-result events, and the three
 //! release guards. Pure data plus Drop: the only reach is the channel send.
 //!
-//! Owns the release-per-exit rule (R9 C1, R5, FINDINGS-06 [8]): each guard is
+//! Owns the release-per-exit rule (R9 C1, R5): each guard is
 //! the sole sender of its `*Done` answer, so every exit of a spawned task lands
 //! exactly one release message and an in-flight mark can never wedge.
 
@@ -18,7 +18,7 @@ use super::{Command, DriftStats, JobId, MeasuredData, SchedulerStatus, Waiter};
 /// Releases a detached failed-launch snapshot's in-flight mark on drop (R9 C1):
 /// constructed inside the spawned fetch, dropped by every exit path (normal end,
 /// early return, panic unwind), so a wedged mark can never permanently blind the
-/// next failure of the same container name (review 2026-10-31, L9).
+/// next failure of the same container name.
 pub(super) struct SnapshotRelease {
     pub(super) tx: mpsc::UnboundedSender<ActorMsg>,
     pub(super) container: String,
@@ -46,7 +46,7 @@ impl Drop for ReconcileRelease {
     }
 }
 
-/// Serve-id re-discovery release (FINDINGS-06 [8]): every exit of the probe
+/// Serve-id re-discovery release: every exit of the probe
 /// task — normal end, panic, cancellation — lands exactly one
 /// [`ActorMsg::ServeIdRefreshed`], so the in-flight mark can never wedge the
 /// next resolve into silence without a retry. An answer the probe never
@@ -79,16 +79,16 @@ pub(super) enum ActorMsg {
     /// The off-thread scan dispatched by [`Command::Reload`] finished; apply it
     /// with the same wholesale replace as the boot scan and resolve the queued
     /// reload waiters — their reply means "the new catalog is applied", never
-    /// "the scan was dispatched" (FINDINGS-13 [6] keeps the API-visible semantics).
+    /// "the scan was dispatched"; the API-visible semantics stay so.
     CatalogLoaded {
         catalog: Catalog,
         seq: u64,
         /// The `llama-server.exe` verdict gathered on the same blocking leg as the
-        /// scan (FINDINGS2-04 [2]); `None` means nothing to report.
+        /// scan; `None` means nothing to report.
         binary: Option<ScanError>,
         /// The drift stats for the marker/queue rounds this application runs —
         /// gathered on the reload task's blocking legs so the apply turn never
-        /// stats (FINDINGS-07 [8]).
+        /// stats.
         drift: DriftStats,
     },
     /// The blocking scan task itself failed (panic or cancel): the previous
@@ -160,7 +160,7 @@ pub(super) enum ActorMsg {
     /// with the stranded set (possibly empty); `None` = the probe could not run
     /// — silence, and the last-reported set stands untouched.
     ReconcileDone(Option<BTreeSet<String>>),
-    /// A `serve_id` re-discovery (FINDINGS-06 [8]) for a loaded occupant that
+    /// A `serve_id` re-discovery for a loaded occupant that
     /// installed with no id has finished: `Some` = the id the engine now
     /// reports; `None` = still silence, and the next resolve retries.
     /// `(port, generation)` names the spawn the probe was launched for — an
@@ -195,7 +195,7 @@ pub(super) enum ActorMsg {
         outcome: Result<(f64, Option<crate::model::FileFingerprint>), String>,
     },
     /// The blocking write-back of a measured figure was refused by the disk
-    /// (Fork C, FINDINGS-13 [4] follow-through): the actor must stop booking in
+    /// (Fork C follow-through): the actor must stop booking in
     /// memory what disk rejected. Carries the exact figure — pair **and provenance
     /// stamps** — the failed write attempted, so a reading that has since been
     /// superseded never drains the newer (possibly persisted) values. `file` is the

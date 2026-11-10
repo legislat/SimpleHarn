@@ -24,11 +24,11 @@
 //! is confirmed by its own read-back, and the error string tells the truth about
 //! where the original bytes ended up (restored, backed up, believed to be at the
 //! copy, or nowhere). Fixes v3.3 defects D3/D4 (non-atomic, CRLF-normalizing,
-//! comment-clobbering write-back whose failure still answered 200) and
-//! FINDINGS-13 \[5] (the restore was the one non-atomic write and its failure was
-//! discarded behind an unconditional "original restored" claim).
+//! comment-clobbering write-back whose failure still answered 200) and closed the
+//! last non-atomic write: the restore, whose failure was discarded behind an
+//! unconditional "original restored" claim.
 //!
-//! Failures are typed ([`WritebackError`], FINDINGS-13 \[10]) and every variant's
+//! Failures are typed ([`WritebackError`]) and every variant's
 //! `Display` is the exact sentence the module answered before typing, so nothing
 //! user-visible changed; the HTTP class is the api's call at
 //! `crate::api::ApiError::from_writeback` — a caller's impossible value or absent
@@ -41,9 +41,9 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
-/// Every failure this module answers with, typed (FINDINGS-13 \[10]; the DEFERRED
-/// line in `DECISIONS.md` released it on the next writeback feature-touch, which
-/// the change-side quote ruling was — a refusal that is a caller error must not
+/// Every failure this module answers with, typed (the DEFERRED
+/// line in `DECISIONS.md` released it on the next writeback feature-touch —
+/// a refusal that is a caller error must not
 /// surface as a harness error).
 ///
 /// **`Display` is byte-identical to the string each site answered before typing**:
@@ -114,7 +114,7 @@ pub enum WritebackError {
     },
     /// The bytes just renamed did not read back as a valid file; the original was
     /// restored, or the detail says exactly where its bytes ended up (the anti-lie
-    /// contract of FINDINGS-13 \[5]).
+    /// contract).
     #[error("post-write validation failed; {detail}")]
     PostWriteValidation {
         /// What happened to the original bytes and the incident copy, verbatim as
@@ -129,7 +129,7 @@ pub enum WritebackError {
         /// The key the value was being written under.
         key: String,
         /// The caller's word, exactly as it arrived (there is no entry
-        /// normalization — FINDINGS2-13 \[1]).
+        /// normalization).
         value: String,
     },
 }
@@ -146,7 +146,7 @@ fn write_gate() -> &'static Mutex<()> {
 
 /// Takes [`write_gate`] for the whole of a caller's read-modify-write, so another
 /// file writer joins this module's critical section instead of racing it — the
-/// config write-back in `api` is such a writer (FINDINGS-07 [3]). The gate is
+/// config write-back in `api` is such a writer. The gate is
 /// exposed as a guard rather than as the `Mutex` so no caller can pick its own
 /// poisoning policy: a poisoned gate is the residue of a failed write, never a
 /// broken invariant, so it is taken as-is exactly as every internal caller does.
@@ -156,7 +156,7 @@ pub(crate) fn acquire_write_gate() -> MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// Test-only lost-update probe (FINDINGS-13 [11]). Armed for a path, the gated
+/// Test-only lost-update probe. Armed for a path, the gated
 /// read-modify-write holds its critical section open for a few milliseconds
 /// **after the read and before the commit** — precisely the window [`write_gate`]
 /// exists to close, so an ungated racer is caught inside it rather than by
@@ -167,7 +167,7 @@ pub(crate) fn acquire_write_gate() -> MutexGuard<'static, ()> {
 /// probe is **determinism insurance, not the detector**: with the flushing publish
 /// one read-modify-write is already ~10 ms on the measured host, and the hammer
 /// still swallowed keys 5/5 there with the sleep removed
-/// (FINDINGS-BATCH-2026-10-28C [6]) — it is there for faster or quieter machines,
+/// — it is there for faster or quieter machines,
 /// where the real window is microseconds and a naive hammer could pass both ways.
 /// Arms are per-path (concurrent tests never steal one another's probe).
 #[cfg(test)]
@@ -352,7 +352,7 @@ pub fn set_key_in_text(
     let body = text.strip_suffix('\n').unwrap_or(text);
     let mut out: Vec<String> = body.split('\n').map(str::to_string).collect();
     let bom = text.starts_with('\u{feff}');
-    // No entry normalization of the incoming word at all (FINDINGS2-13 [1]): the
+    // No entry normalization of the incoming word at all: the
     // old `trim` here plus a peel in the comparison normalized AWAY bytes the
     // reader's own published value carries (the peel exposes `"a b "` as `a b `),
     // so an identical write was classified a change and the value mutated. The
@@ -365,8 +365,8 @@ pub fn set_key_in_text(
             // comment and the '\r' all stay exactly as authored. "Identical" means the
             // reader's published value IS the caller's word, byte for byte — not
             // "equal after trimming and peeling", which is what let a republish of the
-            // reader's own value churn the line and drop the comment
-            // (FINDINGS2-13 [1]). A real change harness-formats the line, which is
+            // reader's own value churn the line and drop the comment.
+            // A real change harness-formats the line, which is
             // what drops the stale comment.
             let line = normalized_line(&out[index]);
             let colon = line.find(':').expect(
@@ -395,7 +395,7 @@ pub fn set_key_in_text(
             // A new line is a real change too, so it shares the emit rule exactly.
             let emit = emit_form(key, value)?;
             // Any CRLF in the file makes the appended line CRLF too — "any", not
-            // dominant (FINDINGS2-13 [5]): a single CRLF line among LFs matches here,
+            // dominant: a single CRLF line among LFs matches here,
             // and the new line joins the majority style in every real file.
             let ending = if text.contains("\r\n") { "\r" } else { "" };
             out.push(format!("{key}: {emit}{ending}"));
@@ -419,8 +419,7 @@ pub fn set_key_in_text(
 /// The line is read through [`normalized_line`], the same normalizer the scan
 /// parser uses: `str::trim` does not remove U+FEFF (it is category Cf, not
 /// White_Space), so without that strip a BOM'd first line is invisible here
-/// while scan happily reads its key. The asymmetry is what FINDINGS-13 [1]
-/// reports: a batch retag reads the missing match as "absent key", silently
+/// while scan happily reads its key. The asymmetry reads: a batch retag reads the missing match as "absent key", silently
 /// no-ops the `is_embedding_model` removal, and the next scan drops the whole
 /// model with `EmbeddingCategoryConflict` — after the edit answered success.
 fn find_key_line<'a>(mut lines: impl Iterator<Item = &'a str>, key: &str) -> Option<usize> {
@@ -467,7 +466,7 @@ pub fn set_flag_on_file(path: &Path, key: &str, value: Option<&str>) -> Result<(
 /// otherwise drop the whole model after a failure between two writes (review,
 /// 2026-10-27). A category retag is the same shape: the non-EMB category write and
 /// the `is_embedding_model` removal must land together, or the file between the two
-/// writes is a scan-time conflict that drops the model (FINDINGS-12 \[1]).
+/// writes is a scan-time conflict that drops the model.
 ///
 /// # Arguments
 ///
@@ -486,7 +485,7 @@ pub fn set_flags_on_file(
     edits: &[(&str, Option<&str>)],
 ) -> Result<(), WritebackError> {
     // The same gate as [`set_flag_on_file`] — one mutex for every public entry, or
-    // the two entries race each other (FINDINGS-13 [11], pinned by
+    // the two entries race each other (pinned by
     // `single_key_and_batch_entries_share_one_gate`).
     let _gate = acquire_write_gate();
     let original = std::fs::read_to_string(path).map_err(|e| WritebackError::Unreadable {
@@ -529,7 +528,7 @@ pub(crate) fn commit_verified(
         return Err(WritebackError::EmptyFile);
     }
     // True no-op: the edit produced the bytes that are already on disk, so there
-    // is nothing to commit (FINDINGS-BATCH-2026-10-28B [6]). Deliberately *after*
+    // is nothing to commit. Deliberately *after*
     // the two checks above, so a no-op against a file that already has problem
     // lines or would parse empty still refuses exactly as before (13[4] Fork C
     // kept `commit_verified` blanket) — the short-circuit removes the temp write,
@@ -643,10 +642,10 @@ pub(crate) fn write_synced(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// forensic copy is taken **before** the restore is attempted, then the restore
 /// runs through the same temp+rename machinery as the main write, and the detail
 /// names the outcome of both paths — the anti-lie fix for the old unconditional
-/// "original restored" (FINDINGS-13 [5]). The copy location is claimed as fact
+/// "original restored". The copy location is claimed as fact
 /// only when the copy's own read-back confirmed the bytes; an unconfirmed copy
-/// degrades the message to a believed-to-be-there form (FINDINGS-BATCH-2026-10-28
-/// [3]). Returns the detail half of [`WritebackError::PostWriteValidation`], whose
+/// degrades the message to a believed-to-be-there form.
+/// Returns the detail half of [`WritebackError::PostWriteValidation`], whose
 /// `Display` adds the shared `post-write validation failed; ` opening.
 fn restore_after_failed_validation(path: &Path, original: &str) -> String {
     let bak = forensic_copy(path, original);
@@ -691,7 +690,7 @@ fn restore_after_failed_validation(path: &Path, original: &str) -> String {
 
 /// Outcome of the incident-copy attempt, so the honest report can distinguish
 /// "bytes provably on disk at this path" from "bytes believed to be there" from
-/// "no trustworthy copy at all" (FINDINGS-BATCH-2026-10-28 [3]).
+/// "no trustworthy copy at all".
 enum Bak {
     /// Written, then read back equal to the intended bytes.
     Verified(PathBuf),
@@ -715,7 +714,7 @@ fn forensic_bak_path(target: &Path) -> PathBuf {
 /// Confirms a read-back: `read` (the result of re-reading `path` after writing
 /// `expected` bytes there) must match byte-for-byte, or the returned error
 /// names the `claim` and the path truthfully. One helper for the three places
-/// that must never trust an unverified re-read (FINDINGS-BATCH-2026-10-28 [3]).
+/// that must never trust an unverified re-read.
 fn compare_read_back(
     read: Result<String, std::io::Error>,
     expected: &str,
@@ -802,7 +801,7 @@ fn forensic_copy(target: &Path, original: &str) -> Bak {
 /// of the temp, one rename, then a post-rename re-read of the target: the
 /// outcome is binary (old bytes or unrestored bytes, never half) and `Ok` is
 /// returned only with the target's own bytes confirmed, symmetric with the main
-/// write's post-rename revalidation (FINDINGS-BATCH-2026-10-28 [3]). Errors
+/// write's post-rename revalidation. Errors
 /// carry the io detail for the honest message.
 fn restore_original_bytes(path: &Path, original: &str) -> Result<(), String> {
     #[cfg(test)]
@@ -865,7 +864,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if month <= 2 { year + 1 } else { year }, month, day)
 }
 
-/// Test-only post-write corruption seam (FINDINGS-13 [5] Fork B), in the style of
+/// Test-only post-write corruption seam, in the style of
 /// scan's `arm_scan_pause`: armed for exactly one target path; the next
 /// `commit_verified` post-rename re-read of **that** file has only its in-memory
 /// read-back corrupted (a junk line `parse_flat_yaml` must report), so the
@@ -914,7 +913,7 @@ pub(crate) fn arm_post_write_corrupt(path: &Path, lock_target: bool) {
 /// test's temp dir frees. Keyed by target path exactly as the corrupt arms above:
 /// a wholesale `clear()` let one seam test drop the handle another seam test was
 /// still depending on, and the wedged restore then succeeded and the other test
-/// false-failed (FINDINGS-BATCH-2026-10-28C [4]).
+/// false-failed.
 #[cfg(all(test, windows))]
 pub(crate) fn release_post_write_locks(path: &Path) {
     post_write_locks()
@@ -967,7 +966,7 @@ fn corrupt_if_armed(
 
 /// One-shot read-back mismatch arms, keyed by the **target** path whose incident
 /// copy (`.bak` store) or restored body (`.target` store) must fail its
-/// confirming re-read (FINDINGS-BATCH-2026-10-28 [3]). The on-disk bytes stay
+/// confirming re-read. The on-disk bytes stay
 /// honest — only the in-memory confirmation is disturbed, in the style of the
 /// corrupt seam above.
 #[cfg(test)]
@@ -1105,7 +1104,7 @@ fn fail_temp_write_if_armed(path: &Path, written: std::io::Result<()>) -> std::i
     written
 }
 
-/// Order probe for the restore (FINDINGS-BATCH-2026-10-28 [1]): `restore_original_bytes`
+/// Order probe for the restore: `restore_original_bytes`
 /// records, at entry, whether the incident copy already existed on disk. The
 /// Fork B promise — copy **before** restore — is only real if the restore can
 /// observe the copy; a reordering makes this read `Some(false)`.
@@ -1218,7 +1217,7 @@ mod tests {
 
     #[test]
     fn a_retag_rewrites_the_category_and_removes_the_embedding_alias_in_one_pass() {
-        // FINDINGS-12 [1]: a non-EMB category left beside `is_embedding_model: true`
+        // A non-EMB category left beside `is_embedding_model: true`
         // is a whole-file scan drop, so the two edits must share one rewrite and the
         // result must scan clean.
         let dir = crate::testutil::temp_dir("writeback-retag");
@@ -1277,7 +1276,7 @@ mod tests {
 
     #[test]
     fn a_bom_prefixed_first_line_is_visible_to_batch_writeback() {
-        // FINDINGS-13 [1]: scan.rs strips a UTF-8 BOM before matching a key, so
+        // Scan.rs strips a UTF-8 BOM before matching a key, so
         // `find_key_line` must too. Without that symmetry the batch probe reads
         // the BOM'd `is_embedding_model` as "absent key", the removal no-ops, and
         // the retagged file keeps an alias+WORK pair the next scan hard-drops.
@@ -1499,8 +1498,8 @@ mod tests {
         }
     }
 
-    /// PIN 3: a leading-`#` value. Under the locked boundary rule (13[8] round,
-    /// FINDINGS-BATCH-2026-10-28B [1]) a `#` opens a comment only after a space in
+    /// PIN 3: a leading-`#` value. Under the locked boundary rule a `#` opens a
+    /// comment only after a space in
     /// the *normalized* value text, so `#lead` is **not** truncated by our reader —
     /// step 1 is faithful and the word goes out unquoted, which is also what the
     /// writer/reader agreement demands: the emitted line must be exactly the form
@@ -1644,12 +1643,12 @@ mod tests {
         assert_eq!(plain, "note: \"a # b\"\n", "{plain}");
     }
 
-    /// FINDINGS-BATCH-2026-10-28G [1]: the quoted-incoming class is a **byte fixed
+    /// The quoted-incoming class is a **byte fixed
     /// point on the second write**. Pinned for the `"`-wrapped word and the `'`
     /// twin, on the text path and through the file (where the `updated == original`
     /// short-circuit means nothing reaches disk at all).
     ///
-    /// Status after FINDINGS2-13 [1]: the second write is now a genuine keep-branch
+    /// Status: the second write is now a genuine keep-branch
     /// no-op (the reader publishes `"a"` for `note: ""a""`, which equals the caller's
     /// word byte-exactly), where before it re-entered the change arm and relied on
     /// `emit_form` being a pure function of that word. It is therefore a **property
@@ -1836,7 +1835,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS-BATCH-2026-10-28B [2] — THE reader/writer agreement pin, through
+    /// THE reader/writer agreement pin, through
     /// the product path rather than a helper auditing itself. For every torture
     /// shape, in both LF and CRLF form: (a-b) the scan reader publishes exactly the
     /// pinned value, (c) writing that published value back leaves the document
@@ -1995,8 +1994,8 @@ mod tests {
         assert_eq!(entry.category, crate::config::CategoryId::Rp);
     }
 
-    /// FINDINGS2-13 [1], superseding this pin's earlier form (which pinned the
-    /// entry `trim` introduced by FINDINGS-BATCH-2026-10-28B [4]): the caller's word
+    /// Superseding this pin's earlier form (which pinned the entry `trim`):
+    /// the caller's word
     /// is honored **byte-exactly** — nothing is trimmed or peeled on the way in,
     /// because the reader's own published values can legitimately carry edge
     /// whitespace and residual quote pairs, and normalizing them away made an
@@ -2045,7 +2044,7 @@ mod tests {
         );
     }
 
-    /// FINDINGS2-13 [1] — the keep-branch hole itself, at the exact shapes the
+    /// The keep-branch hole itself, at the exact shapes the
     /// review broke: republishing the value the reader hands back must be a
     /// byte-verbatim no-op (line untouched, comment alive, value unchanged) and the
     /// same must hold through the file path, not just the text helper. Falsifier:
@@ -2101,7 +2100,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS-BATCH-2026-10-28B [6]: a true no-op never reaches the disk. The
+    /// A true no-op never reaches the disk. The
     /// honest falsifier is a target the rename cannot touch — a delete-blocking
     /// handle, the same `share_mode(0x3)` trick the restore seam uses: the no-op
     /// must SUCCEED, leave the bytes and the directory alone (no temp, no `.bak`),
@@ -2195,7 +2194,7 @@ mod tests {
         );
     }
 
-    /// FINDINGS-13 [11] — the lost-update pin the gate had none of. Six writers
+    /// The lost-update pin the gate had none of. Six writers
     /// hammer ONE model file through `set_flags_on_file`, each owning a distinct
     /// key with a fresh value per round, while the window probe holds every
     /// critical section open between the read and the commit. Under
@@ -2206,8 +2205,8 @@ mod tests {
     /// one renames its stale copy over the faster one's work, and keys vanish while
     /// both callers returned `Ok`. That detection does not lean on the probe: with
     /// its sleep removed the hammer still failed 5/5 on the measured host, the
-    /// flushing publish alone widens the window enough (FINDINGS-BATCH-2026-10-28C
-    /// [6]); the probe is insurance for hosts where the window is microseconds.
+    /// flushing publish alone widens the window enough;
+    /// the probe is insurance for hosts where the window is microseconds.
     /// Falsifier direction: fails on that neuter (verified in the round report).
     #[test]
     fn six_writers_hammering_one_file_never_swallow_a_key() {
@@ -2250,7 +2249,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS-13 [11] (mixed shape) — the two public entries must share the ONE
+    /// The mixed shape: the two public entries must share the ONE
     /// mutex. Six writers alternate `set_flag_on_file` (single-key) and
     /// `set_flags_on_file` (batch) against the same file, each owning its own key,
     /// window probe held open. `six_writers_hammering_one_file_never_swallow_a_key`
@@ -2263,8 +2262,8 @@ mod tests {
     /// The alternation is offset per **thread** (`(round + index) % 2`), not plain
     /// `round % 2`: with the plain form every thread's final write is the gated
     /// batch call, so losing a key hinges on an unlucky schedule rather than on the
-    /// missing gate — measured 4/5 in-suite before the offset, **8/8 after**
-    /// (FINDINGS-BATCH-2026-10-28C [3]). Half the threads now end on the single-key
+    /// missing gate — measured 4/5 in-suite before the offset, **8/8 after**.
+    /// Half the threads now end on the single-key
     /// entry, which is the entry this pin alone guards.
     #[test]
     fn single_key_and_batch_entries_share_one_gate() {
@@ -2326,8 +2325,8 @@ mod tests {
     /// here claims the drive's own volatile write cache was defeated. The scan reads
     /// the source through [`without_comments`], so a comment mentioning
     /// `write_synced(` cannot stand in for the call and one mentioning
-    /// `std::fs::write(` cannot convict clean code
-    /// (FINDINGS-BATCH-2026-10-28C [5]). It inspects the three named bodies: a
+    /// `std::fs::write(` cannot convict clean code.
+    /// It inspects the three named bodies: a
     /// publish write hoisted into a *fourth* function is a shape it cannot see,
     /// while a rename of any named one fails it outright (`function_body` panics
     /// when a signature disappears).
@@ -2381,7 +2380,7 @@ mod tests {
     /// `source` with every `//` comment (including `///` doc lines) dropped, so the
     /// tripwire above matches **code** rather than prose: text in a comment must not
     /// be able to satisfy `contains("write_synced(")` nor to trip
-    /// `contains("std::fs::write(")` (FINDINGS-BATCH-2026-10-28C [5]). Only `"`
+    /// `contains("std::fs::write(")`. Only `"`
     /// strings are tracked, with their escapes, so a `//` inside a string literal
     /// survives; char literals are passed through untouched because no two-slash
     /// sequence can live inside a one-character literal and lifetime names (`'a`,
@@ -2438,7 +2437,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS-13 [10]: the classes are now branchable **structurally**, which no
+    /// The classes are now branchable **structurally**, which no
     /// substring assertion could promise while every failure shared one `String` —
     /// an unwritable word and a wedged volume were the same shape to the api. Each
     /// site is asserted by variant here; the pre-existing text pins still hold the
@@ -2673,7 +2672,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS2-13 [6]: the two `Bak::Absent` sentences — the anti-lie module's most
+    /// The two `Bak::Absent` sentences — the anti-lie module's most
     /// alarming ones — had no pin, because every seam disturbed the bak's confirming
     /// READ while nothing could fail its WRITE. A directory squatting the `.bak` path
     /// fails the write itself, which is exactly the state those messages describe.
@@ -2713,7 +2712,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS2-13 [6]: the second `Bak::Absent` shape — the restore ALSO failed and
+    /// The second `Bak::Absent` shape — the restore ALSO failed and
     /// there is no trustworthy copy anywhere, so the message must say "in nowhere"
     /// and name only the target to re-check. Falsifier: break the
     /// `Bak::Absent(_) => ... "in nowhere"` arm and this fails.
@@ -2790,7 +2789,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS-BATCH-2026-10-28 [3]: a `.bak` whose confirming re-read does not
+    /// A `.bak` whose confirming re-read does not
     /// match is reported as unverified — the message never uses the fact-claiming
     /// `(backup: …)` form — while the (verified) restore itself completes honestly.
     #[test]
@@ -2826,7 +2825,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS-BATCH-2026-10-28 [3]: unconfirmed copy + refused restore — the
+    /// Unconfirmed copy + refused restore — the
     /// message believes, never asserts: no `original bytes are in`, no
     /// `original restored`, and the wedged target keeps the rejected edit.
     #[cfg(windows)]
@@ -2866,7 +2865,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS-BATCH-2026-10-28 [3]: the restore's rename lands but its
+    /// The restore's rename lands but its
     /// post-rename re-read does not confirm — the restore reports failure and
     /// never claims `original restored`, while the (verified) `.bak` fact-claim
     /// stays, because its bytes are confirmed.
@@ -2905,7 +2904,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// FINDINGS-BATCH-2026-10-28C [4]: the delete-blocking handles are released
+    /// The delete-blocking handles are released
     /// **per path**. With the store cleared wholesale, one seam test dropped the
     /// handle another seam test was still wedging, its restore silently succeeded,
     /// and it false-failed on its message assert while the product was fine. So:
@@ -2948,7 +2947,7 @@ mod tests {
         assert_eq!(stamp.as_bytes()[10], b'T');
         // `civil_from_days` sanity, pinned to known days — the leap-day pair and
         // the century non-leap boundary come from an independent day-by-day
-        // reference-calendar sweep (FINDINGS-BATCH-2026-10-28 [8]): 2100 is not a
+        // reference-calendar sweep: 2100 is not a
         // leap year, so day 47_541 must be March 1, not February 29.
         assert_eq!(civil_from_days(0), (1970, 1, 1));
         assert_eq!(civil_from_days(20_089), (2025, 1, 1));

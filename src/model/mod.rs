@@ -230,7 +230,7 @@ impl MeasuredAttribution {
 }
 
 /// One model from `ModelConf/`, typed (Step 10: the harness name is canonical, and
-/// since FINDINGS-13 \[3]/\[7] it is the yaml file stem, which `scan` supplies as the
+/// it is the yaml file stem, which `scan` supplies as the
 /// `name` argument of [`ModelEntry::from_flat`]).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ModelEntry {
@@ -607,7 +607,7 @@ fn read_measured(engine: &str, keys: &BTreeMap<String, String>) -> Result<Measur
     // `engine_report` row whose stamp is missing was written behind an unvalidated
     // (legacy-autostart) profile and has no certifying launch at all, so the
     // mismatch with the identity now — whatever it resolves to, `None` included —
-    // voids it (review 2026-10-31, H2: gating on `profile.is_some()` let exactly
+    // voids it — gating on `profile.is_some()` would let exactly
     // those unstamped figures survive every comparability change).
     if measured.attribution == Some(MeasuredAttribution::EngineReport) || measured.profile.is_some()
     {
@@ -621,7 +621,7 @@ fn read_measured(engine: &str, keys: &BTreeMap<String, String>) -> Result<Measur
     // figure a status endpoint only a process engine runs, and a per_process
     // figure a driver-attributed child — none crosses the container/process
     // boundary, and a stale ninfer profile on a llama row would otherwise
-    // "match" the built-in default silently (review 2026-10-31, M2). A ninfer
+    // "match" the built-in default silently. A ninfer
     // row claiming per_process is the same impossibility seen from the other
     // side (a container has no harness child), and so is one claiming
     // engine_status: the harness reads `ninfer` through `docker logs`, never
@@ -1079,7 +1079,7 @@ impl ModelEntry {
                 // admission (`cost_source` → Declared; since the 2026-11-01 amendment
                 // a guarded report may stand above it, never a zero below it), so
                 // `vram_gb: 0` books any model free — gate deficit 0, ledger 0, and
-                // the next load spends the same bytes (FINDINGS-12 [2]). Zero stays
+                // the next load spends the same bytes. Zero stays
                 // legal for `launch_only_with_at_least_vram_free` below: a floor of
                 // 0 means "no floor", the documented greedy opt-out (README), while
                 // a size of 0 claims a footprint no model has. `==` on f64 is
@@ -1828,7 +1828,7 @@ mod tests {
         );
     }
 
-    /// Review 2026-10-31 (H2 + M2): the comparability gate keys on the ATTRIBUTION,
+    /// The comparability gate keys on the ATTRIBUTION,
     /// not on the presence of a stamp, and a stamp can never cross engines. The
     /// first cut let an unstamped `engine_report` (written behind an unvalidated
     /// legacy-autostart profile) survive every profile change, and let an
@@ -2284,7 +2284,7 @@ mod tests {
             "exact stays refused on a stand-in figure"
         );
         // Each bookable provenance is shown on the engine kind that can honestly
-        // carry it (review 2026-10-31, M2): an `engine_report` on a llama row is
+        // carry it: an `engine_report` on a llama row is
         // void-on-sight, and a `per_process` on a container row likewise. The
         // `measured_profile` is the identity a template-path fold really writes —
         // an UNstamped engine_report has no certifying launch and never books
@@ -2585,7 +2585,7 @@ mod tests {
 
     #[test]
     fn vram_gb_must_be_positive_but_a_zero_launch_floor_is_the_opt_out() {
-        // FINDINGS-12 [2]: `vram_gb: 0` wins the booking precedence as Declared and
+        // `vram_gb: 0` wins the booking precedence as Declared and
         // books the model free — the gate deficit, the ledger and the in-flight sum
         // all read 0, so the next load spends the same bytes on top.
         for value in ["0", "0.0", "-0", "-0.0"] {

@@ -159,7 +159,7 @@ pub(super) fn staged_script_path(slug: &str, script: &str) -> String {
 /// matches `literal` byte-for-byte. `staged_script_path` confines the slug it feeds
 /// the prune regex to `[A-Za-z0-9._-]`, where only `.` is ERE-significant — but the
 /// escape is total, so widening that charset upstream cannot silently hand a `.`- or
-/// `[`-bearing slug the prune wildcard (review 2026-10-31: raw `har.a` pruned
+/// `[`-bearing slug the prune wildcard (raw `har.a` once pruned
 /// `har-a`'s and `harxa`'s pools, measured on the distro's findutils).
 ///
 /// # Arguments
@@ -188,7 +188,7 @@ pub(super) fn escape_posix_regex(literal: &str) -> String {
 /// closes `wsl.exe`'s own options — anchoring on the first `bash` anywhere would
 /// let a config whose distro or user is literally `bash` move the rewrite onto the
 /// wrong slot, leaving the unwritten placeholder for `bash` to open relative to
-/// cwd (review 2026-10-31, LOW; fail-closed today, pinned so it stays so). Pure,
+/// cwd (fail-closed today, pinned so it stays so). Pure,
 /// so the anchor is testable without a distro.
 ///
 /// # Arguments
@@ -278,7 +278,7 @@ pub(super) fn stage_rendered_profile(
     let temp = root.join(format!(".staging.{expected}.tmp"));
     if let Err(e) = std::fs::write(&temp, text.as_bytes()) {
         // A partial temp the prune never matches (it only claims `.json`)
-        // must not survive its own failure (review 26 [3]).
+        // must not survive its own failure.
         let _ = std::fs::remove_file(&temp);
         return Err(format!("cannot write {}: {e}", temp.display()));
     }
@@ -326,11 +326,11 @@ fn sidecar_base(prefix: &str, name: &str) -> Option<String> {
 /// Keep-N prune of one slug's staged-profile pool, newest by mtime, and the
 /// sidecar sweep that keeps a pruned render from leaving its satellites behind
 /// (FR-09). Entries are matched exactly — `<sanitized-slug>-<16 hex>.json`,
-/// the SAME name [`crate::engine::strata::staged_profile_name`] writes (review
-/// 25 [3]: raw vs sanitized would prune zero of its own files and grow the
+/// the SAME name [`crate::engine::strata::staged_profile_name`] writes (raw vs
+/// sanitized would prune zero of its own files and grow the
 /// pool without bound) — so a dot-bearing slug (`har.a`) can never prune
 /// another model's pool (the lesson the ninfer staging driver learned on the
-/// distro's findutils, review 2026-10-31). Two names that sanitize identically
+/// distro's findutils). Two names that sanitize identically
 /// (`a b` / `a_b`) share one pool by construction: the name is the content
 /// address's owner and a launch re-stages its own bytes anyway.
 ///
@@ -443,7 +443,7 @@ pub(super) fn staging_driver(script: &str, file_name: &str, blob: &str) -> Strin
     let (expected_crc, expected_len) = cksum_expectation(script.as_bytes());
     // `valid_container_name` admits `.`, which is the ERE any-character operator:
     // interpolated raw, a dot-bearing slug (`har.a`) would prune `har-a`'s and
-    // `harxa`'s keep-N pool (review 2026-10-31, measured on the distro's findutils).
+    // `harxa`'s keep-N pool (measured on the distro's findutils).
     // Escaping every metacharacter makes the regex match the slug LITERALLY.
     let slug_re = escape_posix_regex(slug);
     let root = staged_scripts_root();
@@ -451,7 +451,7 @@ pub(super) fn staging_driver(script: &str, file_name: &str, blob: &str) -> Strin
     // before the redirects: shell `>` PRESERVES a pre-existing file's mode (umask
     // is creation-only), so a planted loose-mode temp must not propagate to the
     // published target, and two concurrent stagings of identical bytes must not
-    // share one temp (review 2026-10-31, LOW; fail-closed either way — content is
+    // share one temp (fail-closed either way — content is
     // cksum-gated — but a flake and a mode leak are both what staging must not do).
     format!(
         "#!/usr/bin/env bash\n\

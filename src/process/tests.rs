@@ -161,7 +161,7 @@ fn a_staged_script_path_is_content_addressed_and_shell_bare() {
     assert_ne!(script_content_hash("a"), script_content_hash("b"));
 }
 
-/// Ruling 19's staging door, tested directly (review 25 [2]+[3]): a name
+/// Ruling 19's staging door, tested directly: a name
 /// that is not filesystem-bare must still prune its OWN pool — the writer
 /// sanitizes, so the prune has to match the sanitized prefix or every yaml
 /// edit stages a permanent file — and one slug's pool must never touch
@@ -247,7 +247,7 @@ fn the_config_slot_rewrites_only_a_flag_that_carries_a_value() {
     );
 }
 
-/// The spawn wiring (review 25 [2]): a spec carrying a rendered profile
+/// The spawn wiring: a spec carrying a rendered profile
 /// stages under the runtime's profile root BEFORE any spawn attempt, and
 /// the `--config` placeholder the argv carries is the name those bytes
 /// hash to — a broken placeholder extraction would surface as the staging
@@ -602,7 +602,7 @@ async fn a_fake_python_basalt_launch_serves_the_verified_id_end_to_end() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The keep-N prune matches the slug LITERALLY (review 2026-10-31, MEDIUM):
+/// The keep-N prune matches the slug LITERALLY:
 /// `valid_container_name` admits `.`, and raw interpolation made `har.a`'s
 /// prune hit `har-a-<hex>.sh` and `harxa-<hex>.sh` on the distro's findutils —
 /// two models sharing one keep-10 pool, the exact class the 16-hex content
@@ -1446,7 +1446,7 @@ fn custodied_spec(program: &str, args: &[&str], log_name: &str) -> LaunchSpec {
     }
 }
 
-/// FINDINGS2-0910 [3] (the reviewer's F4): a claim minted at spawn *intent* is
+/// A claim minted at spawn *intent* is
 /// ownership evidence for a client that never existed, and the boot reclaim
 /// reads exactly that evidence as permission to `docker rm -f`. Blank WSL
 /// coordinates keep every reap path from invoking `wsl.exe` (the reapers refuse
@@ -1882,7 +1882,7 @@ async fn a_blocked_release_poller_may_not_remove_the_successor_that_took_its_por
 /// pin from being satisfied by a release path that never unclaims at all.
 /// (The seam pins `an_explicit_rekill_rearms_only_an_unconfirmed_container_reap`
 /// and `a_kill_with_a_confirmed_reap_releases_the_container_slot` now drive
-/// `kill` writing that verdict itself (REV7-03), so this direct write is a
+/// `kill` writing that verdict itself, so this direct write is a
 /// belt, not the only coverage of the true side.)
 #[cfg(windows)]
 #[tokio::test]
@@ -1968,7 +1968,7 @@ fn reap_asked(seam: &ReapSeam) -> Vec<String> {
     seam.asked.lock().expect("reap verdict seam lock").clone()
 }
 
-/// REV7-01 (MEDIUM) + REV7-03: a failed `docker rm -f` used to retire the
+/// A failed `docker rm -f` used to retire the
 /// reap duty with `terminated`, so the port, the slot, and the claim could
 /// stay burned until the next boot. Now an UNCONFIRMED reap re-arms on an
 /// explicit re-kill only. The scripted seam drives `kill` through BOTH
@@ -2060,7 +2060,7 @@ async fn an_explicit_rekill_rearms_only_an_unconfirmed_container_reap() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// REV7-03: the `reap_confirmed == true` side used to be reachable only
+/// The `reap_confirmed == true` side used to be reachable only
 /// from a test hand-write. The seam makes `kill` itself record a
 /// docker-confirmed reap (still without WSL), and the very next passive
 /// poll releases, ends the claim, and clears the table -- the proof that
@@ -2110,7 +2110,7 @@ async fn a_kill_with_a_confirmed_reap_releases_the_container_slot() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// REV7-02 (LOW, decision: release-eligible): the SkipUnclaimed shape --
+/// The SkipUnclaimed shape --
 /// the duty fell to a kill but the ledger no longer holds the name -- has
 /// NO ownership evidence left to preserve, and boot reclaim already
 /// refuses the name, so holding the release forever would burn the slot
@@ -2634,7 +2634,7 @@ async fn engine_spawn_serves_only_the_declared_environment() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// FINDINGS2-0910 [4], the assembly rule: a control command gets exactly the OS
+/// The assembly rule: a control command gets exactly the OS
 /// baseline. The test process genuinely carries `CARGO_*` (and a real harness run
 /// carries `SIMPLEHARN_TOKEN`), so "exactly the baseline names" is a filter that
 /// has to be working for this to hold.
@@ -2660,7 +2660,7 @@ fn control_child_env_is_the_baseline_and_nothing_else() {
     }
 }
 
-/// FINDINGS2-0910 [4], the production site: `run_control_command` is the ONE
+/// The production site: `run_control_command` is the ONE
 /// builder both WSL control commands go through, so this drives it directly with
 /// a real child — exactly how the engine-child pin drives `ProcessRuntime::spawn`.
 /// The load-bearing marker is `CARGO_*`: cargo always sets those in the test

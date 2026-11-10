@@ -127,8 +127,8 @@ pub fn ring_push(entry: LogEntry) {
     ring.entries.push_back(entry);
 }
 
-/// Test-only serialization of the process-global ring (FINDINGS-BATCH-2026-10-28I
-/// [2]). `RING` is one `static` shared by every test in this binary, and
+/// Test-only serialization of the process-global ring. `RING` is one `static`
+/// shared by every test in this binary, and
 /// [`ring_caps_at_capacity_and_reports_drops`] drains it and asserts the eviction
 /// counter — so any second writer in the drain..fill window turns `dropped == 10`
 /// into 11 (measured: 18/20 co-scheduled runs failed before this lock existed).
@@ -139,7 +139,7 @@ pub fn ring_push(entry: LogEntry) {
 /// host. After the cap pin's set-difference rewrite its single `ring_push` can land
 /// outside `ring_caps`' drain..fill window, and one host measured 60/60 passes with the
 /// pin-side lock removed (the locked pair still 10/10) — on a machine where the pin's
-/// setup is faster than that window, `dropped == 10` becomes 11 (FINDINGS2-15 [5]).
+/// setup is faster than that window, `dropped == 10` becomes 11.
 #[cfg(test)]
 static RING_TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -531,7 +531,7 @@ pub(crate) fn file_sink_path_for_test() -> Option<PathBuf> {
 /// `SIMPLEHARN_LOG=verbose`, or a mistyped directive typed while debugging a boot
 /// failure, produced an errors-only ring with no diagnostic, and `parse_lossy`'s own
 /// warning fired before a subscriber existed, going to the no-op dispatcher
-/// (FINDINGS-15 \[8]). An invalid value now falls back to `info` and says so, into the
+/// An invalid value now falls back to `info` and says so, into the
 /// console and the ring. Installs the ring layer alongside the console formatter.
 /// Called once from `main`; tests never call it (the default subscriber would
 /// reject a second registration).
@@ -539,7 +539,7 @@ pub fn init() {
     // The knob reads through the centralized single-name reader (R1R-01
     // lineage): `SIMPLEHARN_LOG` is the only name, and an invalid value is
     // reported below — warning before the subscriber exists would reach the
-    // no-op dispatcher, the exact FINDINGS-15 [8] silence.
+    // no-op dispatcher, the exact silence this ordering avoids.
     let env = crate::config::log_level_from_env().unwrap_or_else(|| DEFAULT_LOG_LEVEL.to_string());
     let (filter, invalid) = log_filter(&env);
     let console_filter = filter.clone();
@@ -655,7 +655,7 @@ mod tests {
         );
     }
 
-    /// FINDINGS-15 [8]: `EnvFilter::new` is `parse_lossy` and defaults to `ERROR`, so a
+    /// `EnvFilter::new` is `parse_lossy` and defaults to `ERROR`, so a
     /// mistyped `SIMPLEHARN_LOG` — `verbose`, a slipped key — silently produced an
     /// errors-only ring, the opposite of what the operator asked for, with no
     /// diagnostic (the lossy parse's own warning fires before a subscriber exists).

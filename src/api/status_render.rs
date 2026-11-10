@@ -74,7 +74,7 @@ pub(super) async fn render_status_document(state: &ApiState, scheduler: &Schedul
             .as_ref()
             .map(|reason| format!("{}@{}: {reason}", job.model, job.category))
     });
-    // One registry acquisition for the whole badge story (FINDINGS2-0507 [6]):
+    // One registry acquisition for the whole badge story:
     // `snapshot()`, `any_down()` and `pending()` each took the lock themselves, so a
     // supervisor flipping `Pending → Down` mid-document could publish `listeners`
     // saying `Serving` next to `listeners_down: true` — the red-over-green
@@ -94,7 +94,7 @@ pub(super) async fn render_status_document(state: &ApiState, scheduler: &Schedul
         "categories": categories,
         "listeners": verdicts,
         // The header badge's two truths, computed here from the registry's own
-        // predicates (FINDINGS-16 [4]). `listeners` above is the raw verdict map; a
+        // predicates. `listeners` above is the raw verdict map; a
         // page that decoded "is any listener down" out of its serde shape would be a
         // second brain for the rule the registry owns, and a `Down`/`Pending` that
         // ever changed representation would hide behind a green badge. Total over the
@@ -320,7 +320,7 @@ pub(super) async fn merged_state(state: &ApiState) -> Result<Value, ApiError> {
 /// The R9 sum for the memory bar: what the running containers said they reserve,
 /// summed over the loaded occupants' per-slot `engine_report` figures only (the
 /// scheduler snapshot carries each container's own report, so `/har/status` and the
-/// SSE push derive the identical number — review 2026-10-31: threading it only
+/// SSE push derive the identical number — threading it only
 /// through the SSE build made the annotation unreachable on the poll path, which is
 /// the ONLY path a token-gated page has). `None` when no loaded container has
 /// reported — a container that never spoke must not render as "reserved 0 GiB"
@@ -382,7 +382,7 @@ async fn mem_section(state: &ApiState, scheduler: &crate::scheduler::SchedulerSt
                 "observed_used_gb": sample.used_gib,
                 // What NVML accounted across all processes, or `null` when it
                 // answered with no usable per-process figures at all (WDDM
-                // degradation): absence, never a fake 0.0 GiB (review 2026-10-26).
+                // degradation): absence, never a fake 0.0 GiB.
                 "attributed_gb": (attributed > 0.0).then_some(attributed),
                 // R1: the witness's own answer to "could per-process bytes be
                 // obtained" — the page's label must come from the witness, never

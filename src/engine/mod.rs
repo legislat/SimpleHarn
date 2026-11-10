@@ -426,7 +426,7 @@ pub(crate) enum MeasurementConfidence {
 /// later phases may not re-decide it. The figure arrives unbounded on
 /// purpose: [`crate::scheduler::ActorState::measurable_figure`] is the single
 /// figure gate, and the sampler applies the same rule before sending so a
-/// refused figure never consumes the one-shot (review 2026-10-31, M1).
+/// refused figure never consumes the one-shot.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct EngineMeasurement {
     /// The GPU footprint in GiB as the source stated it.
@@ -537,7 +537,7 @@ pub trait EngineRuntime: Send + Sync {
     /// non-zero exit, timeout: the caller warns and falls down the ladder,
     /// there is no invented number). The process runtime runs it through its
     /// ONE gated control-command builder (hidden, kill-on-drop, scrubbed
-    /// environment — the FINDINGS2-0910 \[4] discipline); it is NOT an engine
+    /// environment — the one-gate discipline); it is NOT an engine
     /// spawn: no ticket, no port, no log file, nothing registered. Default
     /// `None`: only the process runtime answers, so every mock is inert and
     /// `cargo test` never execs a real `llama-fit-params.exe`.
@@ -582,7 +582,7 @@ pub trait EngineRuntime: Send + Sync {
     }
 }
 
-/// Production boot's adapter map (FINDINGS-10 \[3]): llama + strata + basalt +
+/// Production boot's adapter map: llama + strata + basalt +
 /// maya + xolotl + ninfer always, the test-facing `mock` adapter only on the
 /// config's explicit
 /// `allow_mock_engine` grant (its argv is the bare name `mock-engine`, which
@@ -595,7 +595,7 @@ pub trait EngineRuntime: Send + Sync {
 /// and no registry check can reject one today. When chunk 10's `EnginePolicy`
 /// validation can reject a config-referenced binary, that is the day this signature
 /// gains a `Result` — until then a documented `# Errors` section would describe a
-/// return type this function does not have (FINDINGS2-0910 \[7]).
+/// return type this function does not have.
 #[must_use]
 pub fn default_adapters(
     config: &crate::config::AppConfig,

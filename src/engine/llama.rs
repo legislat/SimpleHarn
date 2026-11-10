@@ -15,7 +15,7 @@
 //! must not be flippable from yaml text); that is a known functional gap, not an
 //! enforcement claim.
 //!
-//! `extra_args` is an ALLOW-LIST (FINDINGS2-0910 \[1], which inverted the old
+//! `extra_args` is an ALLOW-LIST — the inversion of the old
 //! ten-name `HARNESS_OWNED_FLAGS` denial list — ten exact words over an ~200-option
 //! parser were a semantic bypass of the LOCKED harness-owned-config rule, leaving
 //! `--api-key`, `--rpc`, `--path`, `--models-dir`, `--ssl-key-file`, `--model-url`,
@@ -44,12 +44,12 @@ use std::path::{Path, PathBuf};
 /// `internal_host` governs only the harness's own public listeners, so a
 /// `0.0.0.0` control page never exposes unauthenticated `llama-server` ports on
 /// the segment, and the IPv4-only readiness probe always dials what the engine
-/// actually bound (FINDINGS-09 \[1]).
+/// actually bound.
 pub const LLAMA_ENGINE_HOST: &str = "127.0.0.1";
 
 /// The CLOSED allow-list of `extra_args` option words an operator may pass
-/// through (FINDINGS2-0910 [1], inverted from the old denial list — the full
-/// rationale lives with the data now). The list itself is the `llama` row's
+/// through (inverted from the old denial list — the full rationale lives
+/// with the data now). The list itself is the `llama` row's
 /// `allow_words` cell in the [`crate::engine::policy`] table (§20-9 Fork C,
 /// "one mechanism, four instances"); this alias keeps every read in this
 /// adapter pointed at that single source, so the refusal text and the
@@ -179,8 +179,8 @@ pub(crate) fn check_extra_words_value(
 /// yaml key -> llama-server flag, in `start.ps1` order. Empty values are skipped,
 /// exactly like the script's `if ($v)`; a non-empty value faces the shared shape
 /// floor [`table_value_problem`] before it can reach the argv. `pub(crate)` so the
-/// scan's consumed-keys const test can assert every table key is a consumed key
-/// (FINDINGS-13 [8]): a flag added here without joining `scan::CONSUMED_KEYS`
+/// scan's consumed-keys const test can assert every table key is a consumed key:
+/// a flag added here without joining `scan::CONSUMED_KEYS`
 /// fails that test.
 pub(crate) const FLAG_TABLE: &[(&str, &str)] = &[
     ("mmproj", "--mmproj"),
@@ -413,8 +413,7 @@ pub(crate) fn build_args(
     };
     let value = |key: &str| raw.get(key).map(String::as_str).filter(|v| !v.is_empty());
     // One tokenization feeds both the check and the argv, so a word cannot survive
-    // by being split differently on the two paths (the classic bug class here,
-    // FINDINGS2-0910 "Verified clean").
+    // by being split differently on the two paths (the classic bug class here).
     let extra: Vec<&str> = value("extra_args")
         .map(|extra| extra.split_whitespace().collect())
         .unwrap_or_default();
@@ -798,8 +797,8 @@ mod tests {
         }
     }
 
-    /// FINDINGS2-0910 [1]'s probe, turned into the positive pin: the reviewer fed
-    /// this exact line (with `cpu_offload: true`) to `LlamaAdapter::spec` and the
+    /// A policy-bypass probe turned into the positive pin: this exact line (with
+    /// `cpu_offload: true`) went to `LlamaAdapter::spec` and the
     /// pinned build kept every word. Now the launch dies naming the first policy
     /// word rather than booking a footprint for a server the yaml reconfigured.
     #[test]

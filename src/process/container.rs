@@ -79,15 +79,15 @@ pub(super) struct ReleaseGate {
 /// real (coordinate-refusing) path untouched. Parallel in spirit to
 /// `docker_probe`, but narrower: it replaces only the WSL/docker call inside
 /// the reap duty, so the duty rule, the claim gate, the generation guard, and
-/// the entry recording under test stay the production ones (REV7-03 lets a
-/// pin drive `kill` writing BOTH verdicts onto `reap_confirmed`).
+/// the entry recording under test stay the production ones (a scripted pin may
+/// drive `kill` writing BOTH verdicts onto `reap_confirmed`).
 #[cfg(test)]
 #[derive(Default)]
 pub(super) struct ReapSeam {
     /// One verdict per scripted reap, consumed front-first.
     pub(super) scripted: Mutex<std::collections::VecDeque<bool>>,
     /// The container name each scripted verdict answered for, in order. A
-    /// passive `release_confirmed` poll must never extend this list (REV7-01).
+    /// passive `release_confirmed` poll must never extend this list.
     pub(super) asked: Mutex<Vec<String>>,
 }
 
@@ -174,7 +174,7 @@ pub(super) fn published_elsewhere_evidence(
 
 /// Whether this kill must reap a container. A CONFIRMED reap retires the duty
 /// for good: a re-kill never re-runs `docker rm` for someone else's container
-/// (review, 2026-10-26). An UNCONFIRMED reap keeps the duty alive (REV7-01):
+/// (review, 2026-10-26). An UNCONFIRMED reap keeps the duty alive:
 /// the entry is still ours and the container may still hold the card, so the
 /// next explicit kill carries the retry. Only `kill` reaches this rule --
 /// `release_confirmed` polls are passive and never reap -- and every attempt
@@ -191,7 +191,7 @@ pub(super) fn should_reap(
     container.cloned()
 }
 
-/// What the kill path may do about a detached container (FINDINGS2-0910 [3]).
+/// What the kill path may do about a detached container.
 ///
 /// Two independent facts decide it: the ticket says this kill carries the *duty*,
 /// and the ledger says this harness *owns* the name. The kill used to reap straight
@@ -241,8 +241,7 @@ pub(super) fn excerpt(bytes: &[u8]) -> String {
 /// Best-effort `docker rm -f` inside WSL; every failure path warns and lets the
 /// caller proceed (the release poll is the arbiter). Built and run by
 /// [`run_control_command`]: hidden, kill-on-drop, and scrubbed to the OS baseline so
-/// the harness's `SIMPLEHARN_TOKEN` never rides into the operator's distro
-/// (FINDINGS2-0910 [4]).
+/// the harness's `SIMPLEHARN_TOKEN` never rides into the operator's distro.
 ///
 /// # Returns
 ///

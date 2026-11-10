@@ -124,7 +124,7 @@ pub struct SlotStatus {
     /// |o| o.loaded_at)` policy of the scheduler's own LRU picks. Not serialized:
     /// an `Instant` has no wall-clock meaning outside the process, so `/har/status`
     /// keeps exposing `idle_s`. The no-`model` proxy fallback sorts untouched
-    /// occupants by this (FINDINGS-06 \[1]: never fabricate an instant instead).
+    /// occupants by this: never fabricate an instant instead.
     #[serde(skip)]
     pub loaded_at: Instant,
 }
@@ -135,9 +135,9 @@ impl ActorState {
     /// — never the model name alone, which a re-minted twin can steal): Some only
     /// for a ninfer container spawn whose anchor folded an `engine_report` figure.
     /// The API's memory-bar sum derives from this so `/har/status` and the SSE push
-    /// quote ONE source (review 2026-10-31: threading the sum only through the SSE
+    /// quote ONE source: threading the sum only through the SSE
     /// build left the poll path — the only path a token-gated page has — forever
-    /// null, and a fixture carrying the value hid it).
+    /// null, and a fixture carrying the value hid it.
     /// Whether the catalog row's RAM ladder figure still describes this
     /// occupant's ledger booking (W3-01). Equal means equal within the
     /// project's GiB epsilon — the same band that decides when two figures

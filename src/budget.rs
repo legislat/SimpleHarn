@@ -66,7 +66,7 @@ pub struct BudgetFacts {
 impl BudgetFacts {
     /// The parenthetical naming every truth that differs from the compared figure.
     /// Empty when they all agree, so a plain refusal stays one clean sentence
-    /// (review 2026-10-26: `free 69.7 GiB` printed while the card held 1.8 GiB).
+    /// (for example: `free 69.7 GiB` printed while the card held 1.8 GiB).
     #[must_use]
     pub fn detail(&self, compared: Gibibytes) -> String {
         self.detail_as(compared, "card")

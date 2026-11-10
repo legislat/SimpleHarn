@@ -4,7 +4,7 @@ use axum::http::Request;
 use std::path::PathBuf;
 use tower::ServiceExt;
 
-/// FINDINGS-13 [10]: every writeback class has a decided HTTP class, and the
+/// Every writeback class has a decided HTTP class, and the
 /// mapping re-words nothing. The two config-state classes additionally owe the
 /// operator the *name of the file* that refused (the module's `Display`
 /// deliberately carries none), so their reason is `"<file>: " + the module's
@@ -833,7 +833,7 @@ fn live_state(boot: BootTimings) -> ApiState {
     )
 }
 
-/// FINDINGS-OPEN N1: the state pump builds the merged document once and every
+/// The state pump builds the merged document once and every
 /// SSE subscriber reads the same published value. Falsifier: restore the
 /// per-client `merged_state` loop and the second subscriber's value is a
 /// different build (and the pump flag is never set).
@@ -950,7 +950,7 @@ fn model_json_marks_loaded_rows_and_nobody_else() {
 ///
 /// Falsifier: a `fs::`/`metadata(`/`fingerprint(`/`SystemTime::now` token
 /// appearing in any scanned body trips this tripwire before a hot-path stall
-/// can ship — including FINDINGS-BATCH-2026-10-28P [P-1]'s M-E synonym form.
+/// can ship — including the synonym form that first slipped past the token list.
 #[test]
 fn the_status_and_models_render_paths_never_touch_the_filesystem() {
     let source = include_str!("status_render.rs");
@@ -993,7 +993,7 @@ fn the_status_and_models_render_paths_never_touch_the_filesystem() {
     }
 }
 
-/// FINDINGS-07 [8] structural net: the two control-handler write paths must
+/// Structural net: the two control-handler write paths must
 /// run their synchronous filesystem sequences on a blocking thread, never
 /// inline on the async request worker. The order test is the whole pin: the
 /// write call (and the re-baseline stat that follows it) must appear only
@@ -1064,7 +1064,7 @@ fn the_control_write_backs_run_on_a_blocking_thread() {
 
 #[test]
 fn boot_stamp_is_first_write_wins() {
-    // FINDINGS-14 [4]: the two late measures are written by whoever finishes the
+    // The two late measures are written by whoever finishes the
     // work, so the cell must admit exactly one writer. A plain store would let
     // the last supervisor to bind overwrite the first one's timestamp.
     let stamp = BootMsStamp::default();
@@ -1123,7 +1123,7 @@ fn concurrent_boot_stamps_admit_exactly_one_writer() {
 
 #[tokio::test]
 async fn status_boot_reports_the_five_measures_as_they_complete() {
-    // FINDINGS-14 [4]: `/har/status.boot` must carry the whole §0.2 measure set.
+    // `/har/status.boot` must carry the whole §0.2 measure set.
     // The three boot-thread fields are present from the start; the two that
     // complete after `ApiState` is shared are ABSENT (skipped, not null) until
     // stamped, then present with exactly the stamped value — the same shape
@@ -1333,7 +1333,7 @@ async fn status_document_carries_config_warnings_for_unsafe_postures() {
     );
 }
 
-/// FINDINGS-14 [7] + the 2026-10-28 "A + amber" ruling: a category whose
+/// The "A + amber" verdict policy: a category whose
 /// supervisor never spoke must be PRESENT in the `listeners` object and LABELED
 /// `Pending`, so the page can never read "no verdict" as "no such category" (the
 /// old shape made the two indistinguishable). Falsifier: return the registry to an
@@ -1383,7 +1383,7 @@ async fn a_category_with_no_verdict_is_present_and_labeled_pending() {
 }
 
 /// The two `/har/status` booleans the header badge reads, pinned as exact JSON for
-/// each of the three shapes that distinguish them (FINDINGS-16 [4]): four times
+/// each of the three shapes that distinguish them: four times
 /// `Serving`, one `Down`, one `Pending`. Every field carries both a true and a
 /// false leg, so neither verdict can be hardcoded in the other's place.
 ///
@@ -1445,9 +1445,9 @@ async fn status_document_emits_the_two_listener_verdicts_exactly() {
     );
 }
 
-/// FINDINGS-15 [10]: reading the ring must not append to the ring, or the act of
+/// Reading the ring must not append to the ring, or the act of
 /// asking "why did the last load fail" evicts the answer. Extended to every member
-/// of the routine list (FINDINGS2-0507 [1]) — `/har/models` is polled on the same
+/// of the routine list — `/har/models` is polled on the same
 /// 2 s timer and was silently missing from the exemption, so the models panel was
 /// the one poll still evicting evidence. Falsifier: drop `/har/log` (or any member)
 /// from `ROUTINE_POLL_PATHS` and the zero-count assertion fails with that path's
@@ -1531,7 +1531,7 @@ async fn reading_the_log_never_appends_to_the_log() {
 /// The routes `webui/app.js` actually fetches with `getJson(...)`, query stripped.
 /// The behavior pin polls THIS list and the parity pin compares it to the const, so
 /// shrinking `ROUTINE_POLL_PATHS` fails both: the const cannot quietly stop covering
-/// a poll the page still runs (FINDINGS2-0507 [1]).
+/// a poll the page still runs.
 fn pages_own_polls() -> Vec<String> {
     let page = include_str!("../webui/app.js");
     let mut polled: Vec<String> = Vec::new();
@@ -1553,7 +1553,7 @@ fn pages_own_polls() -> Vec<String> {
     polled
 }
 
-/// FINDINGS2-0507 [1]: the exemption list and the page's own polling code were two
+/// The exemption list and the page's own polling code were two
 /// files that nothing linked, so the list could shrink to "everything except
 /// /har/log" and stay green. The third source of truth is `webui/app.js` itself:
 /// every `getJson(...)` literal the page fetches on its timer must be in
@@ -1576,7 +1576,7 @@ fn the_routine_poll_list_is_the_pages_own_poll_list() {
     );
 }
 
-/// FINDINGS2-0507 [3]: the four guard refusals used to answer and vanish while
+/// The four guard refusals used to answer and vanish while
 /// benign 200s filled the same ring the operator reads after a bad boot. A refusal
 /// must leave a line, but a flood must not turn that line into an eviction engine —
 /// these are precisely the responses an attacker produces in bulk. One line per
@@ -1770,7 +1770,7 @@ fn refused_lines(lines: &[String]) -> usize {
 const CAPTURE_WARM_UP_ATTEMPTS: usize = 8;
 
 /// Emit inside a throwaway capture until every fragment in `wanted` has landed
-/// (FINDINGS-BATCH-2026-10-28N D9, the flake that read as "the flood's one line
+/// (the flake that read as "the flood's one line
 /// is missing", 1 run in 5).
 ///
 /// A `tracing` callsite's `Interest` is cached process-wide on its first touch,
@@ -1901,7 +1901,7 @@ async fn guard_capture_session() -> crate::tray::testlog::Session {
     crate::tray::testlog::Session::start()
 }
 
-/// FINDINGS2-0507 [3] + the 15[9] token posture: reporting a refusal must never
+/// The token posture: reporting a refusal must never
 /// mean publishing the secret, and the flood must still count as one report. The
 /// assertions read the report bookkeeping and the wire bodies directly rather than
 /// a captured subscriber, because which thread's thread-local default is active
@@ -2061,7 +2061,7 @@ fn the_guard_capture_install_warms_before_it_subscribes() {
     );
 }
 
-/// FINDINGS-BATCH-2026-10-28M [2]: bounding *repeats* per `(class, path)` did not
+/// Bounding *repeats* per `(class, path)` did not
 /// bound the flood, because three of the four classes are refused **pre-auth on any
 /// path** — `reject_reason` runs ahead of `auth_reason` and consults neither the
 /// token nor route membership. So N bogus paths were N ring lines (ring turnover,
@@ -2523,12 +2523,12 @@ async fn a_guard_refusal_line_carries_a_reason_capped_to_the_tracked_width() {
     );
 }
 
-/// FINDINGS2-0507 [2]: structural refusals must be answered strictly before the
+/// Structural refusals must be answered strictly before the
 /// token check (README:265-268, DECISIONS LOCKED). A page that knows nothing about
 /// the token must be told the security reason it triggered, not that a route wants
 /// a secret — the 401 is an oracle for "this route exists and is protected".
 /// Falsifier: move the `auth_reason` block above `reject_reason` in `guard` and all
-/// three structural arms below fail with 401. The fourth arm is FINDINGS-05 [5]:
+/// three structural arms below fail with 401. The fourth arm is the same rule:
 /// a request that carries no `Host` at all is itself a structural refusal and is
 /// answered `400`, not allowed past the DNS-rebinding gate to the token.
 #[tokio::test]
@@ -2675,8 +2675,8 @@ fn the_host_gate_accepts_loopback_published_binds_and_our_own_ports() {
     }
     // The publish posture is the only non-loopback bind boot `validate`
     // allows, so the second acceptance rule is pinned on `0.0.0.0`, never on
-    // a hand-built unicast bind the boot validator refuses (FINDINGS-16
-    // N[2]): any address the bind covers answers on its own port, the port
+    // a hand-built unicast bind the boot validator refuses: any address the bind
+    // covers answers on its own port, the port
     // rule still refuses a foreign port, and hostname clients stay refused
     // — the DNS-rebinding defense does not care how the harness is bound.
     let published = ApiState::new(
@@ -2703,7 +2703,7 @@ fn the_host_gate_accepts_loopback_published_binds_and_our_own_ports() {
     );
 }
 
-/// FINDINGS-05 [8]: the credential wall compares every byte of an
+/// The credential wall compares every byte of an
 /// equal-length pair (`difference |= g ^ e`, never a short-circuiting `==`),
 /// and the `Bearer` scheme is stripped in any ASCII case (RFC 7235) — the old
 /// byte-exact `strip_prefix("Bearer ")` refused `bearer <token>` from
@@ -2850,7 +2850,7 @@ async fn the_old_token_name_grants_nothing_to_a_gated_route() {
     );
 }
 
-/// FINDINGS-05 [6]: the two harness-failure classes carry OS-level failure
+/// The two harness-failure classes carry OS-level failure
 /// text — paths into model yamls, log files, the engine exe. The class stays
 /// legible (`code` and message prefix unchanged, both envelope shapes equal),
 /// but the client body must not carry the detail; `error_body` sends it to
@@ -2907,7 +2907,7 @@ fn harness_failure_bodies_hide_the_os_detail_but_keep_the_class() {
     );
 }
 
-/// FINDINGS-05 [7]: the ring is the operator's only "why did the last load
+/// The ring is the operator's only "why did the last load
 /// fail" channel and the guard its one request producer, so a client id must
 /// not become an eviction channel or a megabyte echo. The useful half (a
 /// short printable id echoes) is pinned by
@@ -2992,7 +2992,7 @@ async fn client_request_ids_are_capped_and_sanitized_before_echo_and_log() {
     }
 }
 
-/// FINDINGS2-0507 [7]: `rename()` returning `Ok` is the OS accepting the move, not
+/// `rename()` returning `Ok` is the OS accepting the move, not
 /// proof the bytes landed, and this is the one file the harness re-reads at boot
 /// under `deny_unknown_fields` — a silent-short config write is a harness that will
 /// not start. `persisted: true` is therefore earned by reading the file back and
@@ -3000,8 +3000,8 @@ async fn client_request_ids_are_capped_and_sanitized_before_echo_and_log() {
 ///
 /// The false leg goes through the **real** comparison: the test arm corrupts the
 /// on-disk bytes inside the verify window (valid JSON, one extra key), so it is
-/// production's `read_back == root` that refuses the answer
-/// (FINDINGS-BATCH-2026-10-28M, item 6 note). Falsifiers, both caught: delete the
+/// production's `read_back == root` that refuses the answer.
+/// Falsifiers, both caught: delete the
 /// verification block and the armed leg answers `persisted: true` for bytes nobody
 /// checked; or replace the comparison with an always-true `Ok(_) => Ok(())` and the
 /// same leg fails while every other pin stays green — which is exactly the
@@ -3125,8 +3125,7 @@ fn config_persistence_is_answered_only_after_the_bytes_read_back() {
 /// cache-only primitive turns this red; that is exactly the shape in which a
 /// rename could expose bytes the volume was never told to commit while the
 /// last API answer said `persisted: true`. Comments are stripped before the
-/// match, so prose cannot satisfy or fake the asserts
-/// (FINDINGS-BATCH-2026-10-28C [5] discipline).
+/// match, so prose cannot satisfy or fake the asserts.
 #[test]
 fn the_boot_config_publish_flushes_through_write_synced() {
     let source = include_str!("config_persist.rs");
@@ -3157,7 +3156,7 @@ fn the_boot_config_publish_flushes_through_write_synced() {
     }
 }
 
-/// FINDINGS2-0507 [6]: `snapshot()`, `any_down()` and `pending()` each took the
+/// `snapshot()`, `any_down()` and `pending()` each took the
 /// registry lock for themselves, so a supervisor flipping a verdict mid-document
 /// could publish `"listeners": {"aux": "Serving"}` beside `"listeners_down": true` —
 /// the red-over-green contradiction the badge work exists to prevent, re-opened
@@ -3228,7 +3227,7 @@ async fn the_badge_booleans_are_always_the_published_maps_own_verdicts() {
     churn.await.expect("the churner never panics");
 }
 
-/// FINDINGS2-0507 [10]: `Reply::Done => (0, None)` handed the proxy
+/// `Reply::Done => (0, None)` handed the proxy
 /// `127.0.0.1:0`, a port that belongs to no listener, and the failure surfaced as a
 /// connect error three layers from its cause. The arm now refuses, and this
 /// inspection tripwire keeps it that way: the fabricated zero may not come back into
@@ -3455,7 +3454,7 @@ fn the_container_reported_sum_dedupes_models_and_never_fakes_zero() {
 
 #[test]
 fn no_fabricated_instants_survive_short_uptime() {
-    // FINDINGS-06 [1]: the removed fallback sorted untouched occupants by a
+    // The removed fallback sorted untouched occupants by a
     // fabricated `Instant::now() - 3600s`, which panics outright on a host
     // younger than an hour. Fixture instants are FORWARD offsets of `now`
     // (`Instant + Duration` cannot underflow) so the test never panics on a
@@ -3569,7 +3568,7 @@ fn other_category_and_dead_ports_resolve_to_nothing() {
 
 #[tokio::test]
 async fn connect_failure_is_the_only_restart_class() {
-    // FINDINGS-06 [2] evidence for the connect class: the T10.1 mock death is
+    // Evidence for the connect class: the T10.1 mock death is
     // a `handle.abort()` that drops the listener socket, so the port REFUSES
     // and `send()` yields `is_connect()` — exactly what this classifier maps
     // to the single sanctioned reap + reload + retry.
@@ -3590,7 +3589,7 @@ async fn connect_failure_is_the_only_restart_class() {
     assert_eq!(action, RetryAction::Restart);
 }
 
-/// FINDINGS-06 [6]: a total `ClientBuilder::timeout` covers the response body, so
+/// A total `ClientBuilder::timeout` covers the response body, so
 /// it cut a long SSE generation mid-stream after the 200. The production client
 /// must carry a per-read deadline, not a total one. Falsifier: put `.timeout(...)`
 /// back into the builder and this tripwire fails.
@@ -3735,7 +3734,7 @@ async fn non_connect_errors_are_upstream_never_death() {
 
 #[test]
 fn concurrent_default_writes_never_lose_a_field_or_leave_a_temp() {
-    // FINDINGS-07 [3]: the config write-back was an UNGATED read-modify-write onto
+    // The config write-back was an UNGATED read-modify-write onto
     // one FIXED temp name, and two handlers reach it (`/har/config/default` and
     // `/har/config/model`'s dangling-default clear) on separate workers. Interleaved,
     // the second writer renamed its copy of the ORIGINAL, so the first writer's
@@ -3837,7 +3836,7 @@ fn concurrent_default_writes_never_lose_a_field_or_leave_a_temp() {
     );
 }
 
-/// FINDINGS-07 [11] producer falsifier: the write-back is the one moment the
+/// Producer falsifier: the write-back is the one moment the
 /// harness becomes the last writer of the boot config, and its read-patch-write
 /// carries every OTHER byte as `Value` passthrough — so an operator hand-edit made
 /// while the harness ran (reload re-reads the catalog and nothing else, Step 9
@@ -3901,7 +3900,7 @@ fn a_landed_write_back_validates_the_published_boot_file_per_field() {
 /// `label` is a KNOWN key of a category entry, so the
 /// read-patch-write that persists a page `Default` edit carries it through as
 /// `Value` passthrough and the landed tree still parses clean — while an
-/// unknown key next to it keeps warning exactly as FINDINGS-07 [11] pinned.
+/// unknown key next to it keeps warning exactly as pinned.
 /// Falsifier: remove the `label` field from the schema and the clean leg lands
 /// a root-naming parse verdict, turning the empty-verdict leg red.
 #[test]
@@ -3967,7 +3966,7 @@ fn a_persisted_label_survives_the_write_back_and_an_unknown_key_still_warns() {
     );
 }
 
-/// FINDINGS-07 [11] render wiring: `config_errors` is the recorded verdict, in the
+/// Render wiring: `config_errors` is the recorded verdict, in the
 /// `kind`/`field`/`reason` vocabulary `catalog_errors` established, and an empty
 /// array is earned (clean boot, clean later write) rather than asserted. Falsifier:
 /// restoring the hardcoded `[]` leaves both non-empty legs red; flattening the
@@ -4004,7 +4003,7 @@ async fn config_errors_reports_the_recorded_verdict_and_starts_empty() {
     );
 }
 
-/// FINDINGS-07 [11] end-to-end tripwire: the page-visible field through the real
+/// End-to-end tripwire: the page-visible field through the real
 /// `/har/config/default` path (`set_default_model` → gated blocking write-back →
 /// recorded verdict → status document). The named test is the pin the `ApiState`
 /// field's doc cites: a future boot-file mutation that forgets

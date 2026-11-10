@@ -26,7 +26,7 @@
 //! yamls carry no autostart keys: a strata engine spawns only when an operator
 //! loads the model by name.
 //!
-//! What the adapter validates (FINDINGS2-0910 \[5] floor, 2026-10-29):
+//! What the adapter validates:
 //! `strata_python` must be an existing program **file** (`.exe`-named on
 //! Windows; it is the launched program) and `strata_cwd` an existing
 //! directory. The rendered profile's
@@ -48,10 +48,10 @@ const DEFAULT_PYTHON: &str = crate::config::STRATA_PYTHON_DEFAULT;
 const DEFAULT_CWD: &str = crate::config::STRATA_CWD_DEFAULT;
 
 /// The top-level profile fields that claim a harness-owned decision —
-/// FINDINGS-22 [1] / `DECISIONS` LOCKED "external engines obey only
+/// Per `DECISIONS` LOCKED "external engines obey only
 /// harness-owned configuration": the bind, the port and the key are forced
 /// from the harness side and are **never obeyed from engine-side files**
-/// (slice 10c enforcement; the 22[2] docs fix recorded the ruling, this is the
+/// (slice 10c enforcement; a docs fix recorded the ruling, this is the
 /// refusal). Each entry names the mechanism that owns the decision so the
 /// refusal can teach, not just deny.
 const PROFILE_POLICY_FIELDS: &[(&str, &str)] = &[
@@ -72,7 +72,7 @@ const PROFILE_POLICY_FIELDS: &[(&str, &str)] = &[
 /// owns it, so the operator's cleanup pass is one edit round, not one refusal
 /// per field. Shared by the scan report and the spawn refusal — the same file
 /// is refused the same way at both doors, and the engine is never silently
-/// launched on a claimed mix (FINDINGS-22 [1]).
+/// launched on a claimed mix.
 pub(crate) fn policy_field_claims(profile: &str, claims: &[(&str, &str)]) -> String {
     let listed = claims
         .iter()
@@ -232,7 +232,7 @@ pub(crate) fn superseded_sentence(path: &str) -> String {
 
 /// The sentence a row naming BOTH profile sources meets, at either door (the
 /// scan for a row that already carries `strata_exe` and so only needs its old
-/// `strata_config` line deleted — review 25 [7]; the adapter as
+/// `strata_config` line deleted — the adapter as
 /// defense-in-depth): one launch, exactly one profile source.
 pub(crate) fn mutual_exclusion_sentence(config_path: &str) -> String {
     format!(
@@ -261,9 +261,9 @@ fn knob<'a>(model: &'a ModelEntry, key: &str) -> Option<&'a str> {
 /// The `strata_args` tokenization: comma-separated engine argv tokens, each
 /// trimmed. The one well-formedness rule, shared by both consumers: an empty
 /// entry (bare or whitespace-only between commas) makes the line malformed —
-/// the render refuses it (one token per entry, FINDINGS-10 [3]) and
+/// the render refuses it (one token per entry) and
 /// [`effective_context`] answers `None` for the same line, so a row that
-/// never loads can never display a context (FINDINGS-17). The xolotl adapter
+/// never loads can never display a context. The xolotl adapter
 /// shares the rule (same comma-tokenized args dialect).
 pub(crate) fn well_formed_tokens(line: &str) -> Option<Vec<String>> {
     let mut tokens = Vec::new();
@@ -864,7 +864,7 @@ impl EngineAdapter for StrataAdapter {
             )));
         }
         // The cwd is handed to `Command::current_dir`, and a missing one makes the
-        // spawn fail as an opaque `cannot spawn` (FINDINGS2-0910 [5]): refuse it
+        // spawn fail as an opaque `cannot spawn`: refuse it
         // here, with the key the operator has to edit named.
         let cwd = model
             .raw
@@ -1456,7 +1456,7 @@ mod tests {
         );
     }
 
-    /// FINDINGS2-0910 [5]'s interpreter floor survives the template: `argv[0]`
+    /// The interpreter floor survives the template: `argv[0]`
     /// is still the program the host starts — a directory is refused on every
     /// host, and on Windows so is a batch shim, both naming `strata_python`.
     #[test]
@@ -1590,7 +1590,7 @@ mod tests {
         );
         assert_eq!(got["uncensored"], wanted["uncensored"]);
         // The vision pin below is only a TYPE pin while number equality is
-        // variant-strict (review 26): 16 must never equal 16.0 here.
+        // variant-strict: 16 must never equal 16.0 here.
         assert_ne!(
             serde_json::json!(16),
             serde_json::json!(16.0),

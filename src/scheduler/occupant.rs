@@ -29,7 +29,7 @@ impl ActorState {
     /// that drops an occupant has to come through here (review, 2026-10-27).
     pub(super) fn clear_occupant(&mut self, slot: usize) {
         if let Some(occupant) = self.slots[slot].occupant.take() {
-            // The occupant's silence state dies with it (FINDINGS-11 [2]):
+            // The occupant's silence state dies with it:
             // no stale dedupe mark may outlive the spawn it described.
             self.serve_id_silence_warned
                 .remove(&(occupant.ticket.port, occupant.ticket.generation));
@@ -115,8 +115,8 @@ impl ActorState {
     /// Takes and aborts the sampler of the serving occupant identified by
     /// `model`+`ticket`, so a reading with nowhere to go stops being produced rather
     /// than being discarded for 24 h (the fold's own guard list lives on
-    /// [`ActorState::on_measured`]). Both anchor classes that cannot persist call this
-    /// (FINDINGS2-04 [3]); it is idempotent, and the ticket keeps a re-minted twin's
+    /// [`ActorState::on_measured`]). Both anchor classes that cannot persist call this;
+    /// it is idempotent, and the ticket keeps a re-minted twin's
     /// sampler untouched.
     pub(super) fn retire_sampler(&mut self, model: &str, ticket: &SpawnTicket) {
         let Some(slot) = self.slots.iter_mut().find(|slot| {
@@ -213,7 +213,7 @@ impl ActorState {
     /// it (phase 4: an elastic cache keeps moving after the first fold), while
     /// ninfer's `engine_report` one-shot semantics stay untouched. Every
     /// refusal returns `None` so the witness loop stands in rather than
-    /// losing the measurement outright (review 2026-10-31 M1). The
+    /// losing the measurement outright. The
     /// fall-through order is exact: the
     /// process-tree fallback is attempted ONLY when the metrics path yielded
     /// no measurement — a body the engine's own parse will not take (phases
@@ -290,7 +290,7 @@ impl ActorState {
         };
         // Decide HERE whether the actor could ever book this figure: a
         // consumed landing without a valid figure would silently skip the
-        // witness stand-in too (review 2026-10-31, M1 — the same gate
+        // witness stand-in too (the same gate
         // `report_container` applies). The rounded figure is what the actor's
         // fold will book (its own gate rounds identically), so it is what the
         // caller seeds the elastic hysteresis with.

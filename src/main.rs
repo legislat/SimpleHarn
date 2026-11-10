@@ -68,7 +68,7 @@ fn boot_config(env_config_path: Option<String>) -> Result<AppConfig, Vec<ConfigE
         None => config::default_config_path(),
     };
     if let Some(path) = &explicit {
-        // FINDINGS-14 [3]: an explicit env path is an instruction, not an absence.
+        // An explicit env path is an instruction, not an absence.
         if !path.is_file() {
             return Err(vec![ConfigError::Invalid {
                 field: "SIMPLEHARN_CONFIG".to_string(),
@@ -101,7 +101,7 @@ fn boot_config(env_config_path: Option<String>) -> Result<AppConfig, Vec<ConfigE
     // Stamp where the config came from (or where it will live) so `default_model`
     // write-back targets the same file boot read — a `SIMPLEHARN_CONFIG` run must not
     // persist defaults into a file it never loads (operator finding, 2026-10-26).
-    // REV6-04: remember the file that was actually read — a semantic refusal must
+    // Remember the file that was actually read — a semantic refusal must
     // name it in the fatal output too, the way the parse arm already does.
     let loaded_file = path.as_ref().filter(|p| p.exists()).cloned();
     config.source_path = path;
@@ -280,7 +280,7 @@ async fn main() -> ExitCode {
         // the driver on this thread (the sample runs on the blocking pool behind
         // FIRST_RUN_PROBE_BUDGET). Steady boots pay nothing inline: witness init
         // stays on the blocking pool (prime below) and the cross-check runs
-        // detached (FINDINGS-14 [1] holds).
+        // detached; the bind-cheap pin holds.
         let results = probe_system(&witness).await;
         observed_total = results.vram_total_gb;
         for (field, value) in firstrun::fill(&mut config, &results) {
@@ -351,7 +351,7 @@ async fn main() -> ExitCode {
         });
     }
     let adapters = simpleharn::engine::default_adapters(&config);
-    // Witness/runtime/scheduler are bind-cheap (FINDINGS-14 [1]): the NVML witness
+    // Witness/runtime/scheduler are bind-cheap: the NVML witness
     // defers Nvml::init to its first sample (or the priming task below) and the
     // scheduler defers the catalog scan to its actor task, so no driver or
     // `modelconf_dir` volume can stall the bind below. Accepted pre-bind cost here:
@@ -365,7 +365,7 @@ async fn main() -> ExitCode {
     // shared container-claim ledger (chunk 10 [1]).
     let boot_runtime = runtime.clone();
     let runtime: Arc<dyn EngineRuntime> = Arc::new(runtime);
-    // FINDINGS-FIXROUND2 [3]: pay the lazy `Nvml::init()` on the blocking pool,
+    // Pay the lazy `Nvml::init()` on the blocking pool,
     // where it can hold neither an async worker, the witness `refill` guard, nor a
     // OnceLock caller on the first `/har/status`. Concurrent samples share the
     // init via the OnceLock; the normal case leaves no init for the first poll.
@@ -501,7 +501,7 @@ const SHUTDOWN_DRAIN_GRACE: Duration = Duration::from_millis(100);
 /// First-start gate: materialization fires only for the beside-the-exe
 /// `simpleharn.json` that is absent — never for a differently named file, and
 /// never for a `SIMPLEHARN_CONFIG` path (an explicit env file is an instruction:
-/// boot already failed when it was missing, FINDINGS-14 [3]; if it exists it is
+/// boot already failed when it was missing; if it exists it is
 /// not a target).
 fn first_run_target(config: &AppConfig) -> Option<PathBuf> {
     config.source_path.clone().filter(|path| {
@@ -577,7 +577,7 @@ async fn probe_system(witness: &Arc<simpleharn::witness::NvmlWitness>) -> firstr
 
 /// Test-only ordering seam (the shape of `model::scan`'s scan pause): `run()` raises
 /// `READY_LOGGED` the instant the `boot ready` line is printed, and the boot-reclaim
-/// closure records what that flag said as it begins. FINDINGS-14 [5] is precisely
+/// closure records what that flag said as it begins. The boot contract is precisely
 /// this ordering — the reclaim may only run after the boot-ready gate, never on the
 /// bind path — and a test cannot observe it from outside without docker and WSL.
 /// Compiled out of the product entirely: no branch, no switch, no runtime cost.
@@ -652,7 +652,7 @@ async fn log_boot_banner(
             let owned = exe.to_path_buf();
             let exe_missing = tokio::task::spawn_blocking(move || !owned.exists())
                 .await
-                // FINDINGS-14 [8]: fail toward warning — a check that could not run must
+                // Fail toward warning — a check that could not run must
                 // not report the reassuring "exe is present" verdict.
                 .unwrap_or(true);
             if let Some(message) = llama_binary_warning(Some(exe), exe_missing) {
@@ -689,7 +689,7 @@ async fn log_boot_banner(
             .collect::<Vec<_>>()
     })
     .await
-    // FINDINGS-14 [8]: the `!` filler, not the neutral marker: a banner whose stat
+    // The `!` filler, not the neutral marker: a banner whose stat
     // loop could not run must look like a machine full of landmines, not a clean one.
     .unwrap_or_else(|_| vec!["!"; catalog.models.len()]);
     for (entry, marker) in catalog.models.iter().zip(markers) {
@@ -801,7 +801,7 @@ async fn supervise_listener(
                 // A4: the classic Windows "busy with nothing listening" cause is a
                 // Hyper-V/WinNAT-reserved port range — probe once per outage (the
                 // resolved hint persists for every retry until a successful bind).
-                // FINDINGS-14 [6]: a failed probe does NOT set `hinted`, so the next
+                // A failed probe does NOT set `hinted`, so the next
                 // rebind attempt probes again instead of losing the hint for the
                 // outage; the retry cadence stays the supervisor's own backoff below.
                 if !hinted {
@@ -865,7 +865,7 @@ async fn reserved_range_hint(port: u16) -> Option<String> {
         })
 }
 
-/// FINDINGS-14 [6]: the hint decision, isolated so it is unit-testable.
+/// The hint decision, isolated so it is unit-testable.
 ///
 /// Returns `(hinted, hint)`: `hinted` becomes true only when the probe obtained an
 /// answer — `Ok(Some)` or `Ok(None)`; an `Err` (the 5 s timeout or a failed spawn)
@@ -922,8 +922,8 @@ fn parse_excluded_ranges(text: &str) -> Vec<(u16, u16)> {
 /// What the §0.2 ready gate concluded from one registry snapshot.
 ///
 /// `Pending` is not a verdict: a category still waiting on its supervisor keeps
-/// `bind_ms` unrecorded and stops the boot line from claiming "resolved"
-/// (FINDINGS-14 [7]). Extracted from [`run`] so the decision is unit-testable without
+/// `bind_ms` unrecorded and stops the boot line from claiming "resolved".
+/// Extracted from [`run`] so the decision is unit-testable without
 /// a live supervisor, and so the gate cannot be quietly re-inverted to counting map
 /// entries.
 struct GateVerdict {
@@ -1007,7 +1007,7 @@ async fn run(
     // §0.2 "ready": every listener carries a verdict (Serving or Down). Wait
     // (bounded) for the supervisors' first verdict, then record the boot measures.
     // The gate counts VERDICTS, not entries: the registry is seeded `Pending` at
-    // construction, so `len()` says nothing about readiness (FINDINGS-14 [7]).
+    // construction, so `len()` says nothing about readiness.
     let deadline = tokio::time::Instant::now() + BOOT_VERDICT_GATE;
     loop {
         if state.listeners.pending().is_empty() || tokio::time::Instant::now() >= deadline {
@@ -1033,7 +1033,7 @@ async fn run(
             // The deadline path: a supervisor never published. `bind_ms` stays
             // unrecorded — the measure means "every category has a verdict", and
             // recording it here would certify a boot whose ports are unproven — and
-            // the word "resolved" is not printed (FINDINGS-14 [7]).
+            // the word "resolved" is not printed.
             let names = verdict
                 .pending
                 .iter()
@@ -1047,7 +1047,7 @@ async fn run(
                 BOOT_VERDICT_GATE.as_secs()
             );
         }
-        // FINDINGS-14 [5] seam: the reclaim below is only legal AFTER this line.
+        // Seam: the reclaim below is only legal AFTER this line.
         #[cfg(test)]
         boot_order::log_ready();
     }
@@ -1065,12 +1065,12 @@ async fn run(
         let custody_runtime = boot_runtime.clone();
         let custody_grace = Duration::from_secs(state.config.release_timeout_s);
         tokio::spawn(async move {
-            // FINDINGS-14 [5] seam: records what `READY_LOGGED` said when this
+            // Seam: records what `READY_LOGGED` said when this
             // closure began, which is the post-ready ordering the boot contract
             // promises and nothing else can observe without docker or WSL.
             #[cfg(test)]
             boot_order::reclaim_begins();
-            // FINDINGS-14 [4]: §0.2 step 4 says the reclaim is "off the bind path",
+            // §0.2 step 4 says the reclaim is "off the bind path",
             // which is only auditable once it can say what it cost. Dispatch to
             // completion, on the wall clock, in the same ms-since-start unit as the
             // other measures — it used to end in silence.
@@ -1146,7 +1146,7 @@ mod tests {
     //! unit-reachable — it takes the single-instance guard, binds every listener and
     //! starts the NVML witness — but `run()` and `supervise_listener` are, so the
     //! §0.2 ordering and the boot measures are pinned against the real code paths
-    //! (FINDINGS-14 [4]/[5]) with every listener on an ephemeral port.
+    //! with every listener on an ephemeral port.
 
     use super::{
         boot_config, boot_order, console_is_interactive, decode_console_output, first_run_target,
@@ -1337,7 +1337,7 @@ mod tests {
         );
 
         // An explicit SIMPLEHARN_CONFIG path — existing or not — is an instruction,
-        // never a materialization target (FINDINGS-14 [3]).
+        // never a materialization target.
         let named = root.join("operator-spelled.json");
         std::fs::write(&named, "{}").expect("write env config");
         cfg.source_path = Some(named);
@@ -1371,7 +1371,7 @@ mod tests {
 
     #[test]
     fn missing_file_named_by_simpleharn_config_is_fatal() {
-        // FINDINGS-14 [3]: the env var is an instruction, not an absence.
+        // The env var is an instruction, not an absence.
         let dir = simpleharn::testutil::temp_dir("env-missing");
         let requested = dir.join("operator-typo.json");
         let errors = boot_config(Some(requested.display().to_string()))
@@ -1468,7 +1468,7 @@ mod tests {
 
         // The other half of the pin: with only older-named files present, boot
         // does NOT load one — it boots on built-in defaults stamped at the
-        // primary path (FINDINGS-14 [2]'s copy-forward is retired with the name).
+        // primary path (the copy-forward is retired along with the name).
         std::fs::remove_file(&default).expect("remove primary");
         let loaded = boot_config(None).expect("older-named files alone boot on defaults");
         assert_eq!(
@@ -1516,7 +1516,7 @@ mod tests {
 
     #[test]
     fn semantically_invalid_env_config_names_the_file_and_the_key() {
-        // REV6-04: a present env file that parses but fails validation must also name
+        // A present env file that parses but fails validation must also name
         // the loaded file in the fatal output — the shape-error arm alone was not
         // enough. Falsifier: revert the validate re-stamp and the first assert fails.
         let dir = simpleharn::testutil::temp_dir("env-invalid-semantic");
@@ -1537,7 +1537,7 @@ mod tests {
 
     #[test]
     fn probe_marks_hinted_only_on_an_answer() {
-        // FINDINGS-14 [6]: the four outcomes of one probe attempt.
+        // The four outcomes of one probe attempt.
         assert_eq!(
             probe_outcome(None, Ok(Some("range 8000-8100".to_string()))),
             (true, Some("range 8000-8100".to_string())),
@@ -1567,7 +1567,7 @@ mod tests {
 
     #[test]
     fn the_ready_gate_never_calls_no_verdict_resolved() {
-        // FINDINGS-14 [7]: the §0.2 gate decides on verdicts, never on entry counts.
+        // The §0.2 gate decides on verdicts, never on entry counts.
         // A seeded (all-`Pending`) registry must withhold both `bind_ms` and the word
         // "resolved", and must be named category by category. Falsifier: count
         // `snapshot().len()` instead of `pending()` and the first two assertions fail.
@@ -1789,7 +1789,7 @@ Start Port    End Port
 
     async fn status_json(state: &Arc<ApiState>) -> serde_json::Value {
         // The guard's Host gate accepts only the harness's own configured ports
-        // (FINDINGS-05 [4]), and these boot tests run on ephemeral configs whose
+        // and these boot tests run on ephemeral configs whose
         // public ports may be 0, so the request declares the port THIS state is
         // configured to answer on rather than a literal.
         let host = format!("127.0.0.1:{}", state.config.control_category().public_port);
@@ -1833,7 +1833,7 @@ Start Port    End Port
         );
     }
 
-    /// FINDINGS-14 [5], zero-engine-spawns pin. Everything `lib` owns on the boot
+    /// Zero-engine-spawns pin. Everything `lib` owns on the boot
     /// side — the adapter map, `Scheduler::start`, `ApiState::new`, the A6 banner
     /// inventory, the listener registry and the `/har/status` read the page and tray
     /// live on — runs against a runtime that panics on contact. `main` is not
@@ -1875,7 +1875,7 @@ Start Port    End Port
         );
     }
 
-    /// FINDINGS-14 [4]: the real supervisor really binds (port 0, so the OS hands out
+    /// The real supervisor really binds (port 0, so the OS hands out
     /// an ephemeral port and the test cannot collide with a serving harness), and the
     /// first bind is stamped on the same epoch before the verdict is published — so
     /// the ready gate recording `bind_ms` implies `first_bind_at` already stands, and
@@ -1930,7 +1930,7 @@ Start Port    End Port
         );
     }
 
-    /// FINDINGS-14 [5], reclaim ordering pin, chosen over a `probe_outcome`-style
+    /// Reclaim ordering pin, chosen over a `probe_outcome`-style
     /// predicate because the decision under test is an ordering across two `tokio`
     /// spawns inside `run()`, not a pure function of any value: extracted as a
     /// predicate it would only restate `assert ready`, which can never fail. This

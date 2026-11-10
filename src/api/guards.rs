@@ -32,7 +32,7 @@ fn next_request_id() -> String {
     format!("req-{epoch:x}-{counter:x}")
 }
 
-/// Ceiling for a client-supplied request id (FINDINGS-05 [7]): the ring is the
+/// Ceiling for a client-supplied request id: the ring is the
 /// operator's only "why did the last load fail" channel and the guard is its one
 /// request producer, so an echoed id must stay one short line — never a flood of
 /// attacker-chosen text that evicts real evidence one request at a time.
@@ -75,8 +75,7 @@ pub const PUBLIC_PATHS: [&str; 7] = [
 ];
 
 /// The page's routine polls: GETs whose per-tick `request complete` line would evict
-/// real evidence from the ring while the operator merely leaves the control page open
-/// (FINDINGS-15 \[10] for the log read, FINDINGS2-0507 \[1] for the third poll).
+/// real evidence from the ring while the operator merely leaves the control page open.
 ///
 /// `pub`, and the guard + its pin both read THIS list, with the pin's teeth coming
 /// from an independent third source — the page's own `getJson("…")` literals in
@@ -133,7 +132,7 @@ fn auth_reason(state: &ApiState, request: &axum::extract::Request) -> Option<Api
 /// The credential inside a presented header value: the `Bearer` scheme is stripped
 /// ASCII-case-insensitively — RFC 7235 defines auth-schemes as case-insensitive, and
 /// `authorization: bearer <token>` from an OpenAI-style client was refused with a
-/// message that read as a wrong token (FINDINGS-05 [8]). Any other value is the
+/// message that read as a wrong token. Any other value is the
 /// token itself. The trim matches `resolve_control_token`'s handling of the expected
 /// value, as before.
 pub(super) fn presented_token(raw: &str) -> &str {
@@ -143,7 +142,7 @@ pub(super) fn presented_token(raw: &str) -> &str {
     }
 }
 
-/// Constant-time token equality (FINDINGS-05 [8]): every byte of an equal-length
+/// Constant-time token equality: every byte of an equal-length
 /// pair is examined, so the wall cannot short-circuit on the first differing byte
 /// and leak its position through timing. A length mismatch returns early — the
 /// length remains observable, which the finding accepts as the honest residual of
@@ -166,15 +165,13 @@ pub(super) fn token_matches(given: &[u8], expected: &[u8]) -> bool {
 ///   LAN posture where this guard is the floor) — on one of its own configured
 ///   ports; a hostname, an address outside the bind, a foreign port or a missing
 ///   `Host` is refused `400` before any handler runs (DNS-rebinding guard; the
-///   gate runs on every request, not only the ones that bother to declare a Host,
-///   FINDINGS-05 \[4]\[5], FINDINGS-16 N\[1]);
+///   gate runs on every request, not only the ones that bother to declare a Host);
 /// - **Origin** (when the client sends one — browsers do on cross-site POSTs) must
 ///   match the request's Host authority, else `403` (CSRF guard);
 /// - a **POST** body must declare `application/json`, else `415` (Step 11);
 /// - the **request id** comes from the client's `x-request-id` only when it is
 ///   short and printable (see `accepted_request_id`) and is generated otherwise,
-///   echoed in the response header, and logged at request completion (G6,
-///   FINDINGS-05 \[7]).
+///   echoed in the response header, and logged at request completion (G6).
 ///
 /// Applied in `main` on every listener router, so guards wrap uniformly.
 pub async fn guard(
@@ -198,7 +195,7 @@ pub async fn guard(
     // refused for the security reason, not told the route wants a secret. The order is
     // pinned by `structural_refusals_are_answered_before_the_token_is_consulted`, which
     // is what makes swapping the two blocks below a red suite instead of a green one
-    // (FINDINGS2-0507 [2]; the two refusals are also individually pinned in
+    // (the two refusals are also individually pinned in
     // `tests/api_surface.rs`, but only on a token-less app, which cannot see the order).
     if let Some(reason) = reject_reason(&state, &request) {
         state.note_guard_refusal(&reason, &method, &path, &request_id);
@@ -216,9 +213,9 @@ pub async fn guard(
     // The page polls /har/status and /har/models every 2 s and opens the log panel
     // repeatedly; those lines would evict real evidence from the ring during long boots
     // — and reading the log must not be an event that pushes the log's own evidence out
-    // (FINDINGS-15 [10], FINDINGS2-0507 [1]; the list is one const, shared with its
+    // (the list is one const, shared with its
     // pin, whose teeth are the page's own fetch literals). Extended logging restores
-    // them (operator, 2026-10-26).
+    // them.
     let routine_poll =
         method == axum::http::Method::GET && ROUTINE_POLL_PATHS.contains(&path.as_str());
     // A public page or asset is not a command. Every `PUBLIC_PATHS` member
@@ -250,7 +247,7 @@ fn reject_reason(state: &ApiState, request: &axum::extract::Request) -> Option<A
     // The Host gate runs on every request, including one that carries no `Host`
     // at all: a conditional floor is not a floor, and the safety of a published
     // `internal_host` without a token may rest only on what the guard asserts,
-    // never on an undocumented property of the HTTP stack (FINDINGS-05 [5]).
+    // never on an undocumented property of the HTTP stack.
     match headers
         .get(axum::http::header::HOST)
         .and_then(|value| value.to_str().ok())
@@ -314,8 +311,8 @@ fn reject_reason(state: &ApiState, request: &axum::extract::Request) -> Option<A
 /// documented security floor is this very guard (no-auth LAN by design), so it
 /// must answer every address the machine's LAN clients put in `Host`; boot
 /// `validate` refuses every other bind, so there is no unicast bound address a
-/// legitimate client could ever address (FINDINGS-16 N[1]: the old equality leg
-/// against `internal_host` was dead code and 400'd every real LAN client). A
+/// legitimate client could ever address: the old equality leg
+/// against `internal_host` was dead code and 400'd every real LAN client. A
 /// non-IP authority passes only as `localhost`: rebinding attacks deliver the
 /// attacker's hostname in `Host`, so hostnames stay refused — that is the
 /// DNS-rebinding defense. If the value carries a port, it must be one of the

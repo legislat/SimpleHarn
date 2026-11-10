@@ -475,7 +475,7 @@ impl ProcessIdentity for WinProcessIdentity {
             return TerminateOutcome::IdentityGone;
         }
         // Re-verify at the instant of the signal ON THE SAME HANDLE the signal
-        // uses (review 10b): Windows cannot recycle a pid while any handle to
+        // uses: Windows cannot recycle a pid while any handle to
         // its process object is open, so checking the token and reading the
         // exit code through this one handle — then terminating through that
         // same handle — leaves no window in which the verified process dies,

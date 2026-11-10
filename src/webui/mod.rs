@@ -186,7 +186,7 @@ mod tests {
         );
     }
 
-    /// FINDINGS-16 [4]: the header badge reads the two verdicts `/har/status` computes
+    /// The header badge reads the two verdicts `/har/status` computes
     /// and no longer decodes the serde shape of `listeners` in the browser. The
     /// stranded-reservation badge (R5) rides the same rule: it reads
     /// `status.stranded_containers` and names only what the harness lists.
