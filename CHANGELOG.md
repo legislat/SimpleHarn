@@ -56,6 +56,10 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
 ### Fixed
 
+- A fatal boot error now keeps an interactive console window open and waits for
+  Enter, so a double-clicked exe shows the reason instead of closing. Redirected
+  output, the `SimpleHarn.vbs` launcher, and service supervisors are unchanged:
+  they never wait on the prompt.
 - A load that misses its readiness deadline now answers its own code,
   `readiness_timeout` (HTTP 502), and names the deadline in the message — for
   example `readiness deadline 300 s exceeded; the engine did not answer the

@@ -169,7 +169,8 @@ port matrix, the engine port plan, and the eviction rules live in
 
 ## Control page and tray
 
-The page shows slot cards, memory bars (observed VRAM, the reserve, in-flight bookings,
+The page shows category tabs (each naming its port, loaded resident, and inline
+Unload control), memory bars (observed VRAM, the reserve, in-flight bookings,
 host RAM), per-model rows with Load and Default, recent jobs, and the harness log. A
 rescan re-reads the catalog; a serving model keeps the launch it was spawned with, so an
 edit to a live model takes effect on its next load. The tray shows green loaded, yellow

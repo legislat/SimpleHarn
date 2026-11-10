@@ -742,6 +742,15 @@ pub struct ApiState {
     state_pump_started: Arc<std::sync::atomic::AtomicBool>,
 }
 
+/// Whether a control token resolves for this config, without exposing it. The
+/// boot path asks this before it builds a scheduler, so the unauthenticated
+/// network bind is refused before any catalog scan or listener work can start;
+/// the same resolver feeds [`ApiState::new`], so the two answers cannot drift.
+#[must_use]
+pub fn control_token_resolves(config: &AppConfig) -> bool {
+    resolve_control_token(config).is_some()
+}
+
 impl ApiState {
     /// Builds handler state from a validated config, a live scheduler, the catalog,
     /// and the listener health registry.

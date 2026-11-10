@@ -4875,3 +4875,30 @@ fn the_death_report_is_reachable_only_from_the_exhausted_crash_retry() {
         "exactly one death witness in the proxy loop"
     );
 }
+
+/// The boot gate and `ApiState::new` must agree on whether a token resolves:
+/// the refusal now runs before the scheduler exists, so a divergence would let
+/// a posture be refused early or admitted late. Falsifier: point this at the
+/// raw `config.control_token` field and the file-token assert still passes,
+/// but the env-first precedence pin in this suite fails.
+#[test]
+fn the_boot_gate_answers_from_the_same_resolver_as_the_state() {
+    let mut config = AppConfig {
+        control_token: Some("  file-secret  ".to_string()),
+        ..AppConfig::default()
+    };
+    assert!(control_token_resolves(&config));
+    let state = ApiState::new(
+        config.clone(),
+        SchedulerHandle::test_dummy(),
+        crate::listeners::ListenerRegistry::new(),
+        std::sync::Arc::new(crate::budget::LedgerOnlyWitness),
+        BootTimings::default(),
+    );
+    assert_eq!(control_token_resolves(&config), state.requires_token());
+
+    config.control_token = None;
+    if crate::config::token_from_env().is_none() {
+        assert!(!control_token_resolves(&config));
+    }
+}

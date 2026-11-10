@@ -168,8 +168,11 @@ mod tests {
             "the tooltip must be the ruling's true sentence, byte-exact"
         );
         assert!(
-            APP_JS.contains("model.launched_at ? [text(` \\u00b7 launched ${model.launched_at}`)]"),
-            "the launch stamp must render verbatim from the server's string"
+            APP_JS.contains("model.launched_at")
+                && APP_JS.contains(
+                    "[el(\"span\", { class: \"sh-launched\" }, text(` \\u00b7 launched ${model.launched_at}`))]"
+                ),
+            "the launch stamp must render verbatim from the server's string inside .sh-launched"
         );
         for derived in ["new Date(model", "Date.parse(model", "launched_at.toLocale"] {
             assert!(
@@ -260,8 +263,8 @@ mod tests {
         );
         assert!(
             STYLE_CSS.contains(".sh-cost-checked { color: var(--sh-accent-solid); }")
-                && STYLE_CSS.contains(".sh-cost-unchecked { color: var(--sh-warn); }"),
-            "green must be the accent and yellow the warn token, each with its own rule"
+                && STYLE_CSS.contains(".sh-cost-unchecked { color: var(--sh-warn-ink); }"),
+            "green must be the accent and yellow the warn-ink token, each with its own rule"
         );
     }
 
@@ -365,24 +368,22 @@ mod tests {
         );
     }
 
-    /// The checked box on warm paper (operator 2026-11-05): Pico's tick is a
-    /// hardcoded-white SVG glyph and the switch knob is white, both painted on
-    /// `--pico-primary-background` / `--pico-switch-checked-background-color` -
-    /// the warm control fill in light, a 1.24:1 vanishing tick. Light-only,
-    /// both tokens take the matte olive on the checkbox element: white glyph
-    /// and knob read at 5.8:1. Dark must stay exactly as Pico paints it
-    /// (white on its blue is 5.1:1), and the radio shares neither token.
+    /// The checked box in both themes: Pico's tick is a hardcoded-white SVG glyph
+    /// and the switch knob is white, both painted on
+    /// `--pico-primary-background` / `--pico-switch-checked-background-color`.
+    /// With both themes routing `--pico-primary-background` to their muted
+    /// chrome plates (`#efe6d6` light, `#1e2631` dark), the checkbox rule sets
+    /// both tokens to the matte olive `--sh-accent-solid` once for both themes.
     ///
     /// Nature, declared: a source-content assertion over the exact
     /// `include_str!` bytes `/style.css` answers.
     ///
-    /// Falsifier: scoping the override to dark or deleting it fails the
-    /// asserts; the dark-uniformity legs keep the dark block honest.
+    /// Falsifier: deleting the checkbox override or duplicating the switch
+    /// token fails the asserts.
     #[test]
     fn served_assets_darken_the_checked_box_in_light() {
         assert!(
-            STYLE_CSS.contains(":root:not([data-theme=\"dark\"]) input[type=\"checkbox\"]")
-                && STYLE_CSS.contains("html[data-theme=\"light\"] input[type=\"checkbox\"]")
+            STYLE_CSS.contains("input[type=\"checkbox\"] {")
                 && STYLE_CSS.contains("--pico-primary-background: var(--sh-accent-solid);")
                 && STYLE_CSS
                     .contains("--pico-switch-checked-background-color: var(--sh-accent-solid);")
@@ -390,13 +391,8 @@ mod tests {
                     .matches("--pico-switch-checked-background-color:")
                     .count()
                     == 1,
-            "the checked checkbox and switch fill is the olive, declared light-only \
-             and once - the white tick and knob need >= 4.5:1 on it (5.8:1 measured)"
-        );
-        assert!(
-            !STYLE_CSS.contains("html[data-theme=\"dark\"] input[type=\"checkbox\"]")
-                && !STYLE_CSS.contains(":root[data-theme=\"dark\"] input[type=\"checkbox\"]"),
-            "dark's checked box stays Pico's blue, byte-identical"
+            "the checked checkbox and switch fill is the olive accent, declared once \
+             for both themes"
         );
     }
 
@@ -474,13 +470,14 @@ mod tests {
         );
         assert!(
             STYLE_CSS.contains("--pico-primary-background: #efe6d6")
-                && STYLE_CSS.matches("--pico-primary-background:").count() == 2
+                && STYLE_CSS.contains("--pico-primary-background: #1e2631")
+                && STYLE_CSS.matches("--pico-primary-background:").count() == 3
                 && STYLE_CSS.contains("--pico-muted-border-color: #d6c5a8")
-                && STYLE_CSS.matches("--pico-muted-border-color:").count() == 1,
-            "the served stylesheet carries the warm Pico-primary scheme and \
-              the warm muted-border once, in the light block only (dark keeps \
-              Pico blue and Pico's cool muted border); the second \
-              --pico-primary-background is the light checked-box olive override"
+                && STYLE_CSS.contains("--pico-muted-border-color: #232c38")
+                && STYLE_CSS.matches("--pico-muted-border-color:").count() == 2,
+            "the served stylesheet carries the warm Pico-primary scheme in light, \
+             the calm dark-slate Pico-primary scheme in dark, and the olive \
+             checked-box override"
         );
         assert!(
             APP_JS.contains("text(\"Default\")") && !APP_JS.contains("text(\"Set default\")"),
@@ -500,18 +497,19 @@ mod tests {
             STYLE_CSS.contains("--sh-panel-bg: #f2eadc")
                 && STYLE_CSS.contains("--sh-header-bg: #f2eadc")
                 && STYLE_CSS.contains("--pico-table-border-color: #e2d5be")
-                && STYLE_CSS.matches("--pico-table-border-color:").count() == 1
+                && STYLE_CSS.contains("--pico-table-border-color: #202935")
+                && STYLE_CSS.matches("--pico-table-border-color:").count() == 2
                 && STYLE_CSS.contains("color: var(--sh-head-ink, var(--pico-color))")
-                && STYLE_CSS.contains("--pico-primary-border: #015c8f")
+                && STYLE_CSS.contains("--pico-primary-border: #2d3846")
                 && STYLE_CSS
                     .contains("background: var(--sh-panel-bg, var(--pico-card-background-color))")
                 && STYLE_CSS
                     .contains("background: var(--sh-header-bg, var(--pico-card-background-color))",)
                 && STYLE_CSS.contains("html[data-theme=\"light\"] .sh-unload:not(:hover)")
                 && !STYLE_CSS.contains("[data-theme=\"dark\"] .sh-unload"),
-            "the approved ramp ships: surface #f2eadc (panel, header, table head - \
-             no band), separator #e2d5be, blue buttons get a darker blue edge in \
-             dark, and the light strip carries no plate behind any unload"
+            "the approved ramp ships in both themes: light #f2eadc and dark #161c24 \
+             surfaces, muted chrome buttons, and the light strip carries no plate \
+             behind any unload"
         );
         assert!(
             STYLE_CSS.contains("table.sh-models tbody td {")
@@ -525,9 +523,16 @@ mod tests {
         assert!(
             STYLE_CSS
                 .contains("scrollbar-color: var(--pico-card-border-color) var(--sh-chrome-bg)")
-                && STYLE_CSS.contains(":root:not([data-theme=\"dark\"]) .sh-tablewrap"),
-            "the table wrapper scrollbar carries the warm light tokens: its \
-             white trough was the white \"border\" under the table"
+                && STYLE_CSS.contains(".sh-tablewrap {"),
+            "the table wrapper scrollbar carries the theme border and chrome tokens"
+        );
+        assert!(
+            APP_JS.contains(
+                "dotState === \"serving\" ? { class: \"sh-serving\", \"data-serving\": \"true\" } : {}"
+            ) && STYLE_CSS.contains("table.sh-models tbody tr.sh-serving {")
+                && STYLE_CSS.contains("box-shadow: inset 3px 0 0 var(--sh-dot-live);"),
+            "serving resident rows carry .sh-serving and data-serving=true with a \
+             full-row wash and 3px start-edge accent bar"
         );
         for ramp in ["#f7f1e6", "#f2eadc", "#efe6d6", "#d6c5a8", "#e2d5be"] {
             assert!(

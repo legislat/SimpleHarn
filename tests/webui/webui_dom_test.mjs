@@ -736,7 +736,7 @@ const driver = `
     check("the dark theme keeps its machine-room palette",
       !!darkBody && darkBody.indexOf("#10141a") >= 0 &&
         darkBody.indexOf("#161c24") >= 0 && darkBody.indexOf("#232c38") >= 0 &&
-        darkBody.indexOf("#7d8896") >= 0,
+        darkBody.indexOf("#84909f") >= 0,
       darkBody || "missing");
     // UR-01: the side's computed background equals the dedicated token, and
     // BOTH themes carry that token as a plain hex - the card surface the pill
@@ -771,11 +771,9 @@ const driver = `
     check("the light hover fill keeps its measured 25 % amber (4.9:1)",
       !!lightBody && lightBody.indexOf("--sh-warn-tint: #d89b1d40") >= 0,
       lightBody || "missing");
-    // Depth (operator screenshot 2026-11-05): in light the chrome must read
-    // DEEPER than the parchment - borders, table rules, table head, panel
-    // head and the unselected pills. Every depth token is light-only: a
-    // consumer falls back to the pre-fix value, so dark computes identical
-    // (the dark/root absence half of this leg is the dark-unchanged guard).
+    // Depth and chrome parity (operator 2026-11-05, extended in TASK-UI-POLISH
+    // 2026-11-09): both themes define their own ramp tokens so neither theme
+    // leaks into :root defaults and dark mirrors light's calm chrome discipline.
     const rootBody = bodyOf(":root {");
     check("light ramp tokens exist (table rules, muted rules, control fill, idle tab, head rule)",
       !!lightBody && lightBody.indexOf("--pico-card-border-color: #d6c5a8") >= 0 &&
@@ -786,16 +784,16 @@ const driver = `
         lightBody.indexOf("--sh-tab-idle-bg: var(--sh-chrome-bg)") >= 0 &&
         lightBody.indexOf("--sh-panel-head-rule: 1px solid var(--pico-card-border-color)") >= 0,
       lightBody || "missing");
-    check("no depth token leaks to dark or the :root defaults",
-      !!darkBody && darkBody.indexOf("--sh-chrome-bg") < 0 &&
-        darkBody.indexOf("--pico-table-border-color") < 0 &&
-        darkBody.indexOf("--sh-tab-idle-bg") < 0 &&
-        darkBody.indexOf("--sh-panel-head-rule") < 0 &&
+    check("dark ramp tokens exist and no depth token leaks into :root defaults",
+      !!darkBody && darkBody.indexOf("--sh-chrome-bg: #1e2631") >= 0 &&
+        darkBody.indexOf("--pico-table-border-color: #202935") >= 0 &&
+        darkBody.indexOf("--sh-tab-idle-bg: var(--sh-chrome-bg)") >= 0 &&
+        darkBody.indexOf("--sh-panel-head-rule: 1px solid var(--pico-card-border-color)") >= 0 &&
         !!rootBody && rootBody.indexOf("--sh-chrome-bg") < 0 &&
         rootBody.indexOf("--pico-table-border-color") < 0 &&
         rootBody.indexOf("--sh-tab-idle-bg") < 0 &&
         rootBody.indexOf("--sh-panel-head-rule") < 0,
-      "dark=" + (darkBody || "missing") .slice(0, 60));
+      "dark=" + (darkBody || "missing").slice(0, 60));
     const idleTabBody = bodyOf('.sh-tab:not([aria-selected="true"])');
     check("the unselected pill takes the light-only chrome token, falling back to the old background",
       !!idleTabBody &&
@@ -856,12 +854,14 @@ const driver = `
         lightBody.indexOf("--pico-form-element-background-color: var(--sh-chrome-bg)") >= 0 &&
         lightBody.indexOf("--pico-form-element-border-color: var(--pico-card-border-color)") >= 0,
       lightBody || "missing");
-    check("no primary or form recolor leaks to dark beyond the approved button edge",
-      !!darkBody && darkBody.split("--pico-primary").length - 1 === 2 &&
-        darkBody.indexOf("--pico-primary-border: #015c8f") >= 0 &&
-        darkBody.indexOf("--pico-primary-hover-border: #01699e") >= 0 &&
-        darkBody.indexOf("--pico-form-element") < 0 &&
-        darkBody.indexOf("--pico-muted-border-color") < 0 &&
+    check("dark Pico-primary and form variables resolve to the calm dark-slate chrome scheme",
+      !!darkBody && darkBody.indexOf("--pico-primary-background: #1e2631") >= 0 &&
+        darkBody.indexOf("--pico-primary-border: #2d3846") >= 0 &&
+        darkBody.indexOf("--pico-primary-hover-background: #26303e") >= 0 &&
+        darkBody.indexOf("--pico-primary-hover-border: #3a4758") >= 0 &&
+        darkBody.indexOf("--pico-primary-inverse: #d7dee6") >= 0 &&
+        darkBody.indexOf("--pico-primary: #8ab4d8") >= 0 &&
+        darkBody.indexOf("--pico-form-element-background-color: var(--sh-chrome-bg)") >= 0 &&
         !!rootBody && rootBody.indexOf("--pico-primary") < 0 &&
         rootBody.indexOf("--pico-form-element") < 0 &&
         rootBody.indexOf("--pico-muted-border-color") < 0,
@@ -883,22 +883,18 @@ const driver = `
         darkBody.indexOf("--sh-accent: ") < 0 &&
         css.indexOf("#2ea043") < 0,
       "root=" + (rootBody || "missing").slice(0, 40) + " dark=" + (darkBody || "").slice(0, 40));
-    // Checked boxes on warm paper (operator 2026-11-05): the tick glyph is
-    // hardcoded white and the switch knob is white, both on the checked fill
-    // token - on the warm control fill that was 1.24:1. Light-only, the
-    // checkbox takes the matte olive for its fill and switch track: white on
-    // olive is 5.8:1 (>= 4.5:1). Dark stays Pico blue (5.1:1), the radio dot
-    // keeps its dark ink, and the unchecked border stays the warm token.
-    const checkedBox = css.indexOf(':root:not([data-theme="dark"]) input[type="checkbox"]');
-    const checkedBoxLight = css.indexOf('html[data-theme="light"] input[type="checkbox"]');
-    check("checked boxes and switches take the olive fill in light only, white tick 5.8:1",
-      checkedBox >= 0 && checkedBoxLight >= 0 && checkedBoxLight > checkedBox &&
+    // Checked boxes in both themes (operator 2026-11-05, extended TASK-UI-POLISH):
+    // the tick glyph is hardcoded white and the switch knob is white, both on the
+    // checked fill token. With both themes setting --pico-primary-background to
+    // their muted chrome plates, input[type="checkbox"] sets the fill and switch
+    // track to --sh-accent-solid across both themes.
+    const checkedBox = css.indexOf('input[type="checkbox"] {');
+    check("checked boxes and switches take the olive fill in both themes",
+      checkedBox >= 0 &&
         css.indexOf("--pico-primary-background: var(--sh-accent-solid);") > 0 &&
         css.indexOf("--pico-switch-checked-background-color: var(--sh-accent-solid);") > 0 &&
-        css.indexOf('dark"] input[type="checkbox"]') < 0 &&
-        !!darkBody && darkBody.indexOf('input[type="checkbox"]') < 0 &&
         css.indexOf("--pico-form-element-border-color: var(--pico-card-border-color)") >= 0,
-      "at=" + checkedBox + "/" + checkedBoxLight);
+      "at=" + checkedBox);
     // green #22c55e ringed in its deep shade #14532d - a non-text graphic held
     // to >= 3:1 on the ring/fill combination (light: ring 7.6:1 on the surface
     // and fill 4.0:1 on the ring; dark: fill 7.6:1 on the card, the ring a
@@ -1008,9 +1004,11 @@ const driver = `
     // table goes transparent. The header pill keeps its plate.
     const panelBody = bodyOf(".sh-tabpanel {");
     const headerCssBody = bodyOf(".sh-header {");
-    check("the light strip sits on the surface token, dark keeps the card",
+    check("both themes bind their panel and header surfaces cleanly, and :root stays clean",
       !!lightBody && lightBody.indexOf("--sh-panel-bg: #f2eadc") >= 0 &&
         lightBody.indexOf("--sh-header-bg: #f2eadc") >= 0 &&
+        !!darkBody && darkBody.indexOf("--sh-panel-bg: #161c24") >= 0 &&
+        darkBody.indexOf("--sh-header-bg: #161c24") >= 0 &&
         !!panelBody &&
         panelBody.indexOf("background: var(--sh-panel-bg, var(--pico-card-background-color))") >= 0 &&
         !!headerCssBody &&
@@ -1018,9 +1016,7 @@ const driver = `
         css.indexOf(':root:not([data-theme="dark"]) .sh-unload:not(:hover)') >= 0 &&
         css.indexOf('html[data-theme="light"] .sh-unload:not(:hover)') >= 0 &&
         !!rootBody && rootBody.indexOf("--sh-panel-bg") < 0 &&
-        rootBody.indexOf("--sh-header-bg") < 0 &&
-        !!darkBody && darkBody.indexOf("--sh-panel-bg") < 0 &&
-        darkBody.indexOf("--sh-header-bg") < 0,
+        rootBody.indexOf("--sh-header-bg") < 0,
       "panel=" + (panelBody || "missing") + " header=" + (headerCssBody || "missing"));
     // Equal unload plates (operator #5, made consistency-proof 2026-11-05):
     // the token plate still carries both unloads in dark; light overrides it
@@ -1034,12 +1030,18 @@ const driver = `
       "lightPlate=" + (lightPlateBody || "missing"));
     // The white "border" (operator 2026-11-05): no computed border owned it -
     // the wrapper's horizontal scrollbar trough drew white under the table.
-    // Light paints the bar warm; dark keeps the platform scrollbar.
-    check("the table wrapper scrollbar takes the warm light tokens, not the white trough",
+    // The wrapper binds scrollbar-color to the theme's border and chrome tokens.
+    check("the table wrapper scrollbar takes the theme border and chrome tokens, not the white trough",
       css.indexOf("scrollbar-color: var(--pico-card-border-color) var(--sh-chrome-bg)") >= 0 &&
-        css.indexOf(':root:not([data-theme="dark"]) .sh-tablewrap') >= 0 &&
-        css.indexOf('html[data-theme="light"] .sh-tablewrap') >= 0,
+        css.indexOf(".sh-tablewrap {") >= 0,
       "no warm scrollbar rule");
+    const servingRowBody = bodyOf("table.sh-models tbody tr.sh-serving {");
+    const servingFirstCellBody = bodyOf("table.sh-models tbody tr.sh-serving td:first-child {");
+    check("serving rows carry a full-width wash and a 3px start-edge bar in the stylesheet",
+      !!servingRowBody && servingRowBody.indexOf("background: var(--sh-serving-bg)") >= 0 &&
+        !!servingFirstCellBody &&
+        servingFirstCellBody.indexOf("box-shadow: inset 3px 0 0 var(--sh-dot-live)") >= 0,
+      "row=" + (servingRowBody || "missing") + " td=" + (servingFirstCellBody || "missing"));
     // No border declaration ships a hex lighter than the page (the operator's
     // "table border is still white" class of defect): every hex named in a
     // border-bearing declaration sits below the page luminance.
@@ -1440,15 +1442,24 @@ const driver = `
   });
   const staleMarks = {};
   const nameCells = {};
+  const rowClasses = {};
+  const rowServingAttrs = {};
+  const launchedSpans = {};
+  const thScopes = findAll(document.getElementById("sh-main"), "th").map((th) => th.attrs.scope);
   for (const tr of findAll(document.getElementById("sh-main"), "tr")) {
     const tds = findAll(tr, "td");
     const strong = tds.map((td) => findAll(td, "strong")[0]).find(Boolean);
     if (!strong) continue;
     const cell = tds.find((td) => td.attrs.class === "sh-name");
     const dot = findAll(cell, "span", "sh-dot")[0];
-    staleMarks[textOf(strong)] = dot && dot.attrs["data-stale"] === "amber"
+    const id = textOf(strong);
+    staleMarks[id] = dot && dot.attrs["data-stale"] === "amber"
       ? dot.attrs.title : null;
-    nameCells[textOf(strong)] = cell ? textOf(cell) : "";
+    nameCells[id] = cell ? textOf(cell) : "";
+    rowClasses[id] = tr.attrs.class || "";
+    rowServingAttrs[id] = tr.attrs["data-serving"] || null;
+    const stampSpan = cell ? findAll(cell, "span", "sh-launched")[0] : null;
+    launchedSpans[id] = stampSpan ? textOf(stampSpan) : null;
   }
   check("stale resident dot is amber with the true tooltip",
     staleMarks["staleone"] === "config file changed since launch \u2014 unload + reload to apply",
@@ -1458,11 +1469,24 @@ const driver = `
     JSON.stringify(staleMarks));
   check("launch stamp prints verbatim on the loaded rows",
     nameCells["staleone"].includes(launchedStamp)
-      && nameCells["cleanone"].includes("2026-10-29T04:00:00Z"),
+      && nameCells["cleanone"].includes("2026-10-29T04:00:00Z")
+      && launchedSpans["staleone"] === " \u00b7 launched " + launchedStamp
+      && launchedSpans["cleanone"] === " \u00b7 launched 2026-10-29T04:00:00Z",
     nameCells["staleone"] + " | " + nameCells["cleanone"]);
   check("unloaded row prints no launch stamp",
-    !nameCells["unloadedone"].includes("launched"),
+    !nameCells["unloadedone"].includes("launched") && launchedSpans["unloadedone"] === null,
     nameCells["unloadedone"]);
+  check("only the serving resident row carries the .sh-serving class and data-serving=true",
+    rowClasses["staleone"] === "sh-serving" &&
+      rowServingAttrs["staleone"] === "true" &&
+      rowClasses["cleanone"] === "" &&
+      rowServingAttrs["cleanone"] === null &&
+      rowClasses["unloadedone"] === "" &&
+      rowServingAttrs["unloadedone"] === null,
+    JSON.stringify({ rowClasses, rowServingAttrs }));
+  check("every model table header cell carries scope=col",
+    thScopes.length === 8 && thScopes.every((s) => s === "col"),
+    JSON.stringify(thScopes));
 
   // Releasing (operator ruling 2026-11-04): the server's slots[].state wins
   // where present. A committed release renders the releasing pill and row dot

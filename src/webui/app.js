@@ -584,7 +584,13 @@ function modelRow(status, model, category) {
   // page-must-not-derive rule). It rides an attribute, not `dotState`, so the
   // Unload/Load/Releasing buttons stay the plain serving-row logic.
   const stale = serving && model.stale_config === true;
-  const row = el("tr", {});
+  // A serving resident row carries `.sh-serving` and `data-serving="true"` so
+  // the stylesheet gives the active resident a full-width wash and start-edge
+  // bar (TASK-UI-POLISH).
+  const row = el(
+    "tr",
+    dotState === "serving" ? { class: "sh-serving", "data-serving": "true" } : {},
+  );
   // Operator layout (2026-10-26): actions first, then the name, then the rest —
   // the buttons stay in view at any width without scrolling. The primary button
   // is state-aware: a serving row offers Unload, a loading row is parked.
@@ -664,7 +670,9 @@ function modelRow(status, model, category) {
       el("strong", {}, text(model.id)),
       // The launch stamp the server formatted (Axis 2): printed verbatim, no date
       // math on the page. Absent = not loaded, and nothing renders.
-      ...(model.launched_at ? [text(` \u00b7 launched ${model.launched_at}`)] : []),
+      ...(model.launched_at
+        ? [el("span", { class: "sh-launched" }, text(` \u00b7 launched ${model.launched_at}`))]
+        : []),
     ),
   );
 
@@ -712,7 +720,7 @@ function modelRow(status, model, category) {
   }
 
   row.append(el("td", {}, text(model.engine)));
-  row.append(el("td", {}, text(model.context ?? "—")));
+  row.append(el("td", { class: "sh-ctx" }, text(model.context ?? "—")));
   // Cost honesty, server-decided (R9): the gate says via `cost_basis` which figure
   // it books. GREEN cells show that booked figure verbatim; YELLOW cells show
   // context, not a booking — declared or estimate sizes, and for greedy the launch
@@ -917,14 +925,14 @@ function renderTab(status, category) {
       el(
         "tr",
         {},
-        el("th", {}),
-        el("th", {}, text("Model")),
-        el("th", {}, text("Cat")),
-        el("th", {}, text("CPU")),
-        el("th", {}, text("Engine")),
-        el("th", {}, text("Ctx")),
-        el("th", {}, text("Cost")),
-        el("th", {}, text("Files")),
+        el("th", { scope: "col" }),
+        el("th", { scope: "col" }, text("Model")),
+        el("th", { scope: "col" }, text("Cat")),
+        el("th", { scope: "col" }, text("CPU")),
+        el("th", { scope: "col" }, text("Engine")),
+        el("th", { scope: "col", class: "sh-ctx" }, text("Ctx")),
+        el("th", { scope: "col", class: "sh-cost" }, text("Cost")),
+        el("th", { scope: "col" }, text("Files")),
       ),
     ),
   );

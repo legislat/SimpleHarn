@@ -40,6 +40,11 @@
   --sh-dot-releasing-ring: #5c3804;
   --sh-dot-bad-ring: #7f1d12;
   --sh-dot-idle-ring: #3d372c;
+  /* Memory-bar fills and badge washes (TASK-UI-POLISH, 2026-11-09): muted
+   * semantic tokens so no raw hex literal paints a bar or badge directly. */
+  --sh-bar-observed: #4a7fb5;
+  --sh-bar-ram: #7a5fb0;
+  --sh-bad-tint: #c0392b40;
   --sh-radius: 10px;
   --sh-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
@@ -49,7 +54,9 @@ html[data-theme="dark"] {
   --pico-background-color: #10141a;
   --pico-card-background-color: #161c24;
   --pico-card-border-color: #232c38;
-  --pico-muted-color: #7d8896;
+  --pico-table-border-color: #202935;
+  --pico-muted-border-color: #232c38;
+  --pico-muted-color: #84909f;
   /* UR-01 (2026-11-05): Pico redefines --pico-background-color on EVERY button
    * (its primary blue), exactly the documented --pico-color trap, so the
    * joined side reads its background from this own token Pico cannot reach:
@@ -60,12 +67,37 @@ html[data-theme="dark"] {
   --sh-warn-tint: #d89b1d2e;
   /* Matte olive lightened for the dark card (6.9:1) - see :root. */
   --sh-accent-solid: #8fae6f;
-  /* Button edge (approved ramp, operator 2026-11-05): Pico's dark primary
-   * border equals its fill (#0172ad), so the border read as nothing. One
-   * step darker blue makes it an edge; hover pairs the same step. Nothing
-   * else in dark moves. */
-  --pico-primary-border: #015c8f;
-  --pico-primary-hover-border: #01699e;
+  /* Calm slate chrome for dark mode (TASK-UI-POLISH, 2026-11-09): mirrors
+   * light mode's warm chrome discipline so unselected tabs, Load/Default/✕
+   * buttons, and form selects sit on a muted dark-slate plate (#1e2631,
+   * border #2d3846, ink #d7dee6 at 9.8:1) instead of Pico's saturated
+   * #0172ad electric blue. Outline buttons (Rescan, Sign in, Light) and links
+   * take the soft slate-blue #8ab4d8 (7.3:1 on the card), and only state
+   * signals (the olive selected tab, the #22c55e serving dot, the amber
+   * Unload actions, and the cost provenance figures) carry hue. */
+  --sh-chrome-bg: #1e2631;
+  --sh-tab-idle-bg: var(--sh-chrome-bg);
+  --sh-panel-bg: #161c24;
+  --sh-header-bg: #161c24;
+  --sh-head-ink: #8b96a5;
+  --sh-panel-head-rule: 1px solid var(--pico-card-border-color);
+  --sh-row-zebra: rgba(255, 255, 255, 0.02);
+  --sh-row-hover: rgba(255, 255, 255, 0.045);
+  --sh-serving-bg: rgba(143, 174, 111, 0.09);
+  --pico-primary: #8ab4d8;
+  --pico-primary-hover: #a5c7e4;
+  --pico-primary-underline: rgba(138, 180, 216, 0.5);
+  --pico-primary-background: #1e2631;
+  --pico-primary-border: #2d3846;
+  --pico-primary-hover-background: #26303e;
+  --pico-primary-hover-border: #3a4758;
+  --pico-primary-inverse: #d7dee6;
+  --pico-primary-focus: rgba(138, 180, 216, 0.35);
+  --pico-form-element-color: #d7dee6;
+  --pico-form-element-background-color: var(--sh-chrome-bg);
+  --pico-form-element-border-color: #2d3846;
+  --pico-form-element-active-background-color: var(--sh-chrome-bg);
+  --pico-form-element-selected-background-color: var(--sh-chrome-bg);
   /* Dot rings on the dark card (operator 2026-11-05): the green ring works
    * as-is (subtle 1.9:1 edge, fill carries the 7.6:1); the other states take
    * a near-black tint of their own hue so every bright fill keeps a dark
@@ -169,6 +201,12 @@ html[data-theme="dark"] {
    * plate behind the tab-side, its background is the same surface token -
    * light-only, dark falls back to the card token. */
   --sh-header-bg: #f2eadc;
+  /* Matte olive darkened one step in light so checked cost figures hold
+   * >= 4.5:1 AA even over the serving row's olive wash (4.7:1 measured). */
+  --sh-accent-solid: #536542;
+  --sh-row-zebra: rgba(111, 91, 54, 0.03);
+  --sh-row-hover: rgba(111, 91, 54, 0.065);
+  --sh-serving-bg: rgba(89, 107, 71, 0.08);
   --sh-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
@@ -247,11 +285,11 @@ header.sh-header {
 }
 
 .sh-badge[data-tone="none"] { background: transparent; color: var(--pico-muted-color); }
-.sh-badge[data-tone="bad"] { background: #c0392b40; color: var(--sh-bad); }
+.sh-badge[data-tone="bad"] { background: var(--sh-bad-tint); color: var(--sh-bad); }
 /* Amber = the no-verdict state, the tray's own precedence colour (FINDINGS-14 [7] +
  * 15 [2] "A + amber"): a category whose supervisor has not spoken is neither green
  * nor red. Same ink as the loading dot, so one amber exists on the page. */
-.sh-badge[data-tone="warn"] { background: #d89b1d40; color: var(--sh-warn); }
+.sh-badge[data-tone="warn"] { background: var(--sh-warn-tint); color: var(--sh-warn-ink); }
 
 /* Merged slot/tab/control strip (operator compaction, 2026-11-01): the tab buttons
  * ARE the slot cards - each pill carries the dot, category, port, occupant and its
@@ -397,8 +435,8 @@ header.sh-header {
   border-left: 1px solid var(--sh-warn);
   background: repeating-linear-gradient(45deg, var(--sh-warn) 0 3px, transparent 3px 6px);
 }
-.sh-bar[data-tone="observed"] > i { background: #4a7fb5; }
-.sh-bar[data-tone="ram"] > i { background: #7a5fb0; }
+.sh-bar[data-tone="observed"] > i { background: var(--sh-bar-observed); }
+.sh-bar[data-tone="ram"] > i { background: var(--sh-bar-ram); }
 .sh-errline { color: var(--sh-bad); font-size: 0.8rem; margin-top: 0.4rem; }
 .sh-files {
   font-size: 0.75rem;
@@ -408,24 +446,29 @@ header.sh-header {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sh-tablewrap { overflow-x: auto; }
-/* Operator (2026-11-05, "the table border is still white"): the owner was
- * never a border - every computed border around the table reads the warm
- * #d6c5a8 already. With the table wider than the wrapper, the horizontal
- * scrollbar's default WHITE trough drew a white band under the table. Light
- * paints it warm (thumb: the border token, track: the chrome plate); dark
- * keeps the platform scrollbar untouched. */
-:root:not([data-theme="dark"]) .sh-tablewrap,
-html[data-theme="light"] .sh-tablewrap {
+.sh-tablewrap {
+  overflow-x: auto;
   scrollbar-color: var(--pico-card-border-color) var(--sh-chrome-bg);
 }
-/* Cost cell: the number only, colour carries the provenance (operator 2026-11-01):
- * green = the gate books a launch-validated figure, yellow = unchecked. */
-.sh-cost { font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Cost and context cells: numeric columns align right with tabular digits so
+ * numbers and units stack cleanly down the column (TASK-UI-POLISH); colour
+ * carries cost provenance (operator 2026-11-01): green = the gate books a
+ * launch-validated figure, yellow = unchecked. */
+.sh-ctx,
+.sh-cost {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
 .sh-cost-checked { color: var(--sh-accent-solid); }
-.sh-cost-unchecked { color: var(--sh-warn); }
+.sh-cost-unchecked { color: var(--sh-warn-ink); }
 .sh-models { min-width: 56rem; }
 .sh-models .sh-name { white-space: nowrap; }
+.sh-launched {
+  color: var(--pico-muted-color);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
 /* Buttons sit side by side and only slide under each other when the column is
  * genuinely cramped (operator, 2026-10-26). The flex lives on the INNER span
  * (operator 2026-11-05, white-seam fix): `display: flex` on the td replaced
@@ -433,10 +476,12 @@ html[data-theme="light"] .sh-tablewrap {
  * no background - headless-Edge pixels proved a ~200px column of card white
  * between the buttons and the Model column. The td stays a table-cell (and
  * paints its row colour); the span flexes inside it. */
-table.sh-models td.sh-actions { width: max-content; }
+table.sh-models td.sh-actions { width: max-content; white-space: nowrap; }
 /* The actions column is the table's first column, so the buttons stick to
  * its left corner: the column's cells drop the start padding (operator,
- * 2026-11-05; the empty-state row keeps its reading indent). */
+ * 2026-11-05; the empty-state row keeps its reading indent). A serving row
+ * restores a 0.45rem start inset so the 3px left accent bar clears the button
+ * edge cleanly (TASK-UI-POLISH). */
 table.sh-models :is(th, td):first-child:not(.sh-empty) { padding-left: 0; }
 .sh-extlog {
   display: inline-flex;
@@ -480,6 +525,9 @@ table.sh-models td, table.sh-models th { padding: 0.45rem 0.6rem; }
  * dark fallback is Pico's own th ink), and the one bottom rule stays
  * Pico's --pico-table-border-color line. */
 table.sh-models thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: var(--sh-panel-bg, var(--pico-card-background-color));
   color: var(--sh-head-ink, var(--pico-color));
 }
@@ -492,6 +540,23 @@ table.sh-models thead th {
  * (segment deltas 0px) at 760/900/1100/1280/1600 and mid-scroll. */
 table.sh-models tbody tr {
   border-bottom: 1px solid var(--pico-table-border-color);
+}
+/* Row rhythm and serving highlight (TASK-UI-POLISH, 2026-11-09): subtle even-row
+ * tint and hover state guide the eye across the wide Model -> Cat -> Cost span,
+ * while a serving resident (`tr.sh-serving`) takes an unmistakable olive wash
+ * across the full row plus a 3px start-edge accent bar. */
+table.sh-models tbody tr:nth-child(even):not(.sh-serving) {
+  background: var(--sh-row-zebra);
+}
+table.sh-models tbody tr:not(.sh-serving):hover {
+  background: var(--sh-row-hover);
+}
+table.sh-models tbody tr.sh-serving {
+  background: var(--sh-serving-bg);
+}
+table.sh-models tbody tr.sh-serving td:first-child {
+  box-shadow: inset 3px 0 0 var(--sh-dot-live);
+  padding-left: 0.45rem;
 }
 /* The one-surface grid (operator 2026-11-05, mirrored the same day): the
  * body cells painted Pico's PAGE token while their own panel sat one token
@@ -527,24 +592,20 @@ table.sh-models th:last-child, table.sh-models td:last-child { padding-right: 0.
 /* Axis 2 (ruling 2026-10-29): a serving row whose config file moved since launch.
    The tray's listener amber is a different palette; this is the config one. */
 .sh-dot[data-stale="amber"] { background: var(--sh-warn); box-shadow: 0 0 0 1px var(--sh-dot-warn-ring); }
-/* Checked boxes on warm paper (operator 2026-11-05): Pico paints the tick as
- * a hardcoded-white SVG glyph over --pico-primary-background and the switch
- * track from --pico-switch-checked-background-color - here the warm control
- * fill #efe6d6 - so the white tick and the white knob sat at 1.24:1 on their
- * own fill. Light-only, the checked checkbox and switch take the matte olive
- * for fill and track: the white glyph and knob read at 5.8:1 and the olive
- * track against the surface at 4.9:1. Dark keeps Pico's blue (white on
- * #0172ad is 5.1:1 there); the radio dot already shares neither token and
- * keeps its dark ink; the unchecked border stays the warm border token. */
-:root:not([data-theme="dark"]) input[type="checkbox"],
-html[data-theme="light"] input[type="checkbox"] {
+/* Checked boxes in both themes (operator 2026-11-05, extended TASK-UI-POLISH):
+ * Pico paints the tick as a hardcoded-white SVG glyph over
+ * --pico-primary-background and the switch track from
+ * --pico-switch-checked-background-color. With --pico-primary-background moved
+ * to the chrome plate in both themes, checked boxes take the matte olive accent
+ * for fill and track. */
+input[type="checkbox"] {
   --pico-primary-background: var(--sh-accent-solid);
   --pico-switch-checked-background-color: var(--sh-accent-solid);
 }
 
 .sh-row-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.35rem;
   align-items: stretch;
   justify-content: flex-start;

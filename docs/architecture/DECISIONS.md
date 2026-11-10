@@ -866,3 +866,16 @@ recorded here so dated references to ARCHIVED still resolve:
   variance). A floor below the real need admits and lets the engine abort, so it
   is an operator promise, not a measurement.
   | 2026-11-08 | `this task`
+
+- **UI polish keeps both pinned accents** (operator ruling 2026-11-09): the
+  bright serving dot (`--sh-dot-live: #22c55e`) and the matte olive
+  selected-tab accent stay. The perceived loudness came from Pico's saturated
+  `#0172ad` primary painting every idle tab and row button in dark mode, not
+  from either pin. Dark mode therefore routes `--pico-primary*` and the form
+  variables to a muted slate chrome plate (`#1e2631`, border `#2d3846`), keeps
+  the slate-blue `#8ab4d8` for outline controls and links, and leaves hue to
+  the state signals: the olive selected tab, the green serving dot, the amber
+  Unload family, and the cost provenance figures. Large surfaces and badges
+  drop saturation; no pinned hex moves.
+  | 2026-11-09 | `this task`
+

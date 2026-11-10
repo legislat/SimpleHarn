@@ -22,7 +22,9 @@ kills its engine group), and the single-instance lock lives at
 Manual launch: double-click `SimpleHarn.vbs` beside the exe to start the harness
 with no console window. Run `simpleharn.exe` directly when you want the live
 tracing console. The launcher starts the exe in its own folder and passes no
-arguments.
+arguments. When you run `simpleharn.exe` directly and the boot fails, the
+console stays open with the reason and waits for Enter. A redirected launch and
+the `.vbs` launcher do not wait.
 
 Replace `<install-dir>` below with the folder that holds
 `simpleharn.exe` and `autostart.vbs`. Create `autostart.vbs` at the path

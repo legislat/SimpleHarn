@@ -3,7 +3,9 @@
 //! before any engine work (there is none: preload is scrapped), zero engine spawns
 //! at boot.
 
-use simpleharn::api::{category_router, control_router, ApiState, BootMsStamp};
+use simpleharn::api::{
+    category_router, control_router, control_token_resolves, ApiState, BootMsStamp,
+};
 use simpleharn::budget::VramWitness;
 use simpleharn::config::{self, firstrun, AppConfig, ConfigError};
 use simpleharn::engine::EngineRuntime;
@@ -11,11 +13,34 @@ use simpleharn::observability;
 use simpleharn::platform::SingleInstance;
 use simpleharn::process::{ContainerCandidate, ProcessRuntime, SingleInstanceGuard};
 use simpleharn::scheduler::{Scheduler, SchedulerHandle};
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Whether a fatal boot error should hold the console open (operator 2026-11-09):
+/// true only when both console ends are real terminals. A double-clicked exe then
+/// leaves its reason on screen instead of vanishing; a redirected launch,
+/// `SimpleHarn.vbs`, and a service supervisor never block on a prompt.
+fn console_is_interactive(stdout_tty: bool, stdin_tty: bool) -> bool {
+    stdout_tty && stdin_tty
+}
+
+/// Hold an interactive console open after a fatal error so the reason can be read.
+/// Redirected output and a redirected or absent stdin return at once.
+fn hold_console_after_fatal() {
+    if !console_is_interactive(
+        std::io::stdout().is_terminal(),
+        std::io::stdin().is_terminal(),
+    ) {
+        return;
+    }
+    eprintln!("Press Enter to close this window.");
+    let mut line = String::new();
+    let _ = std::io::stdin().read_line(&mut line);
+}
 
 /// Loads and validates boot config from beside the executable.
 ///
@@ -189,6 +214,7 @@ async fn main() -> ExitCode {
         Ok(guard) => guard,
         Err(reason) => {
             tracing::error!(reason = %reason, "refusing to start");
+            hold_console_after_fatal();
             return ExitCode::FAILURE;
         }
     };
@@ -198,6 +224,7 @@ async fn main() -> ExitCode {
             for error in &errors {
                 tracing::error!(error = %error, "invalid configuration");
             }
+            hold_console_after_fatal();
             return ExitCode::FAILURE;
         }
     };
@@ -225,6 +252,17 @@ async fn main() -> ExitCode {
             .is_some_and(|token| !token.trim().is_empty()),
         "boot configuration"
     );
+    // Boot gate for the unauthenticated network bind: decided here, before the
+    // scheduler exists. A refusal must be the LAST thing this process prints, so
+    // no catalog scan, model listing, or listener attempt can bury the reason
+    // under later log lines while the console holds the window open.
+    if let Some(reason) =
+        config.unauthenticated_network_bind_refusal(control_token_resolves(&config))
+    {
+        tracing::error!(reason = %reason, "refusing to start");
+        hold_console_after_fatal();
+        return ExitCode::FAILURE;
+    }
     let witness = simpleharn::witness::NvmlWitness::new();
     let witness = Arc::new(witness);
     // First-start materialization: with no config file,
@@ -382,19 +420,17 @@ async fn main() -> ExitCode {
         Arc::clone(&witness) as Arc<dyn simpleharn::budget::VramWitness>,
         boot,
     ));
-    // Boot gate for the unauthenticated network bind (operator task
-    // 2026-11-08): a non-loopback `internal_host` with no resolved control
-    // token refuses startup unless `allow_unauthenticated_network_bind` is
-    // true. The token is resolved and known here (`ApiState::new` reads
-    // `control_token` / `SIMPLEHARN_TOKEN`), and no listener has bound yet —
-    // `run()` starts every supervisor below this point.
-    if let Some(reason) = state
-        .config
-        .unauthenticated_network_bind_refusal(state.requires_token())
-    {
-        tracing::error!(reason = %reason, "refusing to start");
-        return ExitCode::FAILURE;
-    }
+    // Boot gate for the unauthenticated network bind: already decided above,
+    // before the scheduler, the catalog scan, and every listener. The posture is
+    // pinned by `unauthenticated_network_bind_refusal` and cannot change between
+    // there and here: the config is immutable from that point.
+    debug_assert!(
+        state
+            .config
+            .unauthenticated_network_bind_refusal(state.requires_token())
+            .is_none(),
+        "the bind posture gate must run before the scheduler exists"
+    );
 
     // One shutdown channel for every exit path: Ctrl+C and the tray's Exit item
     // (v3.3 §20 lesson: a single Notify can only wake one waiter).
@@ -425,6 +461,7 @@ async fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::error!(error = %error, "harness stopped with an error");
+            hold_console_after_fatal();
             ExitCode::FAILURE
         }
     }
@@ -1107,9 +1144,9 @@ mod tests {
     //! (FINDINGS-14 [4]/[5]) with every listener on an ephemeral port.
 
     use super::{
-        boot_config, boot_order, decode_console_output, first_run_target, gate_verdict,
-        llama_binary_warning, log_boot_banner, parse_excluded_ranges, probe_outcome, run, run_cli,
-        supervise_listener,
+        boot_config, boot_order, console_is_interactive, decode_console_output, first_run_target,
+        gate_verdict, llama_binary_warning, log_boot_banner, parse_excluded_ranges, probe_outcome,
+        run, run_cli, supervise_listener,
     };
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
@@ -1310,6 +1347,18 @@ mod tests {
             None,
             "a path not named CONFIG_FILE is never a target, existing or not"
         );
+    }
+
+    /// Operator 2026-11-09: a double-clicked exe must leave a fatal boot reason
+    /// on screen. The hold fires only when both console ends are terminals, so a
+    /// redirected launch, `SimpleHarn.vbs`, and a service supervisor never block.
+    /// Falsifier: gating on either end alone (or on neither) flips one assertion.
+    #[test]
+    fn a_fatal_error_holds_only_an_interactive_console() {
+        assert!(console_is_interactive(true, true));
+        assert!(!console_is_interactive(false, true));
+        assert!(!console_is_interactive(true, false));
+        assert!(!console_is_interactive(false, false));
     }
 
     #[test]
