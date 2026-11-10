@@ -2000,6 +2000,9 @@ const driver = `
   // The wire is asserted, not just the dialog: a stub whose window.localStorage
   // install is missing sends no token at all, still prompts exactly once (the dedup
   // guard fires on ""), and would PASS this leg blind (FINDINGS-BATCH-2026-10-28K [K-1]).
+  check("the sign-in prompt names the product",
+    globalThis.promptLog[0] === "SimpleHarn control token",
+    JSON.stringify(globalThis.promptLog));
   check("wrong token prompts once, not per tick",
     globalThis.promptLog.length === 1 && !!wrongSecret &&
       globalThis.sentTokens.indexOf(wrongSecret) >= 0,

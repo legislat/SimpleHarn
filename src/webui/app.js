@@ -70,7 +70,7 @@ function authHeaders(extra) {
 function promptForToken() {
   let entered = null;
   try {
-    entered = window.prompt("SE control token");
+    entered = window.prompt("SimpleHarn control token");
   } catch (error) {
     return false;
   }

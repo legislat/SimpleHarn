@@ -254,14 +254,14 @@ fn reject_reason(state: &ApiState, request: &axum::extract::Request) -> Option<A
     {
         None => {
             return Some(ApiError::BadRequest {
-                reason: "request carries no `Host` header; SE is a loopback tool and the DNS-rebinding guard must see the address the request was sent to".to_string(),
+                reason: "request carries no `Host` header; SimpleHarn is a loopback tool and the DNS-rebinding guard must see the address the request was sent to".to_string(),
             });
         }
         Some(host) if loopback_host(state, host) => {}
         Some(host) => {
             return Some(ApiError::BadRequest {
                 reason: format!(
-                    "Host `{host}` is not this harness's loopback address on one of its own ports; SE is a loopback tool and refuses requests addressed by hostname or foreign address (DNS-rebinding guard)"
+                    "Host `{host}` is not this harness's loopback address on one of its own ports; SimpleHarn is a loopback tool and refuses requests addressed by hostname or foreign address (DNS-rebinding guard)"
                 ),
             });
         }
