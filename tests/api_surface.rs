@@ -1747,7 +1747,7 @@ async fn default_model_persists_the_canonical_name_not_the_alias() {
     );
     std::fs::write(
         modelconf.join("qwen3.yaml"),
-        "name: qwen3\nengine: mock\ncategory: WORK\nvram_gb: 4\nmodel: F:/MODELS/Qwen3-0.6B-Q8_0.gguf\n",
+        "name: qwen3\nengine: mock\ncategory: WORK\nvram_gb: 4\nmodel: models/Qwen3-0.6B-Q8_0.gguf\n",
     )
     .expect("seed alias row");
     let (status, body) = post_json(&control, "/har/rescan", "{}").await;
@@ -2947,7 +2947,7 @@ async fn moving_the_default_model_clears_its_old_category_default() {
 }
 
 /// Two yamls whose `model:` paths share one GGUF basename in different dirs —
-/// the reviewer's `F:\...\MID\X.gguf` vs `F:\...\BIG\X.gguf` shape. Same-name
+/// the reviewer's `mid/X.gguf` vs `big/X.gguf` shape. Same-name
 /// twins became unconstructable with file-stem identity (FINDINGS-13 [3]), so the
 /// surviving ambiguity class is the alias tier of `catalog::resolve`: neither file
 /// may win the shared GGUF name. The files carry no `name:` key at all.
@@ -2956,12 +2956,12 @@ fn seed_alias_twins(dir: &std::path::Path) -> (std::path::PathBuf, std::path::Pa
     let aux = dir.join("twin-aux.yaml");
     std::fs::write(
         &work,
-        "engine: mock\ncategory: WORK\nvram_gb: 4\nmodel: F:/MODELS_MID/twin.gguf\n",
+        "engine: mock\ncategory: WORK\nvram_gb: 4\nmodel: models/mid/twin.gguf\n",
     )
     .expect("seed twin-work");
     std::fs::write(
         &aux,
-        "engine: mock\ncategory: AUX\nvram_gb: 4\nmodel: F:/MODELS_BIG/twin.gguf\n",
+        "engine: mock\ncategory: AUX\nvram_gb: 4\nmodel: models/big/twin.gguf\n",
     )
     .expect("seed twin-aux");
     (work, aux)
@@ -3068,12 +3068,12 @@ async fn a_name_contradicting_the_stem_is_dropped_at_scan_and_the_first_file_loa
     );
     std::fs::write(
         dir.join("twin-work.yaml"),
-        "engine: mock\ncategory: WORK\nvram_gb: 4\nmodel: F:/MODELS_MID/twin-q4.gguf\n",
+        "engine: mock\ncategory: WORK\nvram_gb: 4\nmodel: models/mid/twin-q4.gguf\n",
     )
     .expect("seed twin-work");
     std::fs::write(
         dir.join("twin-aux.yaml"),
-        "name: twin-work\nengine: mock\ncategory: AUX\nvram_gb: 4\nmodel: F:/MODELS_BIG/twin-q8.gguf\n",
+        "name: twin-work\nengine: mock\ncategory: AUX\nvram_gb: 4\nmodel: models/big/twin-q8.gguf\n",
     )
     .expect("seed name-twin");
     let (status, body) = post_json(&control, "/har/rescan", "{}").await;
@@ -3122,12 +3122,12 @@ async fn colliding_gguf_file_names_are_409_on_the_alias_tier() {
     let big = dir.join("qwen3-big.yaml");
     std::fs::write(
         &mid,
-        "engine: mock\ncategory: WORK\nvram_gb: 4\nmodel: F:/MODELS_MID/Qwen3-0.6B-Q8_0.gguf\n",
+        "engine: mock\ncategory: WORK\nvram_gb: 4\nmodel: models/mid/Qwen3-0.6B-Q8_0.gguf\n",
     )
     .expect("seed mid");
     std::fs::write(
         &big,
-        "engine: mock\ncategory: WORK\nvram_gb: 4\nmodel: F:/MODELS_BIG/Qwen3-0.6B-Q8_0.gguf\n",
+        "engine: mock\ncategory: WORK\nvram_gb: 4\nmodel: models/big/Qwen3-0.6B-Q8_0.gguf\n",
     )
     .expect("seed big");
     post_json(&control, "/har/rescan", "{}").await;

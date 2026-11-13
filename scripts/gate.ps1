@@ -2,7 +2,7 @@
 # docs/process/VERIFICATION.md. PowerShell 5.1 compatible.
 #
 # The gate never starts an engine, never loads a model, never binds a port,
-# and never calls a live harness. It runs the eight commands in order, stops on
+# and never calls a live harness. It runs the nine commands in order, stops on
 # the first failure, and prints PASS/FAIL per command plus the overall result.
 # Counts are taken from the command output only; nothing is hardcoded.
 # The cargo commands carry `--features tray`: that is the shipped feature set
@@ -19,7 +19,8 @@ $gate = @(
   @{ Name = 'node tests/webui/webui_dom_test.mjs'; Exe = 'node'; CmdArgs = @('tests/webui/webui_dom_test.mjs') },
   @{ Name = 'node scripts/check-docs.mjs'; Exe = 'node'; CmdArgs = @('scripts/check-docs.mjs') },
   @{ Name = 'node scripts/check-instructions.mjs'; Exe = 'node'; CmdArgs = @('scripts/check-instructions.mjs') },
-  @{ Name = 'node scripts/check-comments.mjs -Fail'; Exe = 'node'; CmdArgs = @('scripts/check-comments.mjs', '-Fail') }
+  @{ Name = 'node scripts/check-comments.mjs -Fail'; Exe = 'node'; CmdArgs = @('scripts/check-comments.mjs', '-Fail') },
+  @{ Name = 'node scripts/check-test-paths.mjs'; Exe = 'node'; CmdArgs = @('scripts/check-test-paths.mjs') }
 )
 
 function Show-Counts([string]$name, [string[]]$output) {

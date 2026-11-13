@@ -1,4 +1,7 @@
 /target
+# Scratch Cargo target dirs used by reproducibility and seed checks.
+/target-repro-*
+/target-pubtest*
 /base-archive
 # Verbatim archives of superseded governing-doc revisions (local-only, like the docs).
 /archive

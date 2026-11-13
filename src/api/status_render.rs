@@ -6,7 +6,7 @@
 //! `mod.rs` beside the `ApiState` watch channel they drive.
 
 use crate::model::ModelEntry;
-use crate::scheduler::SchedulerStatus;
+use crate::scheduler::{SchedulerError, SchedulerStatus};
 use axum::extract::State;
 use axum::Json;
 use serde_json::{json, Value};
@@ -41,8 +41,22 @@ pub(super) async fn har_status(
 /// Also the body of every SSE `har_state` event
 /// (Step 14: one push replaces the page's state).
 pub(super) async fn status_document(state: &ApiState) -> Result<Value, ApiError> {
-    let scheduler = state.scheduler.status().await.map_err(ApiError::from)?;
-    Ok(render_status_document(state, &scheduler).await)
+    let scheduler = match state.scheduler.status().await {
+        Ok(scheduler) => scheduler,
+        Err(SchedulerError::ActorGone) if state.scheduler.health().is_down() => {
+            // The actor is gone: answer 200 with an explicit degraded document
+            // rather than a 500 that hides the scheduler state. Status must still
+            // explain itself; load/unload commands take the 503 path.
+            let mut document = render_status_document(state, &SchedulerStatus::empty()).await;
+            document["scheduler_state"] = json!("down");
+            document["scheduler_reason"] = json!("the scheduler stopped; restart the harness");
+            return Ok(document);
+        }
+        Err(error) => return Err(ApiError::from(error)),
+    };
+    let mut document = render_status_document(state, &scheduler).await;
+    document["scheduler_state"] = json!("up");
+    Ok(document)
 }
 
 /// The render half of `/har/status`: everything comes from ONE scheduler snapshot
@@ -315,7 +329,17 @@ pub(super) fn model_json(
 /// The merged document every `har_state` event carries: one push replaces the
 /// page's per-panel polling (Step 14).
 pub(super) async fn merged_state(state: &ApiState) -> Result<Value, ApiError> {
-    let scheduler = state.scheduler.status().await.map_err(ApiError::from)?;
+    let scheduler = match state.scheduler.status().await {
+        Ok(scheduler) => scheduler,
+        Err(SchedulerError::ActorGone) if state.scheduler.health().is_down() => {
+            let mut document = render_status_document(state, &SchedulerStatus::empty()).await;
+            document["scheduler_state"] = json!("down");
+            document["scheduler_reason"] = json!("the scheduler stopped; restart the harness");
+            document["models"] = Value::Array(Vec::new());
+            return Ok(document);
+        }
+        Err(error) => return Err(ApiError::from(error)),
+    };
     let loaded = loaded_rows(&scheduler.slots);
     let catalog = state.catalog().await?;
     let models: Vec<Value> = catalog
@@ -329,6 +353,7 @@ pub(super) async fn merged_state(state: &ApiState) -> Result<Value, ApiError> {
         })
         .collect();
     let mut document = render_status_document(state, &scheduler).await;
+    document["scheduler_state"] = json!("up");
     document["models"] = Value::Array(models);
     Ok(document)
 }
@@ -389,10 +414,15 @@ async fn mem_section(state: &ApiState, scheduler: &crate::scheduler::SchedulerSt
     let container_reported_gb = container_reported_gb(scheduler);
     let ram = crate::witness::ram_sample();
     let mut section = match state.witness.sample().await {
-        Ok(sample) => {
+        Ok(sample) if sample.total_gib.is_finite() && sample.used_gib.is_finite() => {
             let attributed = sample.process_total_gib();
             json!({
                 "total_gb": sample.total_gib,
+                // The witness answered: `total_gb` is the card's own figure.
+                "total_basis": "measured",
+                // The configured budget always rides beside the measured figure,
+                // so a client never has to infer it from the config file.
+                "configured_total_gb": state.config.vram_total_gb,
                 "reserve_gb": state.config.vram_reserve_gb,
                 "booked_gb": booked_gb,
                 "observed_used_gb": sample.used_gib,
@@ -412,20 +442,17 @@ async fn mem_section(state: &ApiState, scheduler: &crate::scheduler::SchedulerSt
                 // cross-check against `observed_used_gb`; never a gate input.
                 "container_reported_gb": container_reported_gb,
                 "source": state.witness.source(),
+                "unavailable_code": null,
             })
         }
-        Err(reason) => json!({
-            "total_gb": state.config.vram_total_gb,
-            "reserve_gb": state.config.vram_reserve_gb,
-            "booked_gb": booked_gb,
-            "observed_used_gb": null,
-            "attributed_gb": null,
-            // No sample, no claim: a witness that cannot answer cannot grade its
-            // own attribution — absence, never a fake `unavailable`.
-            "attribution": null,
-            "container_reported_gb": container_reported_gb,
-            "source": format!("unavailable ({reason})"),
-        }),
+        Ok(_) => {
+            tracing::debug!("memory witness returned a non-finite total or used figure");
+            unavailable_mem_section(state, booked_gb, container_reported_gb, "non_finite")
+        }
+        Err(reason) => {
+            tracing::debug!(reason = %reason, "memory witness unavailable");
+            unavailable_mem_section(state, booked_gb, container_reported_gb, "witness_error")
+        }
     };
     // A1: host RAM is informational context next to the VRAM bars (§0.4 keeps it
     // out of admission). Since the RAM ladder landed
@@ -452,6 +479,33 @@ async fn mem_section(state: &ApiState, scheduler: &crate::scheduler::SchedulerSt
         );
     }
     section
+}
+
+/// The no-sample memory block. `total_gb` stays numeric for compatibility, but
+/// `total_basis: "configured"` states that the number is the declared budget, not
+/// a card reading. The client-visible `source` is generic; the detailed witness
+/// reason is logged, never placed in the body.
+fn unavailable_mem_section(
+    state: &ApiState,
+    booked_gb: f64,
+    container_reported_gb: Option<f64>,
+    code: &str,
+) -> Value {
+    json!({
+        "total_gb": state.config.vram_total_gb,
+        "total_basis": "configured",
+        "configured_total_gb": state.config.vram_total_gb,
+        "reserve_gb": state.config.vram_reserve_gb,
+        "booked_gb": booked_gb,
+        "observed_used_gb": null,
+        "attributed_gb": null,
+        // No sample, no claim: a witness that cannot answer cannot grade its
+        // own attribution — absence, never a fake `unavailable`.
+        "attribution": null,
+        "container_reported_gb": container_reported_gb,
+        "source": "unavailable",
+        "unavailable_code": code,
+    })
 }
 
 /// `GET /v1/models` — exactly this listener's category, never the full catalog

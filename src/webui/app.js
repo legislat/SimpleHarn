@@ -412,6 +412,21 @@ function renderMemory(status) {
       ),
     );
   }
+  // The witness is down: show no bar and no measured number. The configured
+  // budget may still be useful, but it must read as configured, never observed.
+  if (mem.observed_used_gb === null || mem.observed_used_gb === undefined) {
+    const configured =
+      mem.configured_total_gb == null
+        ? ""
+        : " · configured " + Number(mem.configured_total_gb).toFixed(1) + " GiB";
+    const note = el(
+      "div",
+      { class: "sh-mem-unavailable", role: "status" },
+      text("Card memory unavailable" + configured),
+    );
+    note.setAttribute("title", "source: " + (mem.source || "unavailable"));
+    bars.push(note);
+  }
   // A1: host RAM context (informational; admission budgets VRAM, never RAM). Omit
   // the whole bar when the platform cannot sample it, rather than show zeros. The
   // used number gates too: a total without a reading is not a bar (review F5).
@@ -578,6 +593,19 @@ function configWarningsBanner(status) {
     "div",
     { class: "sh-warnline", role: "alert" },
     ...warnings.map((warning) => el("div", {}, text(warning ? warning.message : ""))),
+  );
+}
+
+// The single writer is gone. This is a server verdict (`scheduler_state`), not
+// a page inference: the page shows the generic reason verbatim and invents no
+// health. Load controls still exist, but every command takes the named 503.
+function schedulerDownBanner(status) {
+  if (status.scheduler_state !== "down") return null;
+  const reason = status.scheduler_reason || "the scheduler stopped; restart the harness";
+  return el(
+    "div",
+    { class: "sh-warnline", role: "alert" },
+    el("div", {}, text("Scheduler stopped: " + reason)),
   );
 }
 
@@ -1179,7 +1207,9 @@ function render() {
   );
   const notices = catalogNotices(status);
   const configWarnings = configWarningsBanner(status);
+  const schedulerDown = schedulerDownBanner(status);
   mainHost.replaceChildren(
+    ...(schedulerDown ? [schedulerDown] : []),
     ...(configWarnings ? [configWarnings] : []),
     renderTab(status, state.activeTab),
     ...(jobs ? [jobs] : []),
@@ -1252,12 +1282,16 @@ async function refresh() {
   // Polling fallback and the rescan button both use the plain endpoints. The
   // catches are split on purpose: a TypeError from the fetches means the browser
   // never reached the harness, while a render-time error is a contract bug worth
-  // seeing raw (same handling as applyState on the SSE path).
-  let status;
-  let catalog;
-  try {
-    [status, catalog] = await Promise.all([getJson("/har/status"), getJson("/har/models")]);
-  } catch (error) {
+  // seeing raw (same handling as applyState on the SSE path). The two reads settle
+  // independently: when the scheduler actor is down `/har/status` still answers a
+  // degraded 200, while `/har/models` answers 503, and the page must render the
+  // degraded state with its last catalog instead of an unreachable header.
+  const [statusResult, catalogResult] = await Promise.allSettled([
+    getJson("/har/status"),
+    getJson("/har/models"),
+  ]);
+  if (statusResult.status === "rejected") {
+    const error = statusResult.reason;
     flashError(
       error instanceof TypeError
         ? new Error(`cannot reach the harness at ${location.host} — is it running?`)
@@ -1275,8 +1309,13 @@ async function refresh() {
     lastRenderKey = null;
     return;
   }
+  const status = statusResult.value;
+  const catalog = catalogResult.status === "fulfilled" ? catalogResult.value : null;
+  if (!catalog && status.scheduler_state !== "down") {
+    flashError(catalogResult.reason);
+  }
   state.status = status;
-  state.models = catalog.data;
+  if (catalog) state.models = catalog.data;
   recordReportedFootprints(status);
   try {
     if (stateKey(state.status, state.models) === lastRenderKey) patchVolatile(state.status);

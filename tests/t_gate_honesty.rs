@@ -58,25 +58,27 @@ static NONCE_SEQ: AtomicU64 = AtomicU64::new(0);
 const CONTROL: &str = "http://127.0.0.1:8708";
 const AUX_LISTENER: &str = "http://127.0.0.1:8710";
 
+// The card suites require the model paths through SIMPLEHARN_T_* (no built-in
+// fallback): an unset variable prices as a nonexistent relative sentinel, so
+// every honest refusal stays BLOCKED. Operator defaults live in the private
+// handoff preflight scripts, which export the variables into the run session.
 fn small_gguf() -> PathBuf {
-    std::env::var("SE_T_SMALL")
+    std::env::var("SIMPLEHARN_T_SMALL")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(r"F:\MODELS_MID\Qwen3-0.6B-GGUF\Qwen3-0.6B-Q8_0.gguf"))
+        .unwrap_or_else(|_| PathBuf::from("models/Qwen3-0.6B-Q8_0.gguf"))
 }
 
 fn emb_gguf() -> PathBuf {
-    std::env::var("SE_T_EMB")
+    std::env::var("SIMPLEHARN_T_EMB")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(r"F:\MODELS_MID\embeddinggemma-2-GGUF\embeddinggemma-2-Q8_0.gguf")
-        })
+        .unwrap_or_else(|_| PathBuf::from("models/embeddinggemma-2-Q8_0.gguf"))
 }
 
 fn mid_gguf() -> PathBuf {
-    std::env::var("SE_T_MID")
+    std::env::var("SIMPLEHARN_T_MID")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            PathBuf::from(r"F:\MODELS_MID\Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf")
+            PathBuf::from("models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf")
         })
 }
 
@@ -881,7 +883,10 @@ async fn g03_foreign_harness_cannot_impersonate() {
 async fn g04_supersede_409_names_the_reason() {
     let _serial = serial_lock().await;
     if !mid_gguf().exists() {
-        println!("G4 BLOCKED: mid model missing (SE_T_MID) — the in-flight window cannot be opened honestly");
+        println!(
+            "G4 BLOCKED: mid model missing (SIMPLEHARN_T_MID) \
+             — the in-flight window cannot be opened honestly"
+        );
         return;
     }
     let entries = [Entry::mid("midA"), Entry::aux("auxA")];

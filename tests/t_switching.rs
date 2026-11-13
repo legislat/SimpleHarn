@@ -40,54 +40,56 @@ const RP_LISTENER: &str = "http://127.0.0.1:8709";
 const AUX_LISTENER: &str = "http://127.0.0.1:8710";
 const EMB_LISTENER: &str = "http://127.0.0.1:8711";
 
+// The card suites require the model paths through SIMPLEHARN_T_* (no built-in
+// fallback): an unset variable prices as a nonexistent relative sentinel, so
+// every honest refusal stays BLOCKED. Operator defaults live in the private
+// handoff preflight scripts, which export the variables into the run session.
 fn small_gguf() -> PathBuf {
-    std::env::var("SE_T_SMALL")
+    std::env::var("SIMPLEHARN_T_SMALL")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(r"F:\MODELS_MID\Qwen3-0.6B-GGUF\Qwen3-0.6B-Q8_0.gguf"))
+        .unwrap_or_else(|_| PathBuf::from("models/Qwen3-0.6B-Q8_0.gguf"))
 }
 
 fn emb_gguf() -> PathBuf {
-    std::env::var("SE_T_EMB")
+    std::env::var("SIMPLEHARN_T_EMB")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(r"F:\MODELS_MID\embeddinggemma-2-GGUF\embeddinggemma-2-Q8_0.gguf")
-        })
+        .unwrap_or_else(|_| PathBuf::from("models/embeddinggemma-2-Q8_0.gguf"))
 }
 
 fn big_work_gguf() -> PathBuf {
-    std::env::var("SE_T_WORK31")
+    std::env::var("SIMPLEHARN_T_WORK31")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(r"F:\MODELS_MID\Artemis-31B-v1.2.Q6_K.gguf"))
+        .unwrap_or_else(|_| PathBuf::from("models/Artemis-31B-v1.2.Q6_K.gguf"))
 }
 
 fn big_rp_gguf() -> PathBuf {
-    std::env::var("SE_T_RP31")
+    std::env::var("SIMPLEHARN_T_RP31")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(r"F:\MODELS_MID\Wicked-Tutu-31B-Final.Q6_K.gguf"))
+        .unwrap_or_else(|_| PathBuf::from("models/Wicked-Tutu-31B-Final.Q6_K.gguf"))
 }
 
 fn big_aux_gguf() -> PathBuf {
-    std::env::var("SE_T_AUX31")
+    std::env::var("SIMPLEHARN_T_AUX31")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(r"F:\MODELS_MID\Artoma-Lexicon-31B.Q6_K.gguf"))
+        .unwrap_or_else(|_| PathBuf::from("models/Artoma-Lexicon-31B.Q6_K.gguf"))
 }
 
 fn mid_gguf() -> PathBuf {
-    std::env::var("SE_T_MID")
+    std::env::var("SIMPLEHARN_T_MID")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            PathBuf::from(r"F:\MODELS_MID\Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf")
+            PathBuf::from("models/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf")
         })
 }
 
-/// Whether T8 cancels a mid-size load (default) or the 31B (`SE_T_MIDS=0`, or the mid
-/// file is absent).
+/// Whether T8 cancels a mid-size load (default) or the 31B (`SIMPLEHARN_T_MIDS=0`,
+/// or the mid file is absent).
 ///
 /// `tier.ps1` evaluates the same two conditions, so the memory gate can never disagree
 /// with the test about what is about to occupy the card - which is the only property
 /// that makes a gate like it worth having.
 fn use_mid_t08() -> bool {
-    std::env::var("SE_T_MIDS").map_or(true, |value| value != "0") && mid_gguf().exists()
+    std::env::var("SIMPLEHARN_T_MIDS").map_or(true, |value| value != "0") && mid_gguf().exists()
 }
 
 // The T-suite card gate, mirrored inside the test binary (FINDINGS-21 [3]).
@@ -192,8 +194,9 @@ fn blocked_line(label: &str, files: &[PathBuf]) -> String {
 /// test needs is not on disk. Panics, never `return;` — a quiet early return is
 /// exactly the vacuous PASS chunk 21 exists to catch. The anchored
 /// [`blocked_line`] output keeps the outcome classifiable as BLOCKED under
-/// `run-group.ps1` (R2-17-01: an assert-only panic for a missing `SE_T_EMB` /
-/// `SE_T_SMALL` file reached the driver as a FAIL and earned a flake re-run);
+/// `run-group.ps1` (R2-17-01: an assert-only panic for a missing
+/// `SIMPLEHARN_T_EMB` / `SIMPLEHARN_T_SMALL` file reached the driver as a FAIL and
+/// earned a flake re-run);
 /// the panic message is the stop sign for a bare `cargo test` and names the env
 /// overrides the operator must set.
 fn require_files(tag_label: &str, files: &[PathBuf]) {
@@ -212,7 +215,8 @@ fn require_files(tag_label: &str, files: &[PathBuf]) {
         .collect();
     panic!(
         "T-suite refuses: {tag_label} model files missing ({}); set the matching \
-         SE_T_SMALL / SE_T_EMB / SE_T_WORK31 / SE_T_RP31 / SE_T_AUX31 / SE_T_MID \
+         SIMPLEHARN_T_SMALL / SIMPLEHARN_T_EMB / SIMPLEHARN_T_WORK31 / \
+         SIMPLEHARN_T_RP31 / SIMPLEHARN_T_AUX31 / SIMPLEHARN_T_MID \
          override to an existing file",
         names.join(", ")
     );
@@ -502,9 +506,9 @@ impl Harness {
                      this is NOT a foreign harness: `{sentinel}` never appeared in \
                      {CONTROL}/har/models within 30 s (last attempt: {last_attempt}; \
                      {diagnosis}). Read the catalog_errors above - a scan-dropped sentinel \
-                     (missing/detached SE_T_EMB gguf, InvalidYaml) or a first-turn stall on \
-                     a cold volume names itself there. Report it as that, not as \
-                     impersonation."
+                     (missing/detached SIMPLEHARN_T_EMB gguf, InvalidYaml) or a \
+                     first-turn stall on a cold volume names itself there. Report it \
+                     as that, not as impersonation."
                 ),
             }
         }
@@ -748,13 +752,13 @@ fn harness_exe() -> PathBuf {
 // ---------------------------------------------------------------- T1
 
 #[tokio::test]
-#[ignore = "operator-gated: real exe + real model files (SE_T_*)"]
+#[ignore = "operator-gated: real exe + real model files (SIMPLEHARN_T_*)"]
 async fn t01_listener_routing_guards() {
     serial_lock();
     // R2-17-01: the precondition prints the anchored `T1 BLOCKED` line before it
-    // panics, and it runs BEFORE the harness boots, so a missing `SE_T_SMALL` /
-    // `SE_T_EMB` file classifies as BLOCKED instead of a FAIL that earns a flake
-    // re-run.
+    // panics, and it runs BEFORE the harness boots, so a missing
+    // `SIMPLEHARN_T_SMALL` / `SIMPLEHARN_T_EMB` file classifies as BLOCKED instead of
+    // a FAIL that earns a flake re-run.
     require_files("T1", &[small_gguf(), emb_gguf()]);
     let harness = Harness::spawn("t01").await;
     let work = harness_exe();
@@ -1111,11 +1115,11 @@ async fn t06_eviction_matrix() {
     serial_lock();
     let harness = Harness::spawn("t06").await;
     if !harness.baseline_check(&[&big_work_gguf(), &big_rp_gguf(), &big_aux_gguf()]) {
-        println!("T6 BLOCKED: 31B model files missing (SE_T_* overrides)");
+        println!("T6 BLOCKED: 31B model files missing (SIMPLEHARN_T_* overrides)");
         panic!(
             "T-suite refuses: the three 31B model files are missing \
-             (SE_T_WORK31 / SE_T_RP31 / SE_T_AUX31); loading zero models must FAIL, \
-             never report a vacuous PASS"
+             (SIMPLEHARN_T_WORK31 / SIMPLEHARN_T_RP31 / SIMPLEHARN_T_AUX31); \
+             loading zero models must FAIL, never report a vacuous PASS"
         );
     }
 
@@ -1175,11 +1179,11 @@ async fn t07_admission_failure() {
     serial_lock();
     let harness = Harness::spawn("t07").await;
     if !harness.baseline_check(&[&big_work_gguf(), &big_rp_gguf(), &big_aux_gguf()]) {
-        println!("T7 BLOCKED: 31B model files missing (SE_T_* overrides)");
+        println!("T7 BLOCKED: 31B model files missing (SIMPLEHARN_T_* overrides)");
         panic!(
             "T-suite refuses: the three 31B model files are missing \
-             (SE_T_WORK31 / SE_T_RP31 / SE_T_AUX31); loading zero models must FAIL, \
-             never report a vacuous PASS"
+             (SIMPLEHARN_T_WORK31 / SIMPLEHARN_T_RP31 / SIMPLEHARN_T_AUX31); \
+             loading zero models must FAIL, never report a vacuous PASS"
         );
     }
 
@@ -1219,7 +1223,8 @@ async fn t07_admission_failure() {
 // ---------------------------------------------------------------- T8
 
 #[tokio::test]
-#[ignore = "operator-gated: loads one mid-size model (~11 GiB booked); SE_T_MIDS=0 uses the 31B"]
+#[ignore = "operator-gated: loads one mid-size model (~11 GiB booked); \
+            SIMPLEHARN_T_MIDS=0 uses the 31B"]
 async fn t08_cancel_during_load() {
     serial_lock();
     let harness = Harness::spawn("t08").await;
@@ -1229,10 +1234,10 @@ async fn t08_cancel_during_load() {
         ("rp31", big_rp_gguf())
     };
     if !harness.baseline_check(&[&file]) {
-        println!("T8 BLOCKED: {model} model file missing (SE_T_MID / SE_T_RP31)");
+        println!("T8 BLOCKED: {model} model file missing (SIMPLEHARN_T_MID / SIMPLEHARN_T_RP31)");
         panic!(
             "T-suite refuses: the {model} model file is missing \
-             (SE_T_MID / SE_T_RP31); loading zero models must FAIL, \
+             (SIMPLEHARN_T_MID / SIMPLEHARN_T_RP31); loading zero models must FAIL, \
              never report a vacuous PASS"
         );
     }

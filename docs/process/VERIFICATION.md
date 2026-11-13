@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [agent, reviewer, release-operator]
 source_of_truth_for: [gate, evidence]
-last_reviewed: 2026-11-08
+last_reviewed: 2026-11-13
 review_trigger: behavior-change, release
 ---
 
@@ -26,6 +26,7 @@ node tests/webui/webui_dom_test.mjs
 node scripts/check-docs.mjs
 node scripts/check-instructions.mjs
 node scripts/check-comments.mjs -Fail
+node scripts/check-test-paths.mjs
 ```
 
 - `cargo test` includes the doc-test.
@@ -151,6 +152,36 @@ Rules:
 | Card suite | operator-run package | operator-freed window only |
 
 The commands print their own counts.
+
+## Admission conformance (scripted witness)
+
+The named target `tests/admission_conformance.rs` states the admission invariant
+contract in one place. Run it with this command:
+
+```text
+cargo test --test admission_conformance
+```
+
+- The `cargo test` line of the cardless gate already runs this target. The named
+  CI step runs it by name.
+- The target runs cardless. It needs no GPU, no model files, and no private
+  handoff repository. It binds no port and starts no engine. A scripted witness
+  drives the real scheduler actor and the in-process mock engine.
+- The scenarios state five invariants: a witness outage refuses, an in-flight
+  booking is debited, a same-slot victim is credited at the larger of its
+  booking and its measured footprint, eviction releases the cheapest sufficient
+  victim set, and an unreachable launch floor refuses before any kill. One API
+  leg answers 503 `witness_unavailable` for an unreadable card.
+- The scripted witness is a projection, not hardware truth. The target cannot
+  replace the card legs: the real NVML reading, the physical release timing of a
+  real engine process, and a swap on a real card. Those legs stay in the
+  operator-run card suite ("The release card gate"). A cardless conformance pass
+  is never a card verdict.
+- The credit-rule falsifier runs in a disposable worktree:
+  `scripts/seed-admission-regression.ps1`. It flips one expression in
+  `src/scheduler/admission.rs`, runs the target there, and proves a non-zero
+  exit. The main working tree is never mutated. The script exits 0 only when the
+  target goes red; record its log under `handoff/evidence/`.
 
 ## Definition of verified
 

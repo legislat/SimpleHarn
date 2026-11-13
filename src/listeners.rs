@@ -82,26 +82,27 @@ impl ListenerRegistry {
 
     /// Marks a listener as bound and serving.
     pub fn mark_serving(&self, category: CategoryId) {
-        self.inner
-            .lock()
-            .expect("listener registry lock poisoned by a writer panic")
-            .insert(category, ListenerState::Serving);
+        self.lock().insert(category, ListenerState::Serving);
     }
 
     /// Marks a listener as down with the reason (port named, G13).
     pub fn mark_down(&self, category: CategoryId, reason: String) {
-        self.inner
-            .lock()
-            .expect("listener registry lock poisoned by a writer panic")
-            .insert(category, ListenerState::Down { reason });
+        self.lock().insert(category, ListenerState::Down { reason });
     }
 
     /// Point-in-time snapshot for `/har/status`.
     pub fn snapshot(&self) -> BTreeMap<CategoryId, ListenerState> {
-        self.inner
-            .lock()
-            .expect("listener registry lock poisoned by a writer panic")
-            .clone()
+        self.lock().clone()
+    }
+
+    /// A poisoned registry lock must not abort a supervisor or a status read.
+    /// The map holds simple verdicts, so recovering the last written values is
+    /// safe; the log names the defect so it is not silent.
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<CategoryId, ListenerState>> {
+        self.inner.lock().unwrap_or_else(|poisoned| {
+            tracing::error!("listener registry lock poisoned; recovering the last verdicts");
+            poisoned.into_inner()
+        })
     }
 
     /// Whether any listener is down — the tray's red condition (§15).

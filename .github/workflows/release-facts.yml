@@ -15,6 +15,11 @@ name: Release facts
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (for example v1.5.1.6)'
+        required: true
   release:
     types: [published]
 
@@ -69,6 +74,28 @@ jobs:
             exit 1
           fi
           echo "PASS: published release $GITHUB_REF_NAME carries $assets asset(s)."
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Download published assets
+        shell: bash
+        run: |
+          mkdir -p dist
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir dist --clobber
+
+      - name: Verify every asset against its checksum
+        shell: bash
+        run: node scripts/check-release-sums.mjs dist
+
+      - name: Verify the release body has no rendering defects
+        shell: bash
+        run: |
+          set -o pipefail
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' | node scripts/check-release-body.mjs
   # Trigger A, Linux port (D4): build the headless Linux artifact from the tag
   # in CI and publish its hash beside it. The Linux card verdict stays BLOCKED:
   # a build here proves the binary compiles and packages, never that an engine
@@ -154,3 +181,119 @@ jobs:
           name: simpleharn-linux-x64
           path: dist/SimpleHarn-*.tar.gz*
           if-no-files-found: error
+
+  # Trigger A, Windows port: build the shipped tray binary from the exact tag,
+  # package the five-entry zip, prove the embedded release identity and the
+  # absence of stale product strings, and upload a workflow artifact. The
+  # publish wrapper, not this job, creates the GitHub release.
+  windows-artifact:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-2025
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@1.98.1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Assert the checkout is the exact tag
+        shell: pwsh
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(\.\d+)?$') {
+            throw "RELEASE_TAG is not a release tag: $tag"
+          }
+          $exact = (git describe --tags --exact-match --match 'v*').Trim()
+          if ($exact -ne $tag) {
+            throw "checkout is $exact, not the requested tag $tag"
+          }
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build the shipped binary (first pass)
+        shell: pwsh
+        run: |
+          $env:CARGO_TARGET_DIR = "$PWD\target-repro-a"
+          cargo build --release --locked --features tray
+
+      - name: Build the shipped binary (second pass)
+        shell: pwsh
+        run: |
+          $env:CARGO_TARGET_DIR = "$PWD\target-repro-b"
+          cargo build --release --locked --features tray
+
+      - name: Compare the two builds
+        shell: pwsh
+        run: |
+          $a = (Get-FileHash -LiteralPath 'target-repro-a\release\simpleharn.exe' -Algorithm SHA256).Hash
+          $b = (Get-FileHash -LiteralPath 'target-repro-b\release\simpleharn.exe' -Algorithm SHA256).Hash
+          if ($a -eq $b) {
+            $repro = 'identical'
+            Write-Output "REPRO identical: $a"
+          } else {
+            $repro = 'different'
+            Write-Warning "REPRO differs: first $a second $b; record the named cause and do not claim reproducibility"
+          }
+          "HASH=$a" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "REPRO=$repro" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "- repro: $repro ($a vs $b)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Package the five-entry Windows zip and sums
+        shell: pwsh
+        run: |
+          ./scripts/make-public-asset.ps1 `
+            -Version $env:RELEASE_TAG `
+            -ExePath target-repro-a\release\simpleharn.exe `
+            -ExpectedSha256 $env:HASH `
+            -OutDir dist
+
+      - name: Verify identity, strings, and checksums in the package
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -LiteralPath dist -Filter '*-win-x64.zip' | Select-Object -First 1
+          if ($null -eq $zip) { throw 'packaged zip is missing' }
+          $pkg = Join-Path $env:RUNNER_TEMP ('pkg-' + [guid]::NewGuid().ToString('N'))
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath $pkg -Force
+          $exe = Join-Path $pkg 'simpleharn.exe'
+          $report = (& $exe --version 2>&1 | Out-String)
+          $ver = $env:RELEASE_TAG.TrimStart('v')
+          if ($report -notmatch ('(?m)^release ' + [regex]::Escape($ver) + '\s*$')) {
+            throw "packaged exe does not report release $ver`: $report"
+          }
+          ./scripts/check-shipped-strings.ps1 -ExePath $exe
+          if ($LASTEXITCODE -ne 0) { throw 'packaged exe carries a stale product string' }
+          node scripts/check-release-sums.mjs dist
+
+      - name: Write build provenance beside the artifact
+        shell: pwsh
+        run: |
+          @(
+            "tag=$env:RELEASE_TAG",
+            "commit=$(git rev-parse HEAD)",
+            "rust=$(rustc --version)",
+            "image=$env:ImageOS",
+            "repro=$env:REPRO",
+            "exe_sha256=$env:HASH",
+            "runner=$env:RUNNER_OS"
+          ) | Set-Content -LiteralPath dist\build-provenance.txt -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simpleharn-win-x64
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+            dist/PUBLICATION-SCRUB.md
+            dist/build-provenance.txt
+          if-no-files-found: error
+

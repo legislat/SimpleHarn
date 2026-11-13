@@ -1,5 +1,6 @@
 use super::*;
-use crate::scheduler::SlotStatus;
+use crate::budget::{AttributionQuality, MemorySample, VramWitness};
+use crate::scheduler::{SchedulerError, SchedulerStatus, SlotStatus};
 use axum::http::Request;
 use std::path::PathBuf;
 use tower::ServiceExt;
@@ -546,6 +547,95 @@ async fn the_mem_block_books_ram_only_where_rows_book_ram() {
         "nothing loaded CPU is a 0.0 booking, not an absence: {}",
         doc["mem"]
     );
+}
+
+#[tokio::test]
+async fn the_mem_block_never_presents_the_configured_total_as_measured() {
+    let api = live_state(BootTimings::default());
+    let status = api.scheduler.status().await.expect("actor alive");
+    let doc = render_status_document(&api, &status).await;
+    assert_eq!(
+        doc["mem"]["total_basis"],
+        json!("configured"),
+        "a dead witness means the total is the declared budget: {}",
+        doc["mem"]
+    );
+    assert_eq!(
+        doc["mem"]["total_gb"],
+        json!(api.config.vram_total_gb),
+        "the numeric field stays for compatibility, but its basis says configured"
+    );
+    assert_eq!(
+        doc["mem"]["configured_total_gb"],
+        json!(api.config.vram_total_gb),
+        "the configured budget rides beside the number in every arm"
+    );
+    assert_eq!(doc["mem"]["observed_used_gb"], json!(null));
+    assert_eq!(doc["mem"]["source"], json!("unavailable"));
+    assert_eq!(doc["mem"]["unavailable_code"], json!("witness_error"));
+}
+
+#[test]
+fn a_dead_actor_maps_to_the_named_scheduler_unavailable_class() {
+    let error = ApiError::from(SchedulerError::ActorGone);
+    assert_eq!(error.code(), "scheduler_unavailable");
+    assert_eq!(error.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(
+        error.to_string().contains("scheduler is not running"),
+        "the generic message names the stopped scheduler: {error}"
+    );
+}
+
+#[tokio::test]
+async fn a_dead_actor_answers_status_with_a_degraded_document_not_a_500() {
+    let api = unit_state();
+    api.scheduler
+        .health()
+        .mark_down_for_test("scheduler stopped");
+    let doc = status_document(&api)
+        .await
+        .expect("degraded status document");
+    assert_eq!(doc["scheduler_state"], json!("down"));
+    assert!(
+        doc["scheduler_reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("restart the harness")),
+        "the degraded reason names the recovery: {}",
+        doc["scheduler_reason"]
+    );
+    assert_eq!(doc["slots"], json!([]));
+    assert_eq!(doc["jobs"], json!([]));
+    let merged = merged_state(&api).await.expect("degraded merged state");
+    assert_eq!(merged["scheduler_state"], json!("down"));
+    assert_eq!(merged["models"], json!([]));
+}
+
+struct NanWitness;
+
+#[async_trait::async_trait]
+impl VramWitness for NanWitness {
+    async fn sample(&self) -> Result<MemorySample, String> {
+        Ok(MemorySample {
+            total_gib: f64::NAN,
+            used_gib: 1.0,
+            processes: Vec::new(),
+            attribution: AttributionQuality::Unavailable,
+        })
+    }
+
+    fn source(&self) -> String {
+        "nan-test".to_string()
+    }
+}
+
+#[tokio::test]
+async fn a_non_finite_witness_total_is_treated_as_unavailable() {
+    let mut api = unit_state();
+    api.witness = Arc::new(NanWitness);
+    let doc = render_status_document(&api, &SchedulerStatus::empty()).await;
+    assert_eq!(doc["mem"]["total_basis"], json!("configured"));
+    assert_eq!(doc["mem"]["unavailable_code"], json!("non_finite"));
+    assert_eq!(doc["mem"]["observed_used_gb"], json!(null));
 }
 
 #[test]

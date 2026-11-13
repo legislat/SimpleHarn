@@ -1,8 +1,8 @@
 use super::{
-    gather_drift_stats, headline_fault, missing_binary_error, serve_model_warning, ActorMsg,
-    ActorState, AdmissionPath, DriftStats, FitEntry, Gibibytes, Job, JobId, JobKind, JobStatus,
-    JobTimings, MeasuredAnchor, Occupant, Reply, ResourceKind, ScanKind, Scheduler, Slot,
-    SpawnTicket, SwapState, RELEASE_POLL,
+    gather_drift_stats, headline_fault, missing_binary_error, serve_model_warning, watch_actor,
+    ActorMsg, ActorState, AdmissionPath, DriftStats, FitEntry, Gibibytes, Job, JobId, JobKind,
+    JobStatus, JobTimings, MeasuredAnchor, Occupant, Reply, ResourceKind, ScanKind, Scheduler,
+    SchedulerHealth, Slot, SpawnTicket, SwapState, RELEASE_POLL,
 };
 use crate::budget::LedgerOnlyWitness;
 use crate::config::CategoryId;
@@ -12514,4 +12514,29 @@ fn a_row_that_lists_this_host_reaches_the_adapter_lookup() {
         }
         other => panic!("expected the adapter lookup to speak, got {other:?}"),
     }
+}
+
+async fn wait_down(health: &SchedulerHealth) {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !health.is_down() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the watcher marks the actor down");
+}
+
+#[tokio::test]
+async fn the_actor_watcher_marks_health_down_on_panic_and_normal_exit() {
+    let panicked = Arc::new(SchedulerHealth::default());
+    let actor = tokio::spawn(async { panic!("test-only actor panic") });
+    watch_actor(actor, Arc::clone(&panicked));
+    wait_down(&panicked).await;
+    assert_eq!(panicked.reason().as_deref(), Some("scheduler stopped"));
+
+    let stopped = Arc::new(SchedulerHealth::default());
+    let actor = tokio::spawn(async {});
+    watch_actor(actor, Arc::clone(&stopped));
+    wait_down(&stopped).await;
+    assert_eq!(stopped.reason().as_deref(), Some("scheduler stopped"));
 }

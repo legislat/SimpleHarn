@@ -433,6 +433,12 @@ header.sh-header {
   gap: 0.8rem;
   margin-top: 0.7rem;
 }
+.sh-mem-unavailable {
+  font-size: 0.75rem;
+  color: var(--pico-muted-color);
+  align-self: end;
+  padding-bottom: 0.2rem;
+}
 
 .sh-bar { height: 10px; border-radius: 6px; background: var(--pico-card-border-color); overflow: hidden; position: relative; }
 .sh-bar > i { display: block; height: 100%; background: var(--sh-accent-solid); }

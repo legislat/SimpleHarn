@@ -28,7 +28,7 @@ mod spawn;
 mod status;
 mod vocab;
 
-pub use handle::{Reply, SchedulerError, SchedulerHandle};
+pub use handle::{Reply, SchedulerError, SchedulerHandle, SchedulerHealth};
 pub use jobs::{
     booking_gibs, fault_of, headline_fault, AdmissionPath, JobKind, JobStatus, JobTimings,
     SwapReceipt,
@@ -115,13 +115,15 @@ impl Scheduler {
         let (tx, rx) = mpsc::unbounded_channel();
         let state = ActorState::new(cfg, models_dir, adapters, runtime, witness, tx.clone());
         let (events, _) = tokio::sync::broadcast::channel::<SchedulerStatus>(64);
-        tokio::spawn(actor_loop(
+        let health = Arc::new(handle::SchedulerHealth::default());
+        let actor = tokio::spawn(actor_loop(
             ActorState {
                 events: events.clone(),
                 ..state
             },
             rx,
         ));
+        watch_actor(actor, Arc::clone(&health));
         // Idle sweep tick (Step 5): cheap actor-side scan into the same queue, so
         // the single-writer rule holds.
         let tick_tx = tx.clone();
@@ -135,8 +137,26 @@ impl Scheduler {
                 }
             }
         });
-        SchedulerHandle { tx, events }
+        SchedulerHandle { tx, events, health }
     }
+}
+
+/// Watch the sole actor task. Both a normal return and a panic mark the shared
+/// verdict down, so `/har/status` and the SSE pump can name the stopped scheduler
+/// instead of waiting forever on a channel that no longer answers.
+fn watch_actor(actor: tokio::task::JoinHandle<()>, health: Arc<SchedulerHealth>) {
+    tokio::spawn(async move {
+        match actor.await {
+            Ok(()) => {
+                tracing::warn!("scheduler actor stopped");
+                health.mark_down("scheduler stopped");
+            }
+            Err(error) => {
+                tracing::error!(error = %error, "scheduler actor stopped");
+                health.mark_down("scheduler stopped");
+            }
+        }
+    });
 }
 
 /// A slot occupant as owned by the actor.

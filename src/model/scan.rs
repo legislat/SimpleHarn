@@ -531,7 +531,7 @@ fn is_accepted_config(file_type: &std::fs::FileType, path: &Path) -> bool {
 /// The existence-trace file-type predicate: the traces accept
 /// **regular files** only. `fs::metadata` succeeds
 /// for a directory, so without this filter an operator typo
-/// (`model: F:/models/Qwen-GGUF` — the folder, filename forgotten) publishes,
+/// (`model: models/Qwen-GGUF` — the folder, filename forgotten) publishes,
 /// admission evicts victims, and the engine dies at Spawn on the directory path
 /// — the exact doomed-spawn swap the trace exists to refuse — and the same stat
 /// books the directory's byte size (often 0 on NTFS) into `gguf_size_gb`.

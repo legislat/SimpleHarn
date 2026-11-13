@@ -149,8 +149,8 @@ mod tests {
 
     fn catalog() -> Vec<ModelEntry> {
         vec![
-            entry("qwen3-0.6b", "F:/MODELS/qwen3-0.6b.gguf", None),
-            entry("embeddinggemma-2", "F:/MODELS/embeddinggemma-2.gguf", None),
+            entry("qwen3-0.6b", "models/qwen3-0.6b.gguf", None),
+            entry("embeddinggemma-2", "models/embeddinggemma-2.gguf", None),
         ]
     }
 
@@ -204,7 +204,7 @@ mod tests {
     fn a_full_path_query_is_not_an_alias() {
         let models = catalog();
         assert!(matches!(
-            resolve("F:/MODELS/qwen3-0.6b.gguf", &models),
+            resolve("models/qwen3-0.6b.gguf", &models),
             Resolution::None
         ));
     }
@@ -215,16 +215,8 @@ mod tests {
         // Both claim tier 1, so neither may win — the queue line's "duplicate names
         // resolve scan-first".
         let models = vec![
-            entry(
-                "qwen3-0.6b",
-                "F:/MODELS_MID/qwen3-0.6b.gguf",
-                Some("a.yaml"),
-            ),
-            entry(
-                "qwen3-0.6b",
-                "F:/MODELS_BIG/qwen3-0.6b.gguf",
-                Some("b.yaml"),
-            ),
+            entry("qwen3-0.6b", "models/mid/qwen3-0.6b.gguf", Some("a.yaml")),
+            entry("qwen3-0.6b", "models/big/qwen3-0.6b.gguf", Some("b.yaml")),
         ];
         match resolve("qwen3-0.6b", &models) {
             Resolution::Ambiguous(hits) => {
@@ -240,8 +232,8 @@ mod tests {
         // The case-folded tier is equally refused when two spellings fold together:
         // the query matches neither name exactly, so tier 2 is the only claimant.
         let folded = vec![
-            entry("Qwen3-0.6B", "F:/MODELS_MID/q.gguf", Some("a.yaml")),
-            entry("qwen3-0.6b", "F:/MODELS_BIG/q.gguf", Some("b.yaml")),
+            entry("Qwen3-0.6B", "models/mid/q.gguf", Some("a.yaml")),
+            entry("qwen3-0.6b", "models/big/q.gguf", Some("b.yaml")),
         ];
         assert_eq!(
             names(&resolve("QWEN3-0.6B", &folded)),
@@ -257,8 +249,8 @@ mod tests {
         // `Path::file_name` to yield it (on Windows these bytes are the
         // original backslash spellings).
         let sep = std::path::MAIN_SEPARATOR_STR;
-        let mid_ref = format!("F:{sep}MODELS_MID{sep}Qwen3-0.6B-Q8_0.gguf");
-        let big_ref = format!("F:{sep}MODELS_BIG{sep}Qwen3-0.6B-Q8_0.gguf");
+        let mid_ref = format!("models{sep}mid{sep}Qwen3-0.6B-Q8_0.gguf");
+        let big_ref = format!("models{sep}big{sep}Qwen3-0.6B-Q8_0.gguf");
         let models = vec![
             entry("qwen3-mid", &mid_ref, Some("mid.yaml")),
             entry("qwen3-big", &big_ref, Some("big.yaml")),
@@ -282,8 +274,8 @@ mod tests {
         // `alpha` is A's exact name and B's gguf stem: the two tiers agree on neither
         // entry, so each query must still resolve to exactly one model.
         let models = vec![
-            entry("alpha", "F:/MODELS/other.gguf", Some("a.yaml")),
-            entry("beta", "F:/MODELS/alpha.gguf", Some("b.yaml")),
+            entry("alpha", "models/other.gguf", Some("a.yaml")),
+            entry("beta", "models/alpha.gguf", Some("b.yaml")),
         ];
         assert_eq!(
             resolve("alpha", &models),
@@ -307,8 +299,8 @@ mod tests {
         // One exact-name match plus a separate alias claimant is NOT ambiguous: the
         // tiers stay ordered, and only a tie inside a single tier is refused.
         let models = vec![
-            entry("solo", "F:/MODELS/solo.gguf", Some("solo.yaml")),
-            entry("shadow", "F:/MODELS/other.gguf", Some("shadow.yaml")),
+            entry("solo", "models/solo.gguf", Some("solo.yaml")),
+            entry("shadow", "models/other.gguf", Some("shadow.yaml")),
         ];
         assert_eq!(collect_matches(&models, |m| m.name == "solo").len(), 1);
         assert_eq!(names(&resolve("solo", &models)), vec!["solo"]);

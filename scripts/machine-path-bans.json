@@ -9,5 +9,13 @@
     "_test-",
     "SimpleHar-SE_release",
     "SimpleHar-SE_test"
+  ],
+  "testSourceBansComment": "Scoped ban set for test and source trees (src, tests, examples), read by scripts/check-test-paths.mjs only; the docs gates above keep their own set unchanged. The F: pattern names the operator's model-store drive: test fixtures must stay neutral relative paths, and the card suites read paths only from SIMPLEHARN_T_* env vars whose operator-local defaults live in the private handoff preflight scripts. The release-directory markers of the docs set above (_release_v, _test-, SimpleHar-SE_release, SimpleHar-SE_test) are excluded here on purpose: they name build and release output directories, not authored source text, so they would false-positive on legitimate source references.",
+  "testSourceBans": [
+    "F:[/\\\\]models",
+    "C:\\\\Inference",
+    "C:\\\\Users\\\\",
+    "D:\\\\WORKSPACE-VS",
+    "D:\\\\SimpleHar-SE-backups"
   ]
 }

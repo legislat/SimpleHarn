@@ -309,6 +309,23 @@ pub struct ReconcileReport {
     pub stuck: Vec<u32>,
 }
 
+/// Take the custody sidecar lock. A poisoned lock means a writer panicked while
+/// mutating the ledger; the reconcile must not treat that state as trustworthy.
+/// It returns `None` and the caller fails closed: touch no claim and report it.
+fn lock_custody(
+    ledger: &Arc<Mutex<CustodyLedger>>,
+) -> Option<std::sync::MutexGuard<'_, CustodyLedger>> {
+    match ledger.lock() {
+        Ok(guard) => Some(guard),
+        Err(_) => {
+            tracing::error!(
+                "custody sidecar lock poisoned; the ledger is untrusted, so no claim is touched"
+            );
+            None
+        }
+    }
+}
+
 /// Boot reconcile + orphan sweep, ownership-scoped. For every sidecar entry:
 /// stamped on a boot the host cannot confirm (rebooted, or boot id unreadable
 /// while the entry carries a stamp) → drop the entry, never touch the pid;
@@ -326,13 +343,10 @@ pub async fn reconcile(
 ) -> ReconcileReport {
     let mut report = ReconcileReport::default();
     let host_boot = os.boot_id();
-    let snapshot: Vec<CustodyEntry> = ledger
-        .lock()
-        .expect("custody sidecar lock")
-        .entries
-        .values()
-        .cloned()
-        .collect();
+    let snapshot: Vec<CustodyEntry> = match lock_custody(ledger) {
+        Some(guard) => guard.entries.values().cloned().collect(),
+        None => return report,
+    };
     for entry in snapshot {
         if !boot_id_matches(entry.boot_id.as_deref(), host_boot.as_deref()) {
             tracing::warn!(
@@ -344,11 +358,12 @@ pub async fn reconcile(
                  (rebooted, or the boot id cannot be read now): dropping it, \
                  touching nothing at that pid"
             );
-            ledger
-                .lock()
-                .expect("custody sidecar lock")
-                .forget(entry.pid, entry.start_token);
-            report.stale.push(entry.pid);
+            if let Some(mut guard) = lock_custody(ledger) {
+                guard.forget(entry.pid, entry.start_token);
+                report.stale.push(entry.pid);
+            } else {
+                report.stuck.push(entry.pid);
+            }
             continue;
         }
         let known = policy::engine_policy(&entry.engine).is_some();
@@ -370,11 +385,12 @@ pub async fn reconcile(
                          touching nothing at that pid"
                     );
                 }
-                ledger
-                    .lock()
-                    .expect("custody sidecar lock")
-                    .forget(entry.pid, entry.start_token);
-                report.stale.push(entry.pid);
+                if let Some(mut guard) = lock_custody(ledger) {
+                    guard.forget(entry.pid, entry.start_token);
+                    report.stale.push(entry.pid);
+                } else {
+                    report.stuck.push(entry.pid);
+                }
             }
             SweepDecision::Reap => {
                 tracing::warn!(
@@ -385,11 +401,12 @@ pub async fn reconcile(
                 );
                 match os.terminate(entry.pid, entry.start_token) {
                     TerminateOutcome::IdentityGone => {
-                        ledger
-                            .lock()
-                            .expect("custody sidecar lock")
-                            .forget(entry.pid, entry.start_token);
-                        report.stale.push(entry.pid);
+                        if let Some(mut guard) = lock_custody(ledger) {
+                            guard.forget(entry.pid, entry.start_token);
+                            report.stale.push(entry.pid);
+                        } else {
+                            report.stuck.push(entry.pid);
+                        }
                     }
                     TerminateOutcome::Failed { reason } => {
                         tracing::warn!(
@@ -401,11 +418,12 @@ pub async fn reconcile(
                     }
                     TerminateOutcome::Done => {
                         if os.port_closed(entry.port, grace).await {
-                            ledger
-                                .lock()
-                                .expect("custody sidecar lock")
-                                .forget(entry.pid, entry.start_token);
-                            report.reaped.push(entry.pid);
+                            if let Some(mut guard) = lock_custody(ledger) {
+                                guard.forget(entry.pid, entry.start_token);
+                                report.reaped.push(entry.pid);
+                            } else {
+                                report.stuck.push(entry.pid);
+                            }
                         } else {
                             tracing::warn!(
                                 pid = entry.pid,

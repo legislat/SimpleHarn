@@ -687,6 +687,9 @@
   "reserve_gb": 2,
   "source": "nvidia-smi (fallback)",
   "total_gb": 71.6943359375,
+  "total_basis": "measured",
+  "configured_total_gb": 72.0,
+  "unavailable_code": null,
   "attributed_gb": 12.3,
   "attribution": "per_process",
    "container_reported_gb": 31.2,
@@ -694,8 +697,9 @@
    "booked_ram_gb": 0.0,
    "ram_reserve_gb": 8
   },
- "release": "1.5.1.1",
- "slots": [
+  "release": "1.5.1.1",
+  "scheduler_state": "up",
+  "slots": [
   {
    "category": "WORK",
    "idle_s": 15,

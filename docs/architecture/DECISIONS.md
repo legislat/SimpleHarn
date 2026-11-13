@@ -176,6 +176,10 @@ recorded here so dated references to ARCHIVED still resolve:
 | **Rejected** | refused by the operator; history only. |
 | **Closed** | completed or tombstoned; no current constraint. |
 
+- **Accepted** Release cadence: normal releases at least seven days apart; urgent hotfixes at
+  most one per 24 hours for a P0, security, or named core-function regression with no
+  workaround; four-segment tags only for urgent hotfixes; `scripts/publish-release.ps1` is
+  the only supported publish path and enforces the interval | 2026-11-13 | pending
 - **Closed** 13[4] Fork C strict scan + persist-reconcile, `commit_verified` blanket kept | 2026-10-28 | `e042b52`
 - **Closed** 13[5] Fork B restore temp+verify+rename + single-slot `.yaml.bak` + strict `.yaml` gate +
   symlink skip | 2026-10-28 | `e042b52`

@@ -129,6 +129,23 @@ fn boot_config(env_config_path: Option<String>) -> Result<AppConfig, Vec<ConfigE
     }
 }
 
+/// The no-boot identity report: the crate version and the exact tag embedded by
+/// `build.rs`, or `none`. This is the release-time proof that the packaged binary
+/// came from the tagged tree; it reads no config and writes no file.
+fn version_report() -> String {
+    let embedded = env!("SIMPLEHARN_RELEASE");
+    let release = if embedded.is_empty() {
+        "none"
+    } else {
+        embedded
+    };
+    format!(
+        "version {}\nrelease {}\n",
+        env!("CARGO_PKG_VERSION"),
+        release
+    )
+}
+
 /// The command-line verbs the binary answers instead of booting. Today one:
 /// `import strata <profile.json>` — the yaml lands
 /// on stdout (pipeable bytes, no log decoration), refusals on the tracing
@@ -190,13 +207,23 @@ fn run_cli(mut words: impl Iterator<Item = String>) -> Option<ExitCode> {
 #[tokio::main]
 async fn main() -> ExitCode {
     let boot_started = std::time::Instant::now();
+    // The no-boot identity door runs before logging, config, or any listener:
+    // release packaging uses it to prove the binary's embedded tag.
+    let mut words = std::env::args().skip(1).peekable();
+    if words
+        .peek()
+        .is_some_and(|first| first == "--version" || first == "-V")
+    {
+        print!("{}", version_report());
+        return ExitCode::SUCCESS;
+    }
     observability::init();
     // `simpleharn import strata <profile.json>`:
     // the one-shot migration tool — read a manual strata profile,
     // print the row yaml, delete nothing. It is a command, not a serve: no
     // guard, no config, no listener, and the only sanctioned reader of a
     // `C:\Strata` profile.
-    if let Some(code) = run_cli(std::env::args().skip(1)) {
+    if let Some(code) = run_cli(words) {
         return code;
     }
     // The boot identity, emitted before anything can fail: a harness that dies at the
@@ -1181,6 +1208,22 @@ mod tests {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn version_report_names_the_crate_version_and_an_identity_or_none() {
+        let report = super::version_report();
+        assert!(
+            report.starts_with(&format!("version {}\n", env!("CARGO_PKG_VERSION"))),
+            "first line is the crate version: {report}"
+        );
+        let release = report
+            .lines()
+            .nth(1)
+            .expect("release line")
+            .strip_prefix("release ")
+            .expect("release label");
+        assert!(!release.is_empty(), "release is a tag or `none`: {report}");
     }
 
     /// The CLI door: only `import` is answered (anything

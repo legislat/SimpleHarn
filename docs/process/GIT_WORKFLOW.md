@@ -141,13 +141,14 @@ A release is a task with acceptance criteria. Run the steps in this order:
     release-card/run-linux.sh (private handoff repository) (bash, curl, python3; same report shape); it also
     refuses to start while a protected port or a harness is present.
 8. Push the commits and the tag. Each push needs operator approval.
-9. Build the Windows artifact, record its hash, stage the operator copy per "Build and
-   release directories" below, deploy it, and verify the boot. The Linux artifact is
-   built from the same tag in CI (`release-facts.yml`, job `linux-artifact`): download
-   `SimpleHarn-<ver>-linux-x64.tar.gz` and its `.sha256`, record both, and attach both
-   to the GitHub release. A Linux card verdict stays BLOCKED for the swap, crash and refusal legs: the
-   CI build proves only that the binary compiles and packages, and the recorded
-   Linux serving smoke is one llama load/serve/unload in WSL2.
+9. Download the Windows (`simpleharn-win-x64`) and Linux (`simpleharn-linux-x64`)
+   workflow artifacts from the tag run. Render the release notes with
+   `scripts/render-release-notes.ps1`, then publish with
+   `scripts/publish-release.ps1` (the only supported publish path). The manual
+   `make-public-asset.ps1` packaging remains a fallback for a runner outage; its zip
+   must still pass the wrapper. Deploy the verified Windows artifact, verify the boot,
+   and keep the Linux verdict honest: the CI build proves compilation and packaging,
+   not a Linux GPU load.
 10. Keep and name the rollback artifact: the previous release stays in the fallback
     directory named below.
 
@@ -206,9 +207,33 @@ Rules:
   The run is cardless.
 - The Linux artifact is built headless from the tag in CI. Never build it from a dirty
   worktree, and never attach an artifact whose `.sha256` file does not match it.
-- A published GitHub release triggers the artifact guard in the same workflow. A
-  published release with zero assets fails: a published release must carry the release
-  zip artifact. The guard is cardless.
+- A published GitHub release triggers the artifact guard in the same workflow. It fails
+  when a release has zero assets, when any archive asset has no matching checksum, or
+  when the release body carries a placeholder, an escaped table cell, or a control
+  character. The guard is cardless.
+- `scripts/publish-release.ps1` is the only supported publish path. It verifies the
+  assets, the five-entry zip manifest, the embedded release identity, and the cadence
+  rule before `gh release create`. The manual GitHub UI path is not supported for a
+  release.
+
+### Release cadence
+
+The operator ruling (2026-11-13):
+
+- Normal releases are at least **seven days** apart, measured from the previous
+  published normal release in UTC. Non-urgent fixes accumulate for the next normal
+  release.
+- An urgent hotfix may publish at most **once per 24 hours**. Allowed reasons are a
+  P0 defect, a security defect, or a named core-function regression (admission, spawn,
+  ownership) with no workaround. The operator approves it and passes
+  `-UrgentReason <text>` to `scripts/publish-release.ps1`; the reason is recorded in
+  the release notes.
+- Four-segment tags are reserved for urgent hotfixes. Normal releases stay
+  three-part semver.
+- A security emergency inside the 24-hour window requires the explicit
+  `-ForceCadence` switch plus the reason; without it, the wrapper refuses.
+- The rule starts at the next release after 2026-11-13. It does not reclassify the
+  2026-11-10 history or the pending `v1.5.1.6` fix.
 
 ### Build and release directories
 

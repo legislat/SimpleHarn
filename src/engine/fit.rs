@@ -507,8 +507,8 @@ mod tests {
     #[test]
     fn the_probe_takes_only_the_memory_relevant_flags_and_ends_with_fit_print() {
         let args = probe_args(&raw(&[
-            ("model", "F:/models/turbo.gguf"),
-            ("mmproj", "F:/models/vision.gguf"),
+            ("model", "models/turbo.gguf"),
+            ("mmproj", "models/vision.gguf"),
             ("context", "262144"),
             ("ngl", "99"),
             ("batch", "2048"),
@@ -528,7 +528,7 @@ mod tests {
             args,
             vec![
                 "-m",
-                "F:/models/turbo.gguf",
+                "models/turbo.gguf",
                 "-c",
                 "262144",
                 "-ngl",

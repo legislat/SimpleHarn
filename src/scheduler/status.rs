@@ -42,6 +42,22 @@ pub struct SchedulerStatus {
     pub fit_validated: BTreeSet<String>,
 }
 
+impl SchedulerStatus {
+    /// An empty snapshot for a dead actor. It claims no slot, job, or catalog
+    /// verdict; the API marks the document `scheduler_state: "down"` so a reader
+    /// never mistakes the empty lists for a healthy idle harness.
+    #[must_use]
+    pub fn empty() -> Self {
+        SchedulerStatus {
+            slots: Vec::new(),
+            jobs: Vec::new(),
+            catalog_errors: Vec::new(),
+            stranded_containers: None,
+            fit_validated: BTreeSet::new(),
+        }
+    }
+}
+
 /// One slot as seen by `/har/status` (Step 12).
 #[derive(Debug, Clone, Serialize)]
 pub struct SlotStatus {

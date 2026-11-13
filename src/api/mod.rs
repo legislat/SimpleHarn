@@ -76,9 +76,6 @@ use proxy::ListenerState;
 use proxy::{classify_send_failure_flags, pick_loaded_occupant, wakes_slot, SendFailureClass};
 
 #[cfg(test)]
-use crate::scheduler::SchedulerStatus;
-
-#[cfg(test)]
 use axum::http::Method;
 
 /// The largest request body the proxy accepts. A chat/embeddings request is text
@@ -147,6 +144,11 @@ pub enum ApiError {
     /// witness from a busy card.
     #[error("service unavailable: {reason}")]
     WitnessUnavailable { reason: String },
+    /// The scheduler actor task is gone (stopped or panicked), so no load,
+    /// unload, cancel, or status command can be served (503). Distinct from
+    /// `witness_unavailable`: the card may be fine; the single writer is not.
+    #[error("service unavailable: {reason}")]
+    SchedulerUnavailable { reason: String },
     /// The engine could not be started or never became ready — `502`.
     #[error("upstream failure: {reason}")]
     Upstream { reason: String },
@@ -197,6 +199,7 @@ impl ApiError {
             ApiError::Unavailable { .. } => "unavailable",
             ApiError::BelowLaunchFloor { .. } => "below_launch_floor",
             ApiError::WitnessUnavailable { .. } => "witness_unavailable",
+            ApiError::SchedulerUnavailable { .. } => "scheduler_unavailable",
             ApiError::Upstream { .. } => "upstream",
             ApiError::ReadinessTimeout { .. } => "readiness_timeout",
             ApiError::Conflict { .. } => "conflict",
@@ -216,7 +219,8 @@ impl ApiError {
             ApiError::BadRequest { .. } => StatusCode::BAD_REQUEST,
             ApiError::Unavailable { .. }
             | ApiError::BelowLaunchFloor { .. }
-            | ApiError::WitnessUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
+            | ApiError::WitnessUnavailable { .. }
+            | ApiError::SchedulerUnavailable { .. } => StatusCode::SERVICE_UNAVAILABLE,
             ApiError::Upstream { .. } | ApiError::ReadinessTimeout { .. } => {
                 StatusCode::BAD_GATEWAY
             }
@@ -480,8 +484,8 @@ impl From<SchedulerError> for ApiError {
                 reason: error.to_string(),
                 wait_hint: None,
             },
-            SchedulerError::ActorGone => ApiError::Internal {
-                reason: "scheduler is not running".to_string(),
+            SchedulerError::ActorGone => ApiError::SchedulerUnavailable {
+                reason: "the scheduler is not running".to_string(),
             },
             SchedulerError::Unsupported(reason) => ApiError::NotImplemented { reason },
         }
@@ -1041,7 +1045,7 @@ impl ApiState {
     ///
     /// # Errors
     ///
-    /// [`ApiError::Internal`] when the scheduler actor is gone.
+    /// [`ApiError::SchedulerUnavailable`] when the scheduler actor is gone.
     pub async fn catalog(&self) -> Result<Vec<ModelEntry>, ApiError> {
         Ok(self
             .scheduler
@@ -1321,15 +1325,26 @@ fn unload_reply(scope: (&str, Value), reply: Reply) -> Result<Value, ApiError> {
 /// costing an actor round-trip per tick.
 async fn pump_state(state: Arc<ApiState>) {
     let mut pushes = state.scheduler.subscribe();
+    let mut health = state.scheduler.health().subscribe();
     publish_state(&state).await;
     loop {
-        match pushes.recv().await {
-            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                if state.state_events.receiver_count() > 0 {
+        tokio::select! {
+            push = pushes.recv() => match push {
+                Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    if state.state_events.receiver_count() > 0 {
+                        publish_state(&state).await;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+            },
+            changed = health.changed() => {
+                if changed.is_err() {
+                    return;
+                }
+                if *health.borrow() && state.state_events.receiver_count() > 0 {
                     publish_state(&state).await;
                 }
             }
-            Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
         }
     }
 }

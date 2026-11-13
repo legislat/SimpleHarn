@@ -91,6 +91,11 @@ can parse them reliably. The trade is that some pages read terse.
    On Linux download `SimpleHarn-1.5.1.5-linux-x64.tar.gz` from the same
    release, extract it, and run `./simpleharn` headless (no tray, no VBS).
 
+Both archives are built from the release tag in CI: the Windows zip in the
+`windows-artifact` job and the Linux tarball in `linux-artifact`. Run
+`simpleharn --version` to print the crate version and the embedded release tag
+(`none` for a dirty or untagged build).
+
 ### From source
 
 You need Rust. `rust-toolchain.toml` pins the build toolchain to Rust 1.98.1.
@@ -149,6 +154,9 @@ The four category listeners on ports 8708-8711 answer the OpenAI-compatible API.
 - **The witness is the budget truth.** Admission reads the live VRAM figure from the card,
   minus a reserve. The harness never books more than the card reports, so it never
   overcommits.
+- **Admission is publicly reproducible.** `cargo test --test admission_conformance`
+  runs the five scripted-witness invariants without a GPU or model files. The card
+  suite stays the hardware proof; the conformance target never replaces it.
 - **Refusals name their reasons.** Every refusal lists the blockers and the numbers, on
   the page and in the API.
 - **Eviction is a one-way matrix.** Nothing evicts WORK. Only WORK evicts RP. WORK and RP

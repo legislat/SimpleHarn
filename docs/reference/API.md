@@ -142,6 +142,16 @@ booking.
 
 `/har/status` carries these memory fields:
 
+- `mem.total_basis`: `measured` when the witness answered, or `configured` when
+  it did not. A `configured` total is the declared budget, never a card reading.
+- `mem.total_gb`: the card total when `total_basis` is `measured`; the configured
+  budget when it is `configured`. Read `total_basis` before you present it.
+- `mem.configured_total_gb`: the declared budget, present in both arms.
+- `mem.observed_used_gb`: `null` when the witness did not answer.
+- `mem.source`: the witness label when it answered, or `unavailable`.
+- `mem.unavailable_code`: `null` when the witness answered, else a closed code
+  such as `witness_error` or `non_finite`. The detailed OS reason stays in the
+  harness log.
 - `mem.attribution`: `per_process` or `unavailable`. It is `null` when the
   witness returned no sample.
 - `mem.container_reported_gb`: the sum of the loaded containers' own reserved
@@ -192,6 +202,15 @@ of these keys:
 A guarded `engine_report` above the declared `vram_gb` books instead of the
 declaration (max truth). A declaration at or above the report stands.
 
+## Scheduler state
+
+`/har/status` carries `scheduler_state: "up"` while the actor answers. When the
+actor has stopped, it still answers `200` with `scheduler_state: "down"`,
+`scheduler_reason` naming the restart remedy, and empty `slots`/`jobs` (the actor
+owns them). Load, unload, cancel, and reload answer `503` with
+`scheduler_unavailable`; the page shows a persistent banner. Restart the harness
+to recover. The detailed stop reason stays in the harness log.
+
 ## Error codes
 
 Every error carries both a flat `{code, message}` and the OpenAI-style
@@ -206,7 +225,8 @@ scanner would refuse to publish), `method_not_allowed` (405),
 `unsupported_media_type` (415),
 `unavailable` (503, admission refused with the numbers and blockers),
 `below_launch_floor` (503, refused before spawn), `witness_unavailable`
-(503, card unreadable), `upstream` (502), `readiness_timeout` (502, the engine
+(503, card unreadable), `scheduler_unavailable` (503, the scheduler actor
+stopped or panicked; restart the harness), `upstream` (502), `readiness_timeout` (502, the engine
 missed its readiness deadline; the message names the deadline and a sanitized
 probe outcome, the probe detail stays in the log), `not_implemented` (501),
 `internal` (500). A refusal that carries numbers puts them in `message` and
@@ -214,7 +234,6 @@ in the job ledger, never in a bare status.
 
 An admission refusal that answers `unavailable` or `below_launch_floor` also
 carries two wait fields at the flat envelope top level:
-
 - `queue_position`: an integer, or an explicit `null`. It is the one-based
   place behind the loads that are already ahead in the refused category. A
   `null` means no other load is ahead in that category. The harness runs no

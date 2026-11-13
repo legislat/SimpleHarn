@@ -26,9 +26,23 @@ starts no engine before a load. Two entry points run it:
 
 Autostart and the file layout live in `docs/reference/OPERATIONS.md`.
 
+## `--version`
+
+`simpleharn --version` prints two lines and exits 0:
+
+```text
+version 1.5.1
+release 1.5.1.5
+```
+
+`version` is the crate semver. `release` is the exact tag embedded by the
+tagged clean build, or `none` for an untagged or dirty tree. The flag reads no
+config, writes no file, and binds no listener; release packaging uses it to
+prove the artifact's identity.
+
 ## `import strata`
 
-The one command-line verb. It is the migration tool for a manually managed
+The migration verb. It is the migration tool for a manually managed
 Strata profile: it reads the profile and emits the model-row YAML knob block.
 It is a command, not a serve: no single-instance guard, no config read, and
 no listener. It is the only sanctioned reader of a manual Strata profile.

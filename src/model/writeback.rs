@@ -1451,7 +1451,7 @@ mod tests {
     /// line here gains a `"` pair.
     #[test]
     fn a_plain_value_change_and_append_are_still_emitted_unquoted() {
-        for value in ["4.2", "WORK", "true", "false", "F:/models/qwen3.gguf", ""] {
+        for value in ["4.2", "WORK", "true", "false", "models/qwen3.gguf", ""] {
             let changed =
                 set_key_in_text("x: old\nname: q\n", "x", Some(value)).expect("plain change");
             assert_eq!(
@@ -1716,7 +1716,7 @@ mod tests {
             "20.0",
             "128.5",
             "qwen3-32b",
-            "F:/models/qwen3.gguf",
+            "models/qwen3.gguf",
             "strata/main",
             "mock",
             "llama",

@@ -7,10 +7,72 @@
 use crate::budget::AdmissionError;
 use crate::config::CategoryId;
 use serde::Serialize;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
 use super::{ActorMsg, Command, JobId, SchedulerStatus, SwapReceipt};
+
+/// Shared liveness verdict for the actor task. The watcher marks it down when the
+/// task exits for any reason, including a panic. The reason is internal (logged);
+/// clients receive only a generic `scheduler_unavailable` message.
+#[derive(Debug)]
+pub struct SchedulerHealth {
+    down: AtomicBool,
+    reason: Mutex<Option<String>>,
+    changed: tokio::sync::watch::Sender<bool>,
+}
+
+impl Default for SchedulerHealth {
+    fn default() -> Self {
+        let (changed, _) = tokio::sync::watch::channel(false);
+        Self {
+            down: AtomicBool::new(false),
+            reason: Mutex::new(None),
+            changed,
+        }
+    }
+}
+
+impl SchedulerHealth {
+    /// Whether the actor task has stopped.
+    #[must_use]
+    pub fn is_down(&self) -> bool {
+        self.down.load(Ordering::Acquire)
+    }
+
+    /// The internal reason, or `None` while the actor is alive.
+    #[must_use]
+    pub fn reason(&self) -> Option<String> {
+        self.reason.lock().ok().and_then(|reason| reason.clone())
+    }
+
+    /// A stream that changes when the verdict changes. The SSE pump selects on it
+    /// so a dead actor reaches an already-open page; the broadcast channel alone
+    /// cannot, because the dead actor sends no push.
+    #[must_use]
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.changed.subscribe()
+    }
+
+    pub(crate) fn mark_down(&self, reason: &str) {
+        if let Ok(mut slot) = self.reason.lock() {
+            if slot.is_none() {
+                *slot = Some(reason.to_string());
+            }
+        }
+        self.down.store(true, Ordering::Release);
+        let _ = self.changed.send(true);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_down_for_test(&self, reason: &str) {
+        self.mark_down(reason);
+    }
+}
 
 /// Failures reported to swap/unload/cancel callers, with the numbers used (G13).
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -102,6 +164,7 @@ pub enum Reply {
 pub struct SchedulerHandle {
     pub(super) tx: mpsc::UnboundedSender<ActorMsg>,
     pub(super) events: tokio::sync::broadcast::Sender<SchedulerStatus>,
+    pub(super) health: Arc<SchedulerHealth>,
 }
 
 impl SchedulerHandle {
@@ -113,7 +176,14 @@ impl SchedulerHandle {
         SchedulerHandle {
             tx,
             events: tokio::sync::broadcast::channel(1).0,
+            health: Arc::new(SchedulerHealth::default()),
         }
+    }
+
+    /// The actor liveness verdict shared with the API and page.
+    #[must_use]
+    pub fn health(&self) -> &SchedulerHealth {
+        &self.health
     }
 
     /// Runtime switch for the decision-level log lines (page checkbox, off at

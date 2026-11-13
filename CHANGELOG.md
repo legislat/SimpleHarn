@@ -12,9 +12,28 @@ review_trigger: release
 
 Up: `docs/DOCS_README.md`. Release history of SimpleHarn. Older entries keep the product
 names they shipped with. The format follows Keep a Changelog. Versions follow Semantic
-Versioning.
+Versioning; an urgent hotfix may add a fourth tag segment while the crate version stays
+three-part (see `docs/process/GIT_WORKFLOW.md`).
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
+
+## Unreleased
+
+### Changed
+
+- `/har/status` memory states `total_basis` (`measured` or `configured`) and always
+  carries `configured_total_gb`. A dead witness reports `source: "unavailable"`
+  with a closed `unavailable_code`; the detailed OS reason stays in the harness
+  log. The page shows the configured budget as a labelled figure, never as an
+  observed card bar.
+- A stopped scheduler actor is now explicit: `/har/status` answers `200` with
+  `scheduler_state: "down"` and a restart remedy, commands answer `503`
+  `scheduler_unavailable`, and the page shows a persistent banner. The same
+  response shape names the configured total beside its basis.
+- Admission invariants now have a named cardless conformance target,
+  `cargo test --test admission_conformance`: witness outage, in-flight booking
+  debit, victim credit, eviction order, and unreachable-floor refusal. The card
+  suite remains the hardware proof.
 
 ## v1.5.1.5 - 2026-11-10
 
@@ -27,6 +46,13 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   memory, or an unreachable launch floor) it takes the normal named refusal.
   Paper bookings are never credited as physical memory, so a load the card truly
   cannot hold still fails rather than waiting forever.
+
+Tag: `v1.5.1.5`. Commit: `6673d7a` (release prep). Artifact: `simpleharn.exe`,
+built 2026-11-10, SHA256
+`430ECF9DB3723C543179473E795782C8CBB3B88D02250EA2F4E814B1D3038D44`, zip
+`SimpleHarn-1.5.1.5-win-x64.zip` SHA256
+`E554BA759651B450333C6BBEB6161DD32C5D5E5903529AA84A7113ACD71A1187`.
+
 ## v1.5.1.4 - 2026-11-10
 
 ### Fixed
@@ -38,6 +64,13 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   the queued one, which remains by design. The duplicate caller waits through the
   same load as the first, exactly as a repeat that arrives while the model is
   loading.
+
+Tag: `v1.5.1.4`. Commit: `3782a3a` (release prep). Artifact: `simpleharn.exe`,
+built 2026-11-10, SHA256
+`62F22AC145F6F87805B0569CC240F04661411D2C63C8805B466342F36DD60B95`, zip
+`SimpleHarn-1.5.1.4-win-x64.zip` SHA256
+`8453DC70BDE31944C455782747516798B6D9E225F358BB75673DD00EE3A3C313`.
+
 ## v1.5.1.3 - 2026-11-10
 
 ### Changed
@@ -49,6 +82,12 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   way print the reason once, with later rows marked "same reason as above".
   The banner is opaque, so it can never paint its text over the page.
 
+Tag: `v1.5.1.3`. Commit: `62e9b17` (release prep). Artifact: `simpleharn.exe`,
+built 2026-11-10, SHA256
+`C965DF6CB9D9810CC4407ABEE576AE9E9568685BC393EC275E1B5F2EAEAF0C8C`, zip
+`SimpleHarn-1.5.1.3-win-x64.zip` SHA256
+`236DE087A1EADD15A8630C5A81D2BC269BC85C3EF85FEFB05C149AA4EC5D8C0F`.
+
 ## v1.5.1.2 - 2026-11-10
 
 ### Added
@@ -58,6 +97,12 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   none. `/har/status` now carries `release` next to `version` (null when the
   build has no identity), the boot banner logs it beside the version, and the
   control page header shows it when one exists.
+
+Tag: `v1.5.1.2`. Commit: `5e7bd66` (release prep). Artifact: `simpleharn.exe`,
+built 2026-11-10, SHA256
+`E85814AABFCE0C050DCC424C841F3E10DFA1FF2AEAFEC099D391AE0930662E46`, zip
+`SimpleHarn-1.5.1.2-win-x64.zip` SHA256
+`4FB8F0E0AB1B39B00290605307DEBE1DCB833C0A6AC96EC5C7B61FFFAFEAFF94`.
 
 ## v1.5.1.1 - 2026-11-10
 
@@ -84,6 +129,12 @@ this release accompanies crate version `1.5.1`, which stays three-part.
 ### Fixed
 
 - The lock-path and documentation fixes landed after v1.5.1.
+
+Tag: `v1.5.1.1`. Commit: `4a69cd0` (release prep). Artifact: `simpleharn.exe`,
+built 2026-11-10, SHA256
+`2629C582C2334561D0340612687DC990EB1BEF49D7E06A9DD001FCDFD967E97C`, zip
+`SimpleHarn-1.5.1.1-win-x64.zip` SHA256
+`D99ED52B219B95CD1782999EB2EB47F2EA2ED46B328B93C0F90E6A0B81CB7763`.
 
 ## v1.5.1 - 2026-11-10
 
@@ -114,6 +165,12 @@ this release accompanies crate version `1.5.1`, which stays three-part.
   every model header carries `scope="col"`; rows take a zebra and hover tint;
   and dark mode paints its chrome from a muted slate instead of the saturated
   primary blue.
+
+Tag: `v1.5.1`. Commit: `1009b5b` (release prep). Artifact: `simpleharn.exe`,
+built 2026-11-10, SHA256
+`6306A0A9424498FF3ABD52BE2B759ACB9A27145CA30CD2008FB4BA3A57AA6C4C`, zip
+`SimpleHarn-1.5.1-win-x64.zip` SHA256
+`276D65D2B7EC0294A135E9FADED93C767B6AB05C6E4BCB74FD6D30E7D00EDBC9`.
 
 ## v1.5.0 - 2026-11-09
 
@@ -175,6 +232,12 @@ this release accompanies crate version `1.5.1`, which stays three-part.
   The first refusal still takes the T10.1 crash-retry unchanged; timeouts and
   plain forward failures still never reap, and the report names exactly one
   model, category and refused port, so no other resident is touched.
+
+Tag: `v1.5.0`. Commit: `8c20550` (release prep). Artifact: `simpleharn.exe`,
+built 2026-11-09, SHA256
+`7F3296E5FDE7E21C30D261DDE3C412CDA7628DB0E585C5F4E4E617CB1FBC9A2A`, zip
+`SimpleHarn-1.5.0-win-x64.zip` SHA256
+`EF1B6B1713BD800E687EBC6F7AE76B74DA88A39CA02920EFB8F58919D4D1E73D`.
 
 ## v1.4.0 - 2026-11-07
 

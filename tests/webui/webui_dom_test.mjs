@@ -329,6 +329,40 @@ const driver = `
       fullText(il).indexOf("per-process capable (card idle)") >= 0, fullText(il));
     applyState({ ...fixtures["/har/status"], models: fixtures["/har/models"].data });
   }
+  {
+    const down = JSON.parse(JSON.stringify(fixtures["/har/status"]));
+    down.mem.observed_used_gb = null;
+    down.mem.attributed_gb = null;
+    down.mem.attribution = null;
+    down.mem.total_basis = "configured";
+    down.mem.configured_total_gb = 72.0;
+    down.mem.source = "unavailable";
+    applyState({ ...down, models: fixtures["/har/models"].data });
+    const memEl = document.getElementById("sh-header").children[0].children[1];
+    const vramBars = findAll(memEl, "label").filter(function (l) {
+      return textOf(l).indexOf("VRAM ") === 0;
+    });
+    check("no VRAM bar when the witness is unavailable", vramBars.length === 0,
+      textOf(memEl));
+    check("unavailable memory is stated",
+      textOf(memEl).indexOf("Card memory unavailable") >= 0, textOf(memEl));
+    check("configured budget is labelled, not drawn as observed",
+      textOf(memEl).indexOf("configured 72.0 GiB") >= 0, textOf(memEl));
+    applyState({ ...fixtures["/har/status"], models: fixtures["/har/models"].data });
+  }
+  {
+    const down = {
+      ...fixtures["/har/status"],
+      models: fixtures["/har/models"].data,
+      scheduler_state: "down",
+      scheduler_reason: "the scheduler stopped; restart the harness",
+    };
+    applyState(down);
+    const main = textOf(document.getElementById("sh-main"));
+    check("scheduler down banner is stated",
+      main.indexOf("Scheduler stopped:") >= 0, main);
+    applyState({ ...fixtures["/har/status"], models: fixtures["/har/models"].data });
+  }
   check("vram bar never claims external", vramLabel.indexOf("external") < 0, vramLabel);
   check("vram bar shows the in-flight booking",
     mem.booked_gb > 0
