@@ -149,7 +149,7 @@ jobs:
               sha256sum "/dist/${root}.tar.gz" | sed "s#/dist/##" > "/dist/${root}.tar.gz.sha256"
             '
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: simpleharn-linux-x64
           path: dist/SimpleHarn-*.tar.gz*
