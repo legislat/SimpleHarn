@@ -44,6 +44,11 @@ Do not run ritual reviews on exempt changes.
   files its chunk owns. A defect elsewhere gets one line under `out of scope`,
   never a finding.
 - The reviewer must not read `Cargo.lock` or `target/`.
+- **Engine adapter changes:** read the engine's current serve entry point and the
+  adapter's knob manifest. Every engine key must be exposed by a row key or
+  classified harness-forced with a named reason (DOCTRINE item 19). An
+  unclassified key is a HIGH finding. A manifest row without an adapter change,
+  or an adapter knob without a manifest row, is incomplete.
 
 ## Chunking and lenses
 

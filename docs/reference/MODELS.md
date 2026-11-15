@@ -223,6 +223,35 @@ log; it never refuses the load. GPU residents are never victims of this
 drain, and no host-RAM gate exists for GPU rows: the card gate stays exactly
 as it was. Set the key to `0` to disable the rule.
 
+### Engine adapter gate: all serving knobs
+
+Operator ruling 2026-11-15: **the harness MUST support serving config with all
+available engine knobs.** This is a binding adapter gate, not a best effort.
+
+Every adapter exposes every knob its engine's serve entry point accepts, through
+a row key or the rendered profile. Only these harness-owned launch decisions are
+excluded, and each exclusion is named in the adapter's manifest:
+
+| Excluded class | Why it stays harness-owned |
+|---|---|
+| Bind host and port | The harness owns the loopback bind, category port, and `--reuse-port` refusal. |
+| Key material | Keys ride harness custody; an engine-side key is never obeyed. |
+| Which weights serve | The row names the model; the adapter renders it. |
+| Executable and config path | The adapter renders the launcher and the staged profile path. |
+| Custody, tokenizer, and static roots | Harness-owned locations; an engine-side path could escape custody. |
+| Admission/memory policy | `vram_gb`, `cost`, floor, reserve, and eviction are scheduler decisions, not engine config. |
+
+Each engine section below must carry a **knob manifest**: one row per engine key,
+naming the row key that exposes it or the forced-field reason above. A key that
+the pinned engine build accepts but the manifest does not classify is an adapter
+defect. A new engine knob therefore lands as a manifest row plus an adapter
+change (or a named refusal), never as a silent omission. Review treats an
+unclassified key as a HIGH finding (`docs/process/REVIEW.md`).
+
+Known gap at this ruling: the Xolotl adapter renders no `vision` block and has
+no `xolotl_vision` knob, although `serve_ds41.py` accepts one. See
+`handoff/research/Search#4-xolotl-vision-on.md` for the audit and handoff.
+
 ### Llama engines
 
 Llama rows (`engine: llama`, the default) run a native `llama-server.exe`.

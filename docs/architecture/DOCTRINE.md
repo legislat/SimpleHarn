@@ -123,3 +123,14 @@ non-ASCII punctuation in quotes is replaced with ASCII equivalents only.
     strictly ownership-scoped"; "v3.3 `external: true` inert; `sticky:`->AUX
     alias deleted from the parser". Consequence: work that reintroduces any
     of these needs a new operator ruling first.
+19. **Engine adapter completeness (operator ruling 2026-11-15).** "Harness MUST
+    support serving config with all available engine knobs." Every adapter
+    exposes every knob its engine's serve entry point accepts, through the row
+    or rendered config, except the harness-owned launch decisions: bind host,
+    port, key material, which weights serve, the executable and config path,
+    and custody/tokenizer roots. Each adapter carries a knob manifest that
+    classifies every engine key as exposed (row key) or harness-forced (named
+    reason). An unclassified engine knob is an adapter defect, not a feature
+    gap. Consequence: an engine capability is never silently unreachable from
+    the harness; enabling it is a row edit or a reviewed adapter change, and a
+    missing classification is a HIGH review finding.
