@@ -105,8 +105,19 @@ the checked-in manifest the gate reads.
 | `model_management` | forced | Always false; the harness is the single writer |
 | `--mcp-config`, `--script`, `--parent-pipe`, `--open` | forced | Tool execution, lifecycle pipe, script, and browser are refused |
 
-## Drift note
+## Fork note
 
-`strata_uncensored` and `strata_gpus_asked` are rendered but the installed
-`C:\Strata\serve` reads neither. They are a cleanup candidate, not a supported
-knob; remove them from the render and rows after confirming the install.
+`strata` covers two different forks, not one drifting schema:
+
+- `C:\Strata-nvfp4` (the `strata-nvfp4-gptq` row; install guide at
+  `D:\WORKSPACE-VS\installation-guide\strata-nvfp4`) reads the top-level
+  `uncensored` switch through `uncensored_alias` in `serve\server.py`.
+  `strata_uncensored` is a real knob of that fork.
+- `C:\Strata` (the `strata-fp4local` row) is a different fork: it ignores the
+  top-level key and uses `sampling.experimental_speed_projection`. Its row does
+  not set `strata_uncensored`.
+
+`strata_gpus_asked` is read only by the Strata launcher/setup path in both
+forks, not by `serve.server`, which the harness launches directly. It is
+launcher-only on the harness path; the serve profile should drop it and the
+import report should name it as launcher-only.
