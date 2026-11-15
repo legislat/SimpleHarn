@@ -182,7 +182,7 @@ recorded here so dated references to ARCHIVED still resolve:
 - **Accepted** Engine adapter completeness clarified: a supported knob must be usable by
   editing the row/config alone (typed or policy-filtered passthrough); hiding row fields is
   fine if adding them back still works; requiring an adapter hotfix for a supported knob is
-  a HIGH defect | 2026-11-15 | pending
+  a HIGH defect | 2026-11-15 | `0fec6b4`
 - **Accepted** Release cadence: normal releases at least seven days apart; urgent hotfixes at
   most one per 24 hours for a P0, security, or named core-function regression with no
   workaround; four-segment tags only for urgent hotfixes; `scripts/publish-release.ps1` is
@@ -916,5 +916,6 @@ recorded here so dated references to ARCHIVED still resolve:
   locked state graph and lets the supersede path take a parked row's queue place
   before killing an in-flight load; both are part of this ruling.
   | 2026-11-10 | `this task`
+
 
 
