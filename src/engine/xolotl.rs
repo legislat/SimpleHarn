@@ -472,6 +472,247 @@ fn unsigned(model: &ModelEntry, key: &str, value: &str) -> Result<u64, XolotlRow
     })
 }
 
+/// The pool range `xolotl_parallel` admits: the shim caps the server's worker
+/// pool at 16 for this line (`ds41_parallel_args`), so a row above the cap
+/// would render a figure the launch quietly shrinks — refused at scan instead.
+const PARALLEL_MIN: u64 = 1;
+/// The shim's worker-pool ceiling for `xolotl_parallel`.
+const PARALLEL_MAX: u64 = 16;
+
+/// The closed `xolotl_vision` key set, in refusal voice.
+const VISION_KEYS: &str = "exe, python, mmproj, model, reference_dir, weights, \
+                           dtype, device, offload, tf32, warmup_tokens, threads, \
+                           max_tokens, min_tokens, gpu";
+
+/// The `xolotl_vision` block: whitespace-separated `k=v` tokens over the
+/// shim's full vision contract — `Ds41Vision` in `serve_ds41.py:299-327`
+/// replaces the spawn's program and layers its own keys on the inherited
+/// server `Vision` class. `exe`, `python`, `mmproj`, `model`, `reference_dir`
+/// and `weights` are absolute paths (`exe`, `mmproj` and `model` required
+/// together — the strata rule, the spawn cannot start without them); `dtype`
+/// is `f32|bf16|f16` and `device` is `cpu|cuda` (the encoder's own spellings);
+/// `offload`, `tf32` and `gpu` are truthy flags — `gpu` DEFAULTS OFF here,
+/// unlike `strata_vision`: the tested 256K line keeps the encoder off-card
+/// unless the row opts it onto one; `warmup_tokens`, `threads`, `max_tokens`
+/// and `min_tokens` are unsigned counts inherited from the server Vision
+/// class. Rendering the block appends exactly one `--vision` to `args`; the row
+/// spells the vision ONCE, in the block.
+fn vision_block(
+    model: &ModelEntry,
+    line: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, XolotlRowError> {
+    let bad = |reason: String| XolotlRowError::Bad {
+        model: model.name.clone(),
+        key: "xolotl_vision".to_string(),
+        reason,
+    };
+    let mut taken = serde_json::Map::new();
+    for token in line.split_whitespace() {
+        let Some((key, value)) = token.split_once('=') else {
+            return Err(bad(format!(
+                "tokens must be k=v over {VISION_KEYS}: {token}"
+            )));
+        };
+        match key {
+            "exe" | "python" | "mmproj" | "model" | "reference_dir" | "weights" => {
+                if !super::strata::is_absolute_shape(value) {
+                    return Err(bad(format!(
+                        "{key} must be an absolute path (drive-letter or UNC): {value}"
+                    )));
+                }
+                taken.insert(
+                    key.to_string(),
+                    serde_json::Value::String(value.to_string()),
+                );
+            }
+            "dtype" => {
+                let mode = value.to_ascii_lowercase();
+                if !matches!(mode.as_str(), "f32" | "bf16" | "f16") {
+                    return Err(bad(format!("dtype must be f32, bf16 or f16: {value}")));
+                }
+                taken.insert("dtype".to_string(), serde_json::Value::String(mode));
+            }
+            "device" => {
+                let place = value.to_ascii_lowercase();
+                if !matches!(place.as_str(), "cpu" | "cuda") {
+                    return Err(bad(format!("device must be cpu or cuda: {value}")));
+                }
+                taken.insert("device".to_string(), serde_json::Value::String(place));
+            }
+            "offload" | "tf32" | "gpu" => {
+                taken.insert(
+                    key.to_string(),
+                    serde_json::Value::Bool(crate::model::truthy(value)),
+                );
+            }
+            "warmup_tokens" | "threads" | "max_tokens" | "min_tokens" => {
+                let n = value
+                    .parse::<u64>()
+                    .map_err(|_| bad(format!("{key} must be a number: {value}")))?;
+                taken.insert(key.to_string(), serde_json::json!(n));
+            }
+            other => return Err(bad(format!("key `{other}` is not one of {VISION_KEYS}"))),
+        }
+    }
+    for required in ["exe", "mmproj", "model"] {
+        if !taken.contains_key(required) {
+            return Err(bad(format!(
+                "requires `{required}` when a vision block is declared"
+            )));
+        }
+    }
+    if !taken.contains_key("gpu") {
+        taken.insert("gpu".to_string(), serde_json::Value::Bool(false));
+    }
+    Ok(taken)
+}
+
+/// The profile keys `xolotl_profile_extra` may never carry — the xolotl voice
+/// of the strata `PROFILE_EXTRA_DENIED` table (the same three families: the
+/// harness-forced fields, the keys a typed knob already renders, and the
+/// admission-affecting families only the witness may size, plus the
+/// `before_load` hook pending its own ruling). Every other top-level profile
+/// key the forked server or the shim reads merges through.
+const PROFILE_EXTRA_DENIED: &[(&str, &str)] = &[
+    ("host", "the bind is harness-forced (loopback, §5)"),
+    ("port", "the port is harness-assigned from category config"),
+    ("key", "request authentication is harness-owned"),
+    ("api_key", "request authentication is harness-owned"),
+    ("idle_unload_s", "residency is the harness scheduler's"),
+    ("cors_origins", "CORS is harness-owned (loopback only)"),
+    ("trusted_origins", "CORS is harness-owned (loopback only)"),
+    ("allowed_hosts", "the host allow-list is harness-owned"),
+    ("telemetry_read_key", "key material is harness-owned"),
+    ("min_free_vram_mib", "the memory floor is the witness's"),
+    ("slot_save_path", "slot custody paths are harness-owned"),
+    ("vram_elastic", "the memory budget is the harness witness's"),
+    (
+        "vram_segment_mib",
+        "the memory budget is the harness witness's",
+    ),
+    (
+        "fit_max_tokens",
+        "the memory budget is the harness witness's",
+    ),
+    (
+        "lazy_load",
+        "load timing is the harness scheduler's decision",
+    ),
+    (
+        "replicas",
+        "replicas multiply memory: admission must size them",
+    ),
+    (
+        "replica_cpus",
+        "replicas multiply memory: admission must size them",
+    ),
+    (
+        "replica_load_tokens",
+        "replicas multiply memory: admission must size them",
+    ),
+    (
+        "split_serve",
+        "split placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "split_skip_if_fits",
+        "split placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "layer_split",
+        "multi-GPU placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "gpu_order",
+        "multi-GPU placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "hip_ordinal",
+        "multi-GPU placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "before_load",
+        "a profile hook that runs a program needs its own ruling",
+    ),
+    (
+        "before_load_strict",
+        "a profile hook that runs a program needs its own ruling",
+    ),
+    (
+        "before_load_timeout_s",
+        "a profile hook that runs a program needs its own ruling",
+    ),
+    (
+        "before_load_ignore_failure",
+        "a profile hook that runs a program needs its own ruling",
+    ),
+    ("model", "the weights are harness-owned custody"),
+    ("config", "the profile path is harness-owned custody"),
+    ("exe", "`xolotl_exe` renders this key"),
+    ("args", "`xolotl_args` renders this key"),
+    ("cwd", "`xolotl_cwd` renders this key"),
+    ("tokenizer", "`xolotl_tokenizer` renders this key (custody)"),
+    ("model_name", "the served id is harness-owned"),
+    ("log", "the harness owns the log path"),
+    ("lib_dirs", "`xolotl_lib_dirs` renders this key"),
+    ("env", "`xolotl_env` renders this key"),
+    ("gpu", "`xolotl_gpu` renders this key"),
+    ("parallel", "`xolotl_parallel` renders this key"),
+    ("vision", "`xolotl_vision` renders this key"),
+    ("sampling", "`xolotl_sampling` renders this key"),
+    ("aliases", "`xolotl_aliases` renders this key"),
+    (
+        "reasoning_budget_tokens",
+        "`xolotl_reasoning_budget` renders this key",
+    ),
+];
+
+/// The `xolotl_profile_extra` map: one operator JSON object merged into the
+/// rendered profile AFTER the typed keys — the policy-filtered passthrough
+/// door for the fork's unmodeled profile keys (thinking, structured_compact,
+/// request_log, keep_cut_tool_calls, the conversation-cache block …). Refuses
+/// every harness-owned or admission-affecting key by name, all at once, in
+/// the `policy_field_claims` voice; merged path values still meet the
+/// renderer-independent existence walk.
+fn profile_extra(
+    model: &ModelEntry,
+) -> Result<serde_json::Map<String, serde_json::Value>, XolotlRowError> {
+    let mut out = serde_json::Map::new();
+    let Some(text) = knob(model, "xolotl_profile_extra") else {
+        return Ok(out);
+    };
+    let bad = |reason: String| XolotlRowError::Bad {
+        model: model.name.clone(),
+        key: "xolotl_profile_extra".to_string(),
+        reason,
+    };
+    let parsed: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| bad(format!("must hold one JSON object ({e}): {text}")))?;
+    let map = parsed
+        .as_object()
+        .ok_or_else(|| bad(format!("must hold one JSON object: {text}")))?;
+    let mut denied: Vec<String> = Vec::new();
+    for (key, value) in map {
+        match PROFILE_EXTRA_DENIED
+            .iter()
+            .find(|(name, _)| *name == key.as_str())
+        {
+            Some((_, owner)) => denied.push(format!("`{key}` \u{2014} {owner}")),
+            None => {
+                out.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    if !denied.is_empty() {
+        return Err(bad(format!(
+            "carries harness-owned keys ({}); delete them from the object — \
+             the typed knobs and forced fields own those decisions",
+            denied.join("; ")
+        )));
+    }
+    Ok(out)
+}
+
 /// Why a rendered profile is not loadable *after* its knobs validated: the
 /// referenced-path walk and the harness-forced-field claim over the rendered
 /// JSON (the strata `validate_profile_text` door, xolotl voice). The
@@ -676,10 +917,34 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<XolotlRow, XolotlRowErr
         }
         None => return Err(missing("load_timeout")),
     }
-    let args = match knob(model, "xolotl_args") {
+    let mut args = match knob(model, "xolotl_args") {
         Some(line) => args_tokens(model, line, &cwd_path)?,
         None => Vec::new(),
     };
+    let vision = match knob(model, "xolotl_vision") {
+        Some(line) => Some(vision_block(model, line)?),
+        None => None,
+    };
+    if vision.is_some() {
+        if let Some(banned) = args.iter().find(|token| {
+            // The ban reads the option NAME: the eq form is spawn truth too
+            // (ruling 10[1]), so `--vision=off` must not ride alongside the
+            // block the way `--host=` cannot ride the forced bind.
+            let name = token
+                .split_once('=')
+                .map_or(token.as_str(), |(name, _)| name);
+            "--vision".starts_with(name)
+        }) {
+            return Err(bad(
+                "xolotl_vision",
+                format!(
+                    "the block already switches vision on; drop the `{banned}` \
+                     token from `xolotl_args`"
+                ),
+            ));
+        }
+        args.push("--vision".to_string());
+    }
     let env = match knob(model, "xolotl_env") {
         Some(line) => env_map(model, line)?,
         None => serde_json::Map::new(),
@@ -718,6 +983,19 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<XolotlRow, XolotlRowErr
     };
     let reasoning = match knob(model, "xolotl_reasoning_budget") {
         Some(value) => Some(unsigned(model, "xolotl_reasoning_budget", value)?),
+        None => None,
+    };
+    let parallel = match knob(model, "xolotl_parallel") {
+        Some(value) => {
+            let n = unsigned(model, "xolotl_parallel", value)?;
+            if !(PARALLEL_MIN..=PARALLEL_MAX).contains(&n) {
+                return Err(bad(
+                    "xolotl_parallel",
+                    format!("must be a whole number {PARALLEL_MIN}..={PARALLEL_MAX}: {value}"),
+                ));
+            }
+            Some(n)
+        }
         None => None,
     };
     // The render is the launch (row 19 idiom): `host`, `port` and key fields
@@ -791,6 +1069,17 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<XolotlRow, XolotlRowErr
             "reasoning_budget_tokens".to_string(),
             serde_json::json!(budget),
         );
+    }
+    if let Some(vision) = vision {
+        profile.insert("vision".to_string(), serde_json::Value::Object(vision));
+    }
+    if let Some(parallel) = parallel {
+        profile.insert("parallel".to_string(), serde_json::json!(parallel));
+    }
+    // The passthrough door merges LAST: it can never overwrite a typed key
+    // (every typed name is denied by name).
+    for (key, value) in profile_extra(model)? {
+        profile.insert(key, value);
     }
     // The content address is the version: one deterministic render per yaml
     // (serde_json's map order guarantees cross-build stability).
@@ -1083,6 +1372,166 @@ mod tests {
         XolotlAdapter
             .spec(&entry(&pairs), 18109)
             .expect_err("must refuse")
+    }
+
+    /// The shim's full vision contract renders, the block appends exactly one
+    /// `--vision` (serve_ds41.py:299-327), and `gpu` defaults OFF on this line.
+    /// Falsifier: drop the default insert and the encoder lands on-card.
+    #[test]
+    fn vision_block_renders_and_appends_exactly_one_vision_flag() {
+        let dir = crate::testutil::temp_dir("xolotl-vision");
+        let vex = real_file(&dir, "v-exe", "exe");
+        let vpython = real_file(&dir, "v-python", "exe");
+        let vmmproj = real_file(&dir, "v-mmproj", "gguf");
+        let vmodel = real_file(&dir, "v-model", "gguf");
+        let vref = dir.join("reference");
+        std::fs::create_dir_all(&vref).expect("reference dir");
+        let vweights = real_file(&dir, "v-weights", "safetensors");
+        let spec = spec_of(&[(
+            "xolotl_vision",
+            &format!(
+                "exe={} python={} mmproj={} model={} reference_dir={} weights={} \
+                 dtype=BF16 device=CUDA offload=1 tf32=1 warmup_tokens=4096 \
+                 threads=8 max_tokens=4096 min_tokens=1",
+                path_text(&vex),
+                path_text(&vpython),
+                path_text(&vmmproj),
+                path_text(&vmodel),
+                path_text(&vref),
+                path_text(&vweights)
+            ),
+        )]);
+        let profile: serde_json::Value =
+            serde_json::from_str(&spec.rendered_profile.as_ref().expect("rendered").text)
+                .expect("json");
+        assert_eq!(profile["vision"]["python"], path_text(&vpython));
+        assert_eq!(profile["vision"]["dtype"], "bf16");
+        assert_eq!(profile["vision"]["device"], "cuda");
+        assert_eq!(profile["vision"]["offload"], serde_json::json!(true));
+        assert_eq!(profile["vision"]["tf32"], serde_json::json!(true));
+        assert_eq!(profile["vision"]["warmup_tokens"], serde_json::json!(4096));
+        assert_eq!(profile["vision"]["threads"], serde_json::json!(8));
+        assert_eq!(profile["vision"]["max_tokens"], serde_json::json!(4096));
+        assert_eq!(profile["vision"]["min_tokens"], serde_json::json!(1));
+        assert_eq!(
+            profile["vision"]["gpu"],
+            serde_json::json!(false),
+            "the tested line keeps the encoder off-card unless the row opts in"
+        );
+        let args = profile["args"].as_array().expect("args");
+        assert_eq!(
+            args.iter()
+                .filter(|token| token.as_str() == Some("--vision"))
+                .count(),
+            1,
+            "exactly one --vision rides the args"
+        );
+        assert_eq!(args.last().and_then(|t| t.as_str()), Some("--vision"));
+        let on_card = spec_of(&[(
+            "xolotl_vision",
+            &format!(
+                "exe={} mmproj={} model={} gpu=1",
+                path_text(&vex),
+                path_text(&vmmproj),
+                path_text(&vmodel)
+            ),
+        )]);
+        let on_card: serde_json::Value =
+            serde_json::from_str(&on_card.rendered_profile.as_ref().expect("rendered").text)
+                .expect("json");
+        assert_eq!(on_card["vision"]["gpu"], serde_json::json!(true));
+    }
+
+    /// The row spells the vision ONCE: a `--vision` token (bare or eq form) in
+    /// `xolotl_args` alongside the block refuses naming the block.
+    #[test]
+    fn vision_block_refuses_a_second_vision_token_in_args() {
+        let dir = crate::testutil::temp_dir("xolotl-vision-deny");
+        let vex = real_file(&dir, "v-exe", "exe");
+        let vmmproj = real_file(&dir, "v-mmproj", "gguf");
+        let vmodel = real_file(&dir, "v-model", "gguf");
+        for banned in ["--vision", "--vision=off"] {
+            let err = spec_err_of(&[
+                (
+                    "xolotl_vision",
+                    &format!(
+                        "exe={} mmproj={} model={}",
+                        path_text(&vex),
+                        path_text(&vmmproj),
+                        path_text(&vmodel)
+                    ),
+                ),
+                (
+                    "xolotl_args",
+                    &format!("--backend cuda, {banned}, -m model/V41.gguf"),
+                ),
+            ]);
+            let EngineError::Rejected { reason, .. } = &err else {
+                panic!("expected Rejected, got {err:?}");
+            };
+            assert!(
+                reason.contains("xolotl_vision") && reason.contains(banned),
+                "`{banned}` refused blind: {reason}"
+            );
+        }
+    }
+
+    /// The shim caps this line's pool at 16 (`ds41_parallel_args`); a row
+    /// outside the range refuses instead of rendering a figure the launch
+    /// would shrink.
+    #[test]
+    fn xolotl_parallel_renders_within_the_shim_ceiling_and_refuses_beyond() {
+        let spec = spec_of(&[("xolotl_parallel", "16")]);
+        let profile: serde_json::Value =
+            serde_json::from_str(&spec.rendered_profile.as_ref().expect("rendered").text)
+                .expect("json");
+        assert_eq!(profile["parallel"], serde_json::json!(16));
+        for out_of_range in ["0", "17"] {
+            let err = spec_err_of(&[("xolotl_parallel", out_of_range)]);
+            let EngineError::Rejected { reason, .. } = &err else {
+                panic!("expected Rejected, got {err:?}");
+            };
+            assert!(
+                reason.contains("xolotl_parallel") && reason.contains("1..=16"),
+                "`{out_of_range}` refused blind: {reason}"
+            );
+        }
+    }
+
+    /// The fork's unmodeled keys merge; harness-owned, admission-sized and
+    /// hook keys refuse by name (the strata `profile_extra` posture).
+    #[test]
+    fn profile_extra_merges_fork_keys_and_refuses_owned_ones_by_name() {
+        let spec = spec_of(&[(
+            "xolotl_profile_extra",
+            r#"{"thinking": true, "hide_tokens": false,
+                "conversation_cache": {"slots": 4}}"#,
+        )]);
+        let profile: serde_json::Value =
+            serde_json::from_str(&spec.rendered_profile.as_ref().expect("rendered").text)
+                .expect("json");
+        assert_eq!(profile["thinking"], serde_json::json!(true));
+        assert_eq!(profile["hide_tokens"], serde_json::json!(false));
+        assert_eq!(profile["conversation_cache"]["slots"], serde_json::json!(4));
+        for (text, needle) in [
+            (r#"{"host": "0.0.0.0"}"#, "host"),
+            (r#"{"replicas": 2}"#, "replicas"),
+            (r#"{"layer_split": "auto"}"#, "layer_split"),
+            (r#"{"before_load": "evil.exe"}"#, "before_load"),
+            (r#"{"slot_save_path": "C:/slot.bin"}"#, "slot_save_path"),
+            (r#"{"vram_elastic": true}"#, "vram_elastic"),
+            (r#"{"vram_segment_mib": 64}"#, "vram_segment_mib"),
+            (r#"{"fit_max_tokens": 1024}"#, "fit_max_tokens"),
+            (r#"{"lazy_load": true}"#, "lazy_load"),
+            (r#"{"vision": {}}"#, "xolotl_vision"),
+            ("nope", "xolotl_profile_extra"),
+        ] {
+            let err = spec_err_of(&[("xolotl_profile_extra", text)]);
+            let EngineError::Rejected { reason, .. } = &err else {
+                panic!("expected Rejected, got {err:?}");
+            };
+            assert!(reason.contains(needle), "`{text}` refused blind: {reason}");
+        }
     }
 
     /// The exact forced argv shape (ruling: the launch IS
@@ -1618,7 +2067,7 @@ mod tests {
         assert_eq!(row.custody_data_roots, [".simpleharn/xolotl-profiles"]);
         assert!(row.expert_offload);
         assert!(!row.supports_fit);
-        assert_eq!(row.knobs.len(), 12);
+        assert_eq!(row.knobs.len(), 15);
         assert!(row.config_knobs.is_empty());
         let spec = spec_of(&[]);
         assert_eq!(spec.custody.as_deref(), Some("xolotl"));

@@ -10,28 +10,36 @@
 //! truth set ([`jinja_on`]) where the script's PowerShell `-in 'true','1','on'` is
 //! case-insensitive — the narrower set is the pinned product rule (`GOTCHAS`), so
 //! `jinja: True` enables nothing here while the script would have enabled it. The
-//! pinned build also defaults jinja to *enabled*, so `jinja: false` cannot switch it
-//! off (`--no-jinja` is not `EXTRA_ARGS_ALLOWED`, and a harness-emitted `--jinja`
-//! must not be flippable from yaml text); that is a known functional gap, not an
-//! enforcement claim.
+//! pinned build defaults jinja to *enabled*, so the false words (`false`, `0`,
+//! `off`, case-sensitively like the true words) render the harness's own
+//! `--no-jinja` — the pair is a harness-emitted decision from `jinja:`, never
+//! operator text, and the switch covers both directions (audit 2026-11-15
+//! §2.3-4 closed the one-way gap).
 //!
-//! `extra_args` is an ALLOW-LIST — the inversion of the old
-//! ten-name `HARNESS_OWNED_FLAGS` denial list — ten exact words over an ~200-option
-//! parser were a semantic bypass of the LOCKED harness-owned-config rule, leaving
-//! `--api-key`, `--rpc`, `--path`, `--models-dir`, `--ssl-key-file`, `--model-url`,
-//! `--hf-repo` and `--gpu-layers` reachable from one yaml line). An operator word
-//! reaches the argv only if it is on `EXTRA_ARGS_ALLOWED`, together with the value
-//! tokens its arity consumes; every other word is refused with
-//! [`EngineError::Rejected`] naming it. That makes several former separate claims
-//! moot-by-construction rather than enforced: the harness-owned flags and *all*
-//! their alias spellings (`-ngl`/`--n-gpu-layers`/`--gpu-layers`, `-h`, `-p`,
-//! `--host`, `--port`, `-m`/`--model`, `--mmproj`) and the jinja pair (`--jinja`,
-//! `--no-jinja`) are refused because they are ABSENT from the list, not because a
-//! name matched a deny-list — so no alias can walk through again. The tail-forced
-//! flags (`--host`, `--port`, `-ngl 0`) stay as the second enforcement for the three
-//! options the harness itself re-emits, under the same last-occurrence assumption
-//! (still unverifiable without a load). `--host` is always the
-//! [`LLAMA_ENGINE_HOST`] literal, never the config's `internal_host`.
+//! `extra_args` is an open, policy-filtered passthrough (gate ruling
+//! 2026-11-15: a documented knob needing an adapter hotfix is a HIGH defect;
+//! a knob the operator can add back by editing the row "still gets the job
+//! done"). An option token reaches the argv unless it names a word of the
+//! reviewed [`crate::engine::policy::LLAMA_FORBIDDEN_EXTRA_WORDS`] record
+//! exactly or as a strict prefix-abbreviation of one — a defense-in-depth
+//! refusal even though the pinned llama.cpp parser is exact-match; the
+//! historical 8/8 smuggle leak is the in-repo precedent for keeping the
+//! abbreviation door closed rather than betting on the parser. The record — not an allow-list — is the enforcement, and every
+//! refused word names the owner sentence of the mechanism that made it
+//! harness-owned, so the operator edits the live yaml key instead of the
+//! code. That makes the harness-owned decision set enforced by name: the
+//! forced pair (`--host`, `--port`), the weights/egress/key/TLS/roots/
+//! tool-execution spellings, the jinja pair (the harness emits it from
+//! `jinja:`), and every `FLAG_TABLE` spelling (`-c`/`--ctx-size`,
+//! `-ngl`/`--n-gpu-layers`/`--gpu-layers`, ...) — one yaml key per decision,
+//! and a second spelling would make that key a dead claim. Long options only
+//! pass (this build speaks `--flag`); a value token is data under
+//! [`valid_extra_value`], so an option-shaped value can never masquerade as a
+//! second option. The tail-forced flags (`--host`, `--port`, `-ngl 0`) stay
+//! as the second enforcement for the three options the harness itself
+//! re-emits, under the same last-occurrence assumption (still unverifiable
+//! without a load). `--host` is always the [`LLAMA_ENGINE_HOST`] literal,
+//! never the config's `internal_host`.
 
 use super::{EngineAdapter, EngineError, LaunchSpec, ReadinessSpec};
 use crate::model::ModelEntry;
@@ -47,62 +55,42 @@ use std::path::{Path, PathBuf};
 /// actually bound.
 pub const LLAMA_ENGINE_HOST: &str = "127.0.0.1";
 
-/// The CLOSED allow-list of `extra_args` option words an operator may pass
-/// through (inverted from the old denial list — the full rationale lives
-/// with the data now). The list itself is the `llama` row's
-/// `allow_words` cell in the [`crate::engine::policy`] table (§20-9 Fork C,
-/// "one mechanism, four instances"); this alias keeps every read in this
-/// adapter pointed at that single source, so the refusal text and the
-/// enforcement can never cite two different lists.
-const EXTRA_ARGS_ALLOWED: &[(&str, usize)] = crate::engine::policy::LLAMA_EXTRA_ARGS;
-
-/// What one `extra_args` word is under [`EXTRA_ARGS_ALLOWED`].
-struct AllowedWord {
-    /// How many following words this entry consumes as its own values.
-    arity: usize,
-}
-
-/// Classifies one `extra_args` word, accepting `flag` and `flag=value` for a
-/// value-taking entry. `None` (refused) covers an unknown word, an `=` on a
-/// valueless entry, an empty or option-shaped inline value, and any harness-owned or
-/// alias spelling.
-fn classify_extra_word(word: &str) -> Option<AllowedWord> {
-    if let Some((name, value)) = word.split_once('=') {
-        let (_, arity) = EXTRA_ARGS_ALLOWED.iter().find(|(flag, _)| *flag == name)?;
-        // An inline value is the same data as a following token, so it faces the
-        // same floor: `--pooling=--api-key` must not be a way to smuggle one.
-        if *arity == 0 || !valid_extra_value(value) {
-            return None;
-        }
-        return Some(AllowedWord { arity: 0 });
-    }
-    let (_, arity) = EXTRA_ARGS_ALLOWED.iter().find(|(flag, _)| *flag == word)?;
-    Some(AllowedWord { arity: *arity })
+/// Which member of the reviewed forbidden record an option *name* collides
+/// with: the exact spelling, or a strict prefix-abbreviation of one (a
+/// defense-in-depth refusal; the pinned llama.cpp parser is exact-match, so
+/// `--hos` is unknown to it, but refusing the abbreviation keeps one rule
+/// across the engine family). `None` = the name is not harness-owned and the
+/// option passes
+/// through. The extension direction is deliberately NOT refused: the engine
+/// defines the longer option, and blocking `--model-draft`-class knobs from a
+/// row was the documented-knob-needs-a-hotfix class the 2026-11-15 ruling
+/// closed.
+fn forbidden_extra_word(name: &str) -> Option<&'static str> {
+    crate::engine::policy::LLAMA_FORBIDDEN_EXTRA_WORDS
+        .iter()
+        .copied()
+        .find(|word| *word == name || (name.len() < word.len() && word.starts_with(name)))
 }
 
 /// Whether an `extra_args` value token is safe to hand over as data.
 ///
 /// A value may not be option-shaped: an engine parser that refuses to bind an
 /// option-looking token to the preceding flag would then read it as its own option,
-/// which is how an allow-list is walked around. A leading `-` is therefore admitted
-/// only for a finite number (`--seed -1`), never for a bare `-` or a word.
+/// which is how a name-matched filter is walked around. A leading `-` is therefore
+/// admitted only for a finite number (`--seed -1`), never for a bare `-` or a word.
 fn valid_extra_value(value: &str) -> bool {
     !value.is_empty()
         && (!value.starts_with('-') || value.parse::<f64>().is_ok_and(|n| n.is_finite()))
 }
 
 /// The refusal voice for every `extra_args` verdict: the typed [`EngineError::Rejected`]
-/// naming the offending word, so a refused launch says what to delete (G6). The
-/// reason carries the whole list, generated from the const, so the operator-facing
-/// text cannot drift from the rule; a word the harness owns outright also names
-/// the mechanism that owns the decision (slice 10c), so the operator edits the
-/// live yaml key instead of fighting the closed list.
+/// naming the offending word — and, for a record word or abbreviation, the owner
+/// sentence of the mechanism that made it harness-owned (slice 10c) — so a
+/// refused launch says what to delete (G6) and the operator edits the live
+/// yaml key instead of the code. The passthrough rule closes the message, so
+/// an operator can tell a harness-owned word from a typo the engine itself
+/// will reject.
 fn rejected_extra(model_name: &str, detail: String, owner_word: Option<&str>) -> EngineError {
-    let listed = EXTRA_ARGS_ALLOWED
-        .iter()
-        .map(|(flag, _)| format!("`{flag}`"))
-        .collect::<Vec<_>>();
-    let listed = listed.join(" ");
     let owner = owner_word
         .and_then(crate::engine::policy::llama_extra_arg_owner)
         .map_or(String::new(), |owner| format!(" \u{2014} {owner}"));
@@ -110,49 +98,71 @@ fn rejected_extra(model_name: &str, detail: String, owner_word: Option<&str>) ->
         engine: "llama".to_string(),
         model: model_name.to_string(),
         reason: format!(
-            "extra_args {detail}{owner}; the closed allow-list is {listed} (an allowed flag's \
-             own value tokens pass through unchanged, and any other option is refused)"
+            "extra_args {detail}{owner}; every other long option passes through to the engine \
+as written (harness-owned words are refused by name; abbreviation-shaped spellings \
+are refused as a class)"
         ),
     }
 }
 
-/// Rejects any `extra_args` word that is not on [`EXTRA_ARGS_ALLOWED`], walking the
-/// same whitespace tokenization [`build_args`] appends from so the checked words and
-/// the emitted words can never diverge.
+/// Filters one `extra_args` token stream — the same whitespace tokenization
+/// [`build_args`] appends from, so the checked words and the emitted words can
+/// never diverge. A long option passes unless [`forbidden_extra_word`] names
+/// its collision; a single-dash token is refused as a class except a finite
+/// number (a negative value like the engine's own `-1` is data, not an
+/// option); an inline `--flag=value` faces the name check on its left side
+/// and the data floor [`valid_extra_value`] on its right; no token may carry
+/// control characters. Arity is the engine's business now: a dangling option
+/// is the engine's own startup error, not a reason to keep the knob out of
+/// the catalog.
 ///
 /// # Errors
 ///
-/// [`EngineError::Rejected`] naming the offending token: an unknown option, a
-/// flag whose value is missing, a value that is option-shaped, or an `=` form the
-/// entry does not allow.
+/// [`EngineError::Rejected`] naming the offending token and, for a harness-
+/// owned word or abbreviation, the owning mechanism.
 fn check_extra_args(words: &[&str], model_name: &str) -> Result<(), EngineError> {
-    let mut index = 0;
-    while index < words.len() {
-        let word = words[index];
-        index += 1;
-        let Some(allowed) = classify_extra_word(word) else {
+    for &word in words {
+        if word.chars().any(char::is_control) {
             return Err(rejected_extra(
                 model_name,
-                format!("word `{word}` is not allowed"),
-                Some(word),
+                format!("word `{}` carries control characters", safe_display(word)),
+                None,
             ));
+        }
+        if !word.starts_with('-') {
+            continue; // a bare value token (flag value, path, mode word): data
+        }
+        // A finite number is a value, never an option: `--seed -1`.
+        if word.parse::<f64>().is_ok_and(|n| n.is_finite()) {
+            continue;
+        }
+        let (name, inline) = match word.split_once('=') {
+            Some((name, value)) => (name, Some(value)),
+            None => (word, None),
         };
-        for _ in 0..allowed.arity {
-            let Some(value) = words.get(index) else {
-                return Err(rejected_extra(
-                    model_name,
-                    format!("flag `{word}` is missing its value"),
-                    None,
-                ));
+        if let Some(flag) = forbidden_extra_word(name) {
+            let detail = if flag == name {
+                format!("word `{name}` is harness-owned")
+            } else {
+                format!("word `{name}` abbreviates harness-owned `{flag}`")
             };
+            return Err(rejected_extra(model_name, detail, Some(flag)));
+        }
+        if !name.starts_with("--") {
+            return Err(rejected_extra(
+                model_name,
+                format!("word `{word}` is a short option (this door passes long options only)"),
+                None,
+            ));
+        }
+        if let Some(value) = inline {
             if !valid_extra_value(value) {
                 return Err(rejected_extra(
                     model_name,
-                    format!("flag `{word}` cannot take option-shaped value `{value}`"),
-                    Some(value),
+                    format!("word `{word}` carries an empty or option-shaped inline value"),
+                    None,
                 ));
             }
-            index += 1;
         }
     }
     Ok(())
@@ -201,14 +211,14 @@ pub(crate) const FLAG_TABLE: &[(&str, &str)] = &[
 /// form. Empty by review: every table flag takes a non-negative number or a
 /// word, so a leading `-` on a table value is always the option-shaped
 /// smuggling shape [`table_value_problem`] refuses. A leading `-` stays legal
-/// only on the `extra_args` door, where the flag itself passed review and a
-/// finite negative (the engine's own `--seed -1`) is a value, not an option
+/// only on the `extra_args` door, where a finite negative (the engine's own
+/// `--seed -1`) is a value, not an option
 /// ([`valid_extra_value`]); a table key joins this list only by that same
 /// review decision.
 const NEGATIVE_FORM_KEYS: &[&str] = &[];
 
-/// The shared value-shape floor for every [`FLAG_TABLE`] value. The closed
-/// `extra_args` allow-list is only closed while
+/// The shared value-shape floor for every [`FLAG_TABLE`] value. The
+/// `extra_args` forbidden-word filter only holds while
 /// the value slot of a harness-owned flag cannot carry an option word: a
 /// parser that will not bind `--api-key` to the preceding `-c` re-reads it as
 /// its own option — the door [`valid_extra_value`] slams on the operator's
@@ -231,7 +241,7 @@ fn table_value_problem(key: &str, flag: &str, value: &str) -> Option<String> {
     if value.starts_with('-') && !NEGATIVE_FORM_KEYS.contains(&key) {
         return Some(format!(
             "is option-shaped: the engine re-reads a leading `-` as its own option, which is \
-             how the closed allow-list is walked around (FINDINGS2-0910 [1]), and `{flag}` \
+             how the extra_args name filter is walked around (FINDINGS2-0910 [1]), and `{flag}` \
              documents no negative value form"
         ));
     }
@@ -322,15 +332,27 @@ pub(crate) fn offload_live(engine: &str) -> bool {
 /// this function). The narrower set is the pinned product rule (`GOTCHAS`: the
 /// engine's set is `true|1|on`, `model::truthy` also accepts `yes`); the A.7 parity
 /// test still asserts the script's literal list, so a script change shows up as a
-/// test failure rather than a silent divergence. Because the pinned build defaults
-/// jinja to *enabled*, this knob is one-way: only a truthy word changes the argv,
-/// and `jinja: false` is inert (see the module header).
+/// test failure rather than a silent divergence. The pinned build defaults
+/// jinja to *enabled*; the mirror set [`jinja_off`] renders the harness's own
+/// `--no-jinja`, so `jinja:` switches both directions and a value in neither
+/// set (`yes`, `True`) is inert (see the module header).
 ///
 /// The control page's CPU checkbox uses THIS (not `model::truthy`) and can never
 /// disagree with whether `-ngl 0` was actually forced (review finding, 2026-10-26).
 #[must_use]
 pub fn jinja_on(value: &str) -> bool {
     matches!(value, "true" | "1" | "on")
+}
+
+/// The harness's own falsy set for `jinja`: exactly `false`, `0`, `off`,
+/// **case-sensitively** — the mirror of [`jinja_on`]'s narrow truth set.
+/// Because the pinned build defaults jinja to enabled, the off direction only
+/// ever exists as the harness-emitted `--no-jinja` (audit 2026-11-15 §2.3-4);
+/// operator `extra_args` still cannot spell the pair — both spellings are
+/// forbidden-record words.
+#[must_use]
+pub fn jinja_off(value: &str) -> bool {
+    matches!(value, "false" | "0" | "off")
 }
 
 /// Resolves a `model:` value to the one path the scan, the booking, and the
@@ -368,13 +390,15 @@ pub(crate) fn resolve_model_path(raw: &str, dir: Option<&Path>) -> String {
 /// Builds the llama-server argv from the raw yaml map, mirroring `start.ps1:45-63`
 /// (the deliberate deviation: the forced flags move to the tail): `-m` first
 /// (required), `--mmproj`, the remaining mapped flags with non-empty
-/// values, `--jinja` when truthy, then the admitted `extra_args` words, and the
+/// values, the `--jinja`/`--no-jinja` pair from `jinja:`, then the admitted
+/// `extra_args` words, and the
 /// harness-forced flags at the tail, rendered from the `llama` row of the
 /// [`crate::engine::policy`] table (`--host`, `--port`, plus `-ngl 0` when
 /// `cpu_offload` is on — a knob-scoped conditional force, not a static table
 /// cell) so forced values win under any parser that honors last occurrence.
-/// `extra_args` is filtered by the closed [`EXTRA_ARGS_ALLOWED`] list, so
-/// nothing but a reviewed word can reach the engine at all.
+/// `extra_args` is an open passthrough filtered by the reviewed forbidden
+/// record ([`forbidden_extra_word`]), so a harness-owned spelling can never
+/// reach the engine while an unmodeled knob needs no code change.
 ///
 /// Crate-internal with no host knob on purpose: the bind address is the row's
 /// forced [`LLAMA_ENGINE_HOST`] literal and nothing else can emit it — a
@@ -385,8 +409,8 @@ pub(crate) fn resolve_model_path(raw: &str, dir: Option<&Path>) -> String {
 ///
 /// - [`EngineError::MissingField`] when `model` is absent or empty — the script
 ///   refuses to launch without it too.
-/// - [`EngineError::Rejected`] when an `extra_args` word is not on the allow-list,
-///   naming the offending token.
+/// - [`EngineError::Rejected`] when an `extra_args` token collides with the
+///   forbidden record or breaks the token floor, naming the offending token.
 /// - [`EngineError::Rejected`] when a `FLAG_TABLE` value fails the shared shape
 ///   floor [`table_value_problem`], naming the key, the flag and the value.
 ///
@@ -442,8 +466,10 @@ pub(crate) fn build_args(
             args.extend([flag.to_string(), token]);
         }
     }
-    if raw.get("jinja").is_some_and(|v| jinja_on(v)) {
-        args.push("--jinja".to_string());
+    match raw.get("jinja").map(String::as_str) {
+        Some(v) if jinja_on(v) => args.push("--jinja".to_string()),
+        Some(v) if jinja_off(v) => args.push("--no-jinja".to_string()),
+        _ => {}
     }
     args.extend(extra.iter().map(|word| (*word).to_string()));
     args.extend(super::policy::render_forced(
@@ -631,7 +657,7 @@ mod tests {
         );
     }
 
-    /// The allow-list inversion must not touch what the harness itself emits: every
+    /// The passthrough filter must not touch what the harness itself emits: every
     /// `FLAG_TABLE` knob still reaches the argv in script order, byte-for-byte, with
     /// the forced pair still tailing it. (The same spellings are refused *inside*
     /// `extra_args` — see `harness_owned_and_dual_spelling_words_are_refused` — so
@@ -733,8 +759,8 @@ mod tests {
     fn spec_always_binds_the_forced_ipv4_loopback_host() {
         let adapter = LlamaAdapter::new(PathBuf::from("llama-server.exe"));
         // Nothing in the yaml can move --host off the loopback const: a `host`
-        // key is not in FLAG_TABLE, and no `--host` spelling is on the extra_args
-        // allow-list (refused by absence, not by name-matching).
+        // key is not in FLAG_TABLE, and every `--host` spelling is a
+        // forbidden-record word, refused by name.
         let model = entry(&[("model", "F:/m.gguf"), ("host", "0.0.0.0")]);
         let spec = adapter.spec(&model, 18109).expect("valid");
         let window = spec
@@ -777,7 +803,7 @@ mod tests {
             "t",
             None,
         )
-        .expect_err("a word outside the allow-list must be refused");
+        .expect_err("a forbidden word must be refused");
         let text = error.to_string();
         match error {
             EngineError::Rejected {
@@ -848,6 +874,22 @@ mod tests {
             ("--no-jinja", "--no-jinja"),
             ("--lora D:/l.gguf", "--lora"),
             ("--override-kv x", "--override-kv"),
+            // The 2026-11-15 audit's excluded set (now a name-matched record,
+            // not an absence): each group's representative.
+            ("--ctx-size 4096", "--ctx-size"),
+            ("--batch-size 512", "--batch-size"),
+            ("--ui-mcp-proxy true", "--ui-mcp-proxy"),
+            ("--cors-origins *", "--cors-origins"),
+            ("--connect https://tunnel", "--connect"),
+            ("--offline", "--offline"),
+            ("--sleep-idle-seconds 30", "--sleep-idle-seconds"),
+            ("--models-max 3", "--models-max"),
+            ("--device cuda:1", "--device"),
+            ("--props", "--props"),
+            ("--api-prefix /v2", "--api-prefix"),
+            ("--hf-token hf_secret", "--hf-token"),
+            ("--vision-gemma-4b-default", "--vision-gemma-4b-default"),
+            ("--control-vector F:/v.gguf", "--control-vector"),
         ] {
             let reason = refused_reason(extra);
             assert!(
@@ -858,12 +900,14 @@ mod tests {
     }
 
     /// The words the harness itself owns — including every alias spelling the old
-    /// deny-list missed or invented — are refused by absence. `[2]`'s alias claims
+    /// deny-list missed or invented — are refused by name, exact or abbreviated.
+    /// `[2]`'s alias claims
     /// are therefore moot by construction: measured against the pinned binaries'
     /// option strings, `-ngl` has two long aliases (`--n-gpu-layers`, and
     /// `--gpu-layers`, which the old list missed), `-h` is the *help* alias rather
     /// than a host spelling, and `-p` is not an option in this build at all. A
-    /// closed set makes spelling irrelevant: only membership counts.
+    /// name-matched record makes spelling irrelevant only when every spelling is
+    /// listed: the record names them, and what it does not name passes through.
     #[test]
     fn harness_owned_and_dual_spelling_words_are_refused() {
         for (extra, word) in [
@@ -892,6 +936,11 @@ mod tests {
             ("--fit true", "--fit"),
             ("--fit-target 0.9", "--fit-target"),
             ("--fit-ctx 2048", "--fit-ctx"),
+            // Prefix-abbreviations are the same words to a prefix-resolving
+            // parser: `--hos` is `--host`, `--api` is `--api-key`.
+            ("--hos 0.0.0.0", "--hos"),
+            ("--api skrit", "--api"),
+            ("--no-jin", "--no-jin"),
         ] {
             let reason = refused_reason(extra);
             assert!(
@@ -901,45 +950,80 @@ mod tests {
         }
     }
 
-    /// Unknown-but-plausible words — the deny-list's old near-miss survivors and the
-    /// look-alikes it deliberately let through — are now refused: absence from a
-    /// closed set is the whole rule.
+    /// The pass-through half of the 2026-11-15 gate ruling: unmodeled long
+    /// options reach the engine — including the offload-granularity, cache,
+    /// and speculative-decoding knobs the closed list hid — and the engine,
+    /// not the catalog, judges them. `--model-draft` rides the admit side on
+    /// purpose: the audit classes draft weights as a knob that must be
+    /// reachable, and the record refuses only harness-owned spellings.
     #[test]
-    fn unknown_but_plausible_words_are_refused() {
+    fn unmodeled_long_options_pass_through_to_the_engine() {
         for (extra, word) in [
+            ("--metrics", "--metrics"),
+            ("--timeout 60", "--timeout"),
+            ("--reasoning-budget 800", "--reasoning-budget"),
+            ("--moe-cache-mib 4096", "--moe-cache-mib"),
+            ("--cpu-moe --n-cpu-moe 20", "--cpu-moe"),
+            ("--override-tensor layer.0=CPU", "--override-tensor"),
+            ("--samplers xtc", "--samplers"),
+            (
+                "--model-draft D:/d.gguf --spec-type draft_mtp",
+                "--model-draft",
+            ),
+            ("--mmproj-auto --mmproj-offload", "--mmproj-auto"),
+            ("--ctx-checkpoints 4", "--ctx-checkpoints"),
+            ("--cache-prompt --cache-reuse 16", "--cache-prompt"),
+            ("--grammar-file g.gbnf", "--grammar-file"),
             ("--foo", "--foo"),
             ("--bar=2", "--bar=2"),
-            ("-ngld 5", "-ngld"),
-            ("--model-draft D:/d.gguf", "--model-draft"),
             ("--portolan 1", "--portolan"),
-            ("--pool last", "--pool"),
             ("--embeddingz", "--embeddingz"),
-            ("--embeddings-off", "--embeddings-off"),
-            ("-e", "-e"),
         ] {
+            let args = build_args(
+                &raw(&[("model", "m"), ("extra_args", extra)]),
+                18109,
+                "t",
+                None,
+            )
+            .unwrap_or_else(|error| panic!("`{extra}` must pass through: {error}"));
+            assert!(
+                args.iter().any(|w| w == word),
+                "`{extra}` lost `{word}`: {args:?}"
+            );
+        }
+        // A dangling option is the engine's own startup error, not a reason
+        // to keep the knob out of the row (the closed list refused it by
+        // absence; the passthrough leaves the verdict to the parser).
+        let args = build_args(
+            &raw(&[("model", "m"), ("extra_args", "--pooling")]),
+            18109,
+            "t",
+            None,
+        )
+        .expect("a dangling option is the engine's error, not a hidden knob");
+        assert!(args.iter().any(|w| w == "--pooling"));
+    }
+
+    /// Short options are refused as a class: this door passes long options
+    /// only. `-ngld`/`-e` were the closed list's near-miss survivors refused
+    /// for being unknown; the passthrough refuses them for their shape, and
+    /// finite negatives (`-1`) stay legal values on the data floor.
+    #[test]
+    fn short_options_are_refused_as_a_class() {
+        for (extra, word) in [("-ngld 5", "-ngld"), ("-e", "-e"), ("-z 1", "-z")] {
             let reason = refused_reason(extra);
             assert!(
                 reason.contains(word),
                 "`{extra}`: reason must name `{word}`: {reason}"
             );
-        }
-    }
-
-    /// An allowed flag still needs the value its arity promises: a dangling flag is
-    /// a typo that would otherwise shift every later word by one position.
-    #[test]
-    fn an_allowed_flag_missing_its_value_is_refused() {
-        for (extra, word) in [("--pooling", "--pooling"), ("--temp", "--temp")] {
-            let reason = refused_reason(extra);
-            assert!(reason.contains(word), "`{extra}`: {reason}");
-            assert!(reason.contains("missing its value"), "{reason}");
         }
     }
 
     /// Values are data, with one floor: an option-shaped value is refused, because a
     /// parser that will not bind `--api-key` to the preceding flag would read it as
-    /// its own option — the only way left around the list. A finite number is not
-    /// option-shaped, so `--seed -1` (the engine's own default) stays legal.
+    /// its own option — the only way left around the name-matched filter. A finite
+    /// number is not option-shaped, so `--seed -1` (the engine's own default) stays
+    /// legal, and an inline `--flag=value` faces the same floor as a following token.
     #[test]
     fn a_value_cannot_smuggle_another_option() {
         for (extra, word) in [
@@ -949,7 +1033,7 @@ mod tests {
             ("--temp --host", "--host"),
             ("--seed -x", "-x"),
             ("--pooling=", "--pooling="),
-            ("--embedding=1", "--embedding=1"),
+            ("--grammar --api-key", "--api-key"),
         ] {
             let reason = refused_reason(extra);
             assert!(
@@ -963,6 +1047,7 @@ mod tests {
             ("--seed=-1", "--seed=-1"),
             ("--temp -0.5", "-0.5"),
             ("--pooling=last", "--pooling=last"),
+            ("--embedding=1", "--embedding=1"),
         ] {
             let args = build_args(
                 &raw(&[("model", "m"), ("extra_args", extra)]),
@@ -978,15 +1063,64 @@ mod tests {
         }
     }
 
-    /// A refusal teaches the rule instead of hiding it: the reason carries every
-    /// allowed word, generated from the const, so the operator-facing text can never
-    /// drift from the list (and an accidentally empty list would refuse everything
-    /// with an empty list to show for it).
+    /// A refusal teaches the rule instead of hiding it: a record word names
+    /// the mechanism that owns the decision, an abbreviation names the word it
+    /// resolves to, and the message states the passthrough rule, so the
+    /// operator can tell a harness-owned refusal from an engine-side typo.
     #[test]
-    fn the_refusal_names_the_whole_closed_list() {
+    fn the_refusal_names_the_owning_mechanism() {
         let reason = refused_reason("--api-key sekrit");
-        for (flag, _) in EXTRA_ARGS_ALLOWED {
-            assert!(reason.contains(flag), "reason must list `{flag}`: {reason}");
+        assert!(reason.contains("authentication"), "{reason}");
+        let reason = refused_reason("--lora D:/l.gguf");
+        assert!(reason.contains("adapter loading"), "{reason}");
+        let reason = refused_reason("--hos 0.0.0.0");
+        assert!(
+            reason.contains("`--host`"),
+            "abbreviation names the word: {reason}"
+        );
+        assert!(reason.contains("bind is harness-forced"), "{reason}");
+        let reason = refused_reason("-e");
+        assert!(reason.contains("long options only"), "{reason}");
+        let reason = refused_reason("--pooling=--api-key");
+        assert!(reason.contains("inline value"), "{reason}");
+    }
+
+    /// Falsifier for the whole record (2026-11-15 gate ruling): every
+    /// forbidden word refuses by name, abbreviation probes resolve to their
+    /// record word, and no recommended word is ever refused — a word deleted
+    /// from the record, a matcher that forgot the abbreviation direction, or
+    /// a record that contradicts the recommendation turns this RED.
+    #[test]
+    fn every_forbidden_word_is_refused_by_name_and_abbreviation() {
+        for word in crate::engine::policy::LLAMA_FORBIDDEN_EXTRA_WORDS {
+            let extra = format!("{word} victim.gguf");
+            let reason = refused_reason(&extra);
+            assert!(
+                reason.contains(word),
+                "`{extra}`: reason must name `{word}`: {reason}"
+            );
+        }
+        for (probe, resolves_to) in [
+            ("--hos", "--host"),
+            ("--ap", "--api-key"),
+            ("--l", "--lora"),
+            ("--of", "--offline"),
+            ("--to", "--tools"),
+        ] {
+            let reason = refused_reason(probe);
+            assert!(
+                reason.contains(resolves_to),
+                "`{probe}` must resolve to `{resolves_to}`: {reason}"
+            );
+        }
+        for (word, _) in crate::engine::policy::LLAMA_EXTRA_ARGS {
+            build_args(
+                &raw(&[("model", "m"), ("extra_args", *word)]),
+                18109,
+                "t",
+                None,
+            )
+            .unwrap_or_else(|error| panic!("recommended `{word}` refused: {error}"));
         }
     }
 
@@ -1059,11 +1193,41 @@ mod tests {
                 args.contains(&"--jinja".to_string()),
                 "{on} must enable jinja"
             );
+            assert!(
+                !args.contains(&"--no-jinja".to_string()),
+                "{on} must not disable jinja"
+            );
         }
-        // start.ps1: 'yes' is NOT in the truth set.
+        // The mirror set switches the other way (audit 2026-11-15 §2.3-4):
+        // the pinned build defaults jinja ON, so `false`/`0`/`off` render the
+        // harness's own `--no-jinja`.
+        for off in ["false", "0", "off"] {
+            let args = build_args(&raw(&[("model", "m"), ("jinja", off)]), 18109, "t", None)
+                .expect("valid");
+            assert!(
+                args.contains(&"--no-jinja".to_string()),
+                "{off} must disable jinja"
+            );
+            assert!(
+                !args.contains(&"--jinja".to_string()),
+                "{off} must not enable jinja"
+            );
+        }
+        // start.ps1: 'yes' is NOT in the truth set, and case-sensitivity cuts
+        // both ways: `False` enables or disables nothing.
         let args =
             build_args(&raw(&[("model", "m"), ("jinja", "yes")]), 18109, "t", None).expect("valid");
         assert!(!args.contains(&"--jinja".to_string()));
+        assert!(!args.contains(&"--no-jinja".to_string()));
+        let args = build_args(
+            &raw(&[("model", "m"), ("jinja", "False")]),
+            18109,
+            "t",
+            None,
+        )
+        .expect("valid");
+        assert!(!args.contains(&"--jinja".to_string()));
+        assert!(!args.contains(&"--no-jinja".to_string()));
     }
 
     #[test]

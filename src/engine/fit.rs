@@ -172,8 +172,9 @@ pub(crate) fn resolve_tool(llama_server_exe: &Path) -> PathBuf {
 /// -fa -ctk -ctv -np`). Deliberately ABSENT: `model` (handled as `-m` first),
 /// `mmproj` and `jinja` (fit-params rejects them outright), the `fit*` knobs
 /// (they steer the server's adjustment, not the deterministic projection), and
-/// anything no row knob carries (`-ot` is not a harness-spelled flag at all —
-/// the `extra_args` allow-list never lets it in).
+/// anything no row knob carries (`-ot` can reach the serve argv through the
+/// `extra_args` passthrough, but the fit probe reads only this table, so an
+/// offload-shaping flag never enters the projection).
 const FIT_MEMORY_KEYS: &[&str] = &[
     "context",
     "ngl",

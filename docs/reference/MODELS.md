@@ -101,8 +101,11 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `strata_env` | Whitespace-separated `STRATA_<NAME>=<VALUE>` tokens rendered as the profile's `env`. Only uppercase `STRATA_`-prefixed engine settings pass. |
 | `strata_gpu` / `strata_parallel` | Non-negative integers rendered as the profile's `gpu` / `parallel`. |
 | `strata_gpus_asked` | A truthy value renders `gpus_asked: true` in the profile. |
-| `strata_vision` | Whitespace-separated `k=v` vision block over the closed key set `exe`, `mmproj`, `model`, `gpu`, `max_tokens`, `min_tokens`, `threads`. `exe`, `mmproj`, and `model` are absolute paths and are required together. `gpu` defaults on. Rendering the block also appends the `--vision` switch to `args`. |
+| `strata_vision` | Whitespace-separated `k=v` vision block over the closed key set `exe`, `mmproj`, `model`, `gpu`, `max_tokens`, `min_tokens`, `threads`, `elastic`, `mib`, `idle_s`. `exe`, `mmproj`, and `model` are absolute paths and are required together. `gpu` defaults on. Rendering the block also appends the `--vision` switch to `args`. |
 | `strata_sampling` | Whitespace-separated `key=value` sampling defaults (number or bool) rendered as the profile's `sampling` dict. |
+| `strata_aliases` | Comma-separated served alias names rendered as the profile's `aliases` list. |
+| `strata_reasoning_budget` | Non-negative integer rendered as the profile's `reasoning_budget_tokens`. |
+| `strata_profile_extra` | One JSON object merged after the typed profile keys. It carries the non-forced Strata keys that have no typed knob (for example `drafting`, `answer_room`, `tool_call_recovery`); harness-owned, typed-key, and admission/multi-GPU keys are refused by name. |
 | `strata_uncensored` | Strict `true`/`false` rendered as the profile's `uncensored` switch. An explicit `false` is written intent and is different from absence. |
 | `strata_config` | **Superseded** (operator ruling 2026-11-02, row 19). A row that still declares it is refused at scan, with the migration sentence: run `simpleharn import strata <profile.json> --apply <row.yaml>` to merge the emitted knobs and delete the `strata_config` line, or print and paste manually. A row that carries both `strata_exe` and `strata_config` meets the mutual-exclusion refusal; delete the `strata_config` line. |
 | `basalt_python` | **Required for basalt**: the interpreter `.exe`. It must be an absolute path to an existing file, and it is the program the harness launches. |
@@ -111,6 +114,7 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `basalt_vision` | Image input: `off` (default), `dynamic`, `cpu`, or a GPU number as nvidia-smi spells it. Rendered into the profile as `server.vision`, never into argv: vision files are a harness decision, so `--vision` stays refused in `basalt_engine_args`. |
 | `basalt_parallel` | Optional worker-pool size passed as `--parallel`: a whole number `1..=8`, default `1`. It changes the KV footprint, so the row's declared cost must match it. |
 | `basalt_engine_args` | Comma-separated engine flags appended to the launch line; each entry is exactly one word. Long options only (`--flag` or `--flag=value`). The harness refuses a server-owned flag by exact name and says which mechanism owns that decision. |
+| `basalt_sampling` | One JSON object of launch-time sampling defaults and generation budgets, keyed by the server's dash spelling (`temperature`, `top-p`, `top-k`, `min-p`, presence/frequency/repetition penalty, penalty-last-n, seed, `reasoning-budget-tokens`, `thinking-loop-tokens`, `answer-room`); numeric values, except `answer-room` accepts a boolean. Rendered into the profile's `server` section, never into argv. |
 | `maya_python` | **Required for maya**: the interpreter `.exe`. It must be an absolute path to an existing file, and it is the program the harness launches. |
 | `maya_cwd` | **Required for maya**: the Project Maya root directory. It must be an absolute path to an existing directory. The `-m serve.server` module resolves from this working directory. |
 | `maya_config` | **Required for maya**: the operator's Maya JSON config. It must be an absolute path to an existing file. The harness reads it at every load, validates every path it names, and launches only its own scrubbed, staged copy. `serve_model` must equal the config's `model_name`, and `load_timeout` is required with a floor of 300 seconds. See "Maya engines" below. |
@@ -126,13 +130,16 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `xolotl_sampling` | Whitespace-separated `key=value` sampling defaults (number or bool) rendered as the profile's `sampling` dict. |
 | `xolotl_aliases` | Comma-separated served alias names rendered as the profile's `aliases` list. |
 | `xolotl_reasoning_budget` | Non-negative integer rendered as the profile's `reasoning_budget_tokens`. |
-| `extra_args` | **Closed allow-list, not a denial list.** The harness splits the value on whitespace and appends a word to the argv only when it is a reviewed option: `--embedding`, `--embeddings`, `--pooling <mode>`, `--temp`, `--top-k`, `--top-p`, `--min-p`, `--repeat-penalty`, `--seed`, `--warmup`, `--no-warmup`. The value words a reviewed option consumes are appended too. A value may not be option-shaped, so it cannot smuggle another flag. **Anything else is refused with the launch**, and the message names the word. The model, host, port, gpu-layers, jinja, api-key, lora, and rpc options and every other option are not on the list, so their absence refuses them and there is nothing to dodge. The harness appends its forced `--host 127.0.0.1`, `--port`, and `cpu_offload` `-ngl 0` after these args, and they win. |
+| `xolotl_vision` | Whitespace-separated `k=v` vision block over `exe`, `python`, `mmproj`, `model`, `reference_dir`, `weights`, `dtype`, `device`, `offload`, `tf32`, `warmup_tokens`, `threads`, `max_tokens`, `min_tokens`, `gpu`. `exe`, `mmproj`, and `model` are required together; `gpu` defaults off. A GPU encoder consumes VRAM outside the row booking, so declare it in `vram_gb`. Rendering the block appends exactly one `--vision`; a duplicate in `xolotl_args` is refused. |
+| `xolotl_parallel` | Worker-pool size `1..=16`, rendered as the profile's `parallel`. |
+| `xolotl_profile_extra` | One JSON object merged after the typed profile keys. It carries the fork's non-forced keys (for example `conversation_cache`, `thinking`, `request_log`); harness-owned, typed-key, and admission/multi-GPU keys are refused by name. |
+| `extra_args` | **Policy-filtered passthrough, not a closed allow-list.** The harness splits the value on whitespace. A long option token is refused when it is a typed key's spelling, a harness-forced word, or a reviewed security/egress word; every other long option passes with its safe value tokens. The reviewed forbidden record and its owner sentences live in `policy.rs`; `--help` is not a passthrough. Inline `--flag=value` is checked by name and value. The harness appends its forced `--host 127.0.0.1`, `--port`, and `cpu_offload` `-ngl 0` after these args, and they win. A new reviewed knob needs a forbidden-record classification, never an adapter hotfix. |
 | `ninfer_image` | **Required for ninfer**: selects **template mode, the only mode**. The harness renders the canonical autostart script from your yaml, stages it into the distro, verifies it by distro-side checksum, and launches exactly **that** script. Its required companions are `ninfer_model_name` (the directory that holds the artifact), `ninfer_artifact` (the file inside it), and `ninfer_model_roots` (comma-separated absolute WSL directories, searched in order). Each must be a plain word, and the harness refuses a bad value and names the key. `ninfer_internal_port` (the port the container binds inside its own namespace) is optional and defaults to the harness internal number **8808**. That is the harness's 87xx family plus 100: clear of the manual 80xx world, the 87xx listeners, and the 181xx engine plan. It may not name a `protected_ports`, public-listener, or harness engine port. The manual/harness separation covers container-internal numbers too, so the harness refuses a row that borrows one at load, and the rescan names it. |
 | `ninfer_serve_cmd` | The server command inside the container (default `ninfer-serve`). |
 | `ninfer_gpu_device` | Comma-separated device selector for `--gpus device=` (default `0`). |
-| `ninfer_serve_args` | Extra flags appended to the serve line, as shell-bare tokens. Both shipped engine parsers reject the `--flag=value` form, so write each option with a space and put the value in its own token, for example `--spec dflash2`. Option tokens must be long options that start with `--`. The canonical script reserves these options: `--host`, `--port`, `--api-key`, `--data-dir`, `--data-dir-permissions`, `--model`, `--model-id`, `--log-level`, `--log-dir`, `--uds`, `--ssl-keyfile`, `--ssl-certfile`, `--max-context`, `--kv-capacity`, `--max-concurrency`, `--kv-dtype`. The harness refuses each of them by name and by any abbreviation or extension of it, so `--max-cont` and `--host-context-mib` are refused too. Your args can therefore never resize what the cost estimate measured. |
+| `ninfer_serve_args` | Extra flags appended to the serve line, as shell-bare tokens. Both shipped engine parsers reject the `--flag=value` form, so write each option with a space and put the value in its own token, for example `--spec dflash2`. Option tokens must be long options that start with `--`. The canonical script reserves these options: `--host`, `--port`, `--api-key`, `--data-dir`, `--data-dir-permissions`, `--model`, `--model-id`, `--log-level`, `--log-dir`, `--uds`, `--ssl-keyfile`, `--ssl-certfile`, `--max-context`, `--kv-capacity`, `--max-concurrency`, `--kv-dtype`. The harness refuses each of them by exact name and by a strict abbreviation, so `--host` and `--max-cont` refuse while a longer documented option such as `--host-context-mib` passes. Your args can therefore never resize what the cost estimate measured. |
 | `ninfer_model_id` | Optional OpenAI-style served id, passed as `--model-id`. |
-| `ninfer_env` | Extra container environment as `NAME=VALUE` tokens. This is an **allow-list**, not a parse rule. The only admissible pair today is `CUDA_MODULE_LOADING=EAGER\|LAZY`, the cold-start flag of the NInfer-all cards. The harness refuses an arbitrary name, such as `LD_PRELOAD` or `PATH`, by name. Growing the list needs a code review, never a yaml edit. |
+| `ninfer_env` | Extra container environment as whitespace- or comma-separated `NAME=VALUE` pairs. The admissible names are the uppercase `NINFER_*` family plus `CUDA_MODULE_LOADING=EAGER\|LAZY`; values stay shell-bare, names must be non-empty, and duplicates are refused. The harness refuses `LD_PRELOAD`, `PATH`, and any other arbitrary name by name; a new env family needs a code review. |
 | `ninfer_key_file` | The place where `ninfer_key: true` reads the API key. The path is exactly `$HOME/.simpleharn/keys/<file>.key` in the distro, a bare word with no traversal and no subdirectories. The script `cat`s it into `--api-key`, so an arbitrary path would let the yaml export any distro secret. Default: `$HOME/.simpleharn/keys/<ninfer_container>.key`. |
 | `ninfer_autostart` | **Removed** (ruling 18b, after a green Wave C). The launch path for operator-written autostart scripts no longer exists. A row that declares it is refused at scan and at launch with the migration message, and is never published: declare `ninfer_image`, `ninfer_model_name`, `ninfer_artifact`, and `ninfer_model_roots` (template mode) and delete the `ninfer_autostart` line. |
 | `ninfer_container` | **Required for ninfer.** The container name. The harness reaps it with `docker rm -f` on unload, scoped strictly to the name this harness started (claim ledger: `ninfer-claims.json` beside the harness exe). The name must be docker-legal and must not look like a container ID (4+ hex chars). |
@@ -247,19 +254,16 @@ each exclusion is named in the adapter's manifest:
 | Custody, tokenizer, and static roots | Harness-owned locations; an engine-side path could escape custody. |
 | Admission/memory policy | `vram_gb`, `cost`, floor, reserve, and eviction are scheduler decisions, not engine config. |
 
-Each engine section below must carry a **knob manifest**: one row per engine key,
-classifying it as `typed`, `passthrough`, or `forced` (with the reason above).
-The manifest is a review aid, not the gate itself: the gate is the falsifier
-that an unmodeled, non-forced key still reaches the rendered profile/args after
-a config/row edit. Requiring an adapter change to use a supported knob is a HIGH
-defect; an unclassified key is a HIGH review finding
-(`docs/process/REVIEW.md`).
+The checked-in manifests live in
+[ENGINE_KNOBS.md](ENGINE_KNOBS.md); each engine's table classifies its keys as
+`typed`, `passthrough`, or `forced` and is validated by
+`scripts/check-engine-knobs.mjs` in the cardless gate. An engine section here
+must stay consistent with its manifest.
 
-Known gap at this ruling: the Xolotl adapter renders no `vision` block and has
-no `xolotl_vision` knob, although `serve_ds41.py` accepts one. Either a
-policy-filtered `xolotl_config`/passthrough or a typed knob closes it without a
-future hotfix for the next key. See
-`handoff/research/Search#4-xolotl-vision-on.md` for the audit and handoff.
+The Xolotl `vision` block is typed as `xolotl_vision`; the fork's remaining
+non-forced profile keys ride `xolotl_profile_extra`. The Strata equivalents are
+`strata_vision` and `strata_profile_extra`. No adapter change is needed to add a
+non-forced key that those doors already carry.
 
 ### Llama engines
 

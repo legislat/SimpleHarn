@@ -171,6 +171,9 @@ const CONSUMED_KEYS: &[&str] = &[
     "strata_gpus_asked",
     "strata_vision",
     "strata_sampling",
+    "strata_aliases",
+    "strata_reasoning_budget",
+    "strata_profile_extra",
     "strata_uncensored",
     "basalt_python",
     "basalt_cwd",
@@ -178,6 +181,7 @@ const CONSUMED_KEYS: &[&str] = &[
     "basalt_parallel",
     "basalt_vision",
     "basalt_engine_args",
+    "basalt_sampling",
     "maya_python",
     "maya_cwd",
     "maya_config",
@@ -193,6 +197,9 @@ const CONSUMED_KEYS: &[&str] = &[
     "xolotl_sampling",
     "xolotl_aliases",
     "xolotl_reasoning_budget",
+    "xolotl_vision",
+    "xolotl_parallel",
+    "xolotl_profile_extra",
     "ninfer_autostart",
     "ninfer_container",
     "ninfer_profile",
@@ -3815,6 +3822,9 @@ mod tests {
              strata_gpus_asked: true\n\
              strata_vision: exe=C:/Strata/vision.exe mmproj=D:/m/mmproj.gguf model=D:/m/m.gguf\n\
              strata_sampling: temperature=1.0 top_p=0.95 top_k=20\n\
+             strata_aliases: golden-a, golden-b\n\
+             strata_reasoning_budget: 1024\n\
+             strata_profile_extra: {\"answer_room\":true}\n\
              strata_uncensored: false\n\
              basalt_python: C:/Basalt/.venv/Scripts/python.exe\n\
              basalt_cwd: C:/Basalt\n\
@@ -3822,6 +3832,7 @@ mod tests {
              basalt_parallel: 1\n\
              basalt_vision: dynamic\n\
              basalt_engine_args: --temp=0.7\n\
+             basalt_sampling: {\"temperature\":0.7}\n\
              maya_python: D:/Maya/.venv/Scripts/python.exe\n\
              maya_cwd: D:/Maya\n\
              maya_config: D:/Maya/maya-maya-m.json\n\
@@ -3837,6 +3848,9 @@ mod tests {
              xolotl_sampling: temperature=1.0 top_p=0.95\n\
              xolotl_aliases: ds41, ds41-flash\n\
              xolotl_reasoning_budget: 32768\n\
+             xolotl_vision: exe=C:/Xolotl/vision.exe mmproj=D:/m/v.gguf model=D:/m/m.gguf reference_dir=C:/Xolotl/ref gpu=false\n\
+             xolotl_parallel: 2\n\
+             xolotl_profile_extra: {\"conversation_cache\":true}\n\
              ninfer_autostart: /opt/a.sh\n\
              ninfer_container: golden-box\n\
              ninfer_profile: b\n\

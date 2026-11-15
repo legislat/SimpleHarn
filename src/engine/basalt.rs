@@ -82,7 +82,7 @@ impl BasaltRowError {
 
 /// One fully validated basalt row: every path exists, every scalar is in
 /// range, the extra-args surface is clean. Produced only by [`validate_row`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct BasaltRow {
     /// The `.basalt` weights file (absolute, existing).
     pub model: PathBuf,
@@ -102,6 +102,13 @@ pub(crate) struct BasaltRow {
     pub vision: Option<String>,
     /// Operator extra words, each comma entry one argv token, all value-checked.
     pub engine_args: Vec<String>,
+    /// Launch-time sampling defaults (`basalt_sampling`), keyed by the
+    /// server-option spelling, merged into the profile's `server` section —
+    /// never into argv, so the forced command line stays byte-stable. The
+    /// typed door for the defaults the extra-words surface still refuses
+    /// (request-time values must not ride engine args; the server's own
+    /// config-file section is their launch-time home).
+    pub sampling: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 fn knob<'a>(model: &'a ModelEntry, key: &str) -> Option<&'a str> {
@@ -290,6 +297,10 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<BasaltRow, BasaltRowErr
                 .collect()
         }
     };
+    let sampling = match knob(model, "basalt_sampling") {
+        None => None,
+        Some(raw) => Some(sampling_object(model, raw)?),
+    };
     Ok(BasaltRow {
         model: weights_path.to_path_buf(),
         alias,
@@ -299,6 +310,7 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<BasaltRow, BasaltRowErr
         parallel,
         vision,
         engine_args,
+        sampling,
     })
 }
 
@@ -363,6 +375,96 @@ pub(crate) fn check_engine_args_value(
     Ok(())
 }
 
+/// The server options `basalt_sampling` models: the launch-time sampling\r?\n/// defaults and generation budgets, in the server's dash spelling (`config.py` turns each `server`
+/// section key into `--flag value`; `sampling_option` validates the ranges
+/// server-side). Every other server option stays harness-owned by the
+/// policy table's owner map, so this knob's key surface is closed by the
+/// allow-list, not filtered by it.
+const SAMPLING_SERVER_OPTIONS: &[&str] = &[
+    "temperature",
+    "top-p",
+    "top-k",
+    "min-p",
+    "presence-penalty",
+    "frequency-penalty",
+    "repetition-penalty",
+    "penalty-last-n",
+    "seed",
+    "reasoning-budget-tokens",
+    "thinking-loop-tokens",
+    "answer-room",
+];
+
+/// The `basalt_sampling` value: one JSON object of launch-time sampling\r?\n/// defaults and generation budgets — the free-form object shape of the strata `sampling` dict, with
+/// the key surface closed to [`SAMPLING_SERVER_OPTIONS`]. Each key is
+/// normalized the way `config.py` normalizes it (lowercase, `_`→`-`, an
+/// optional `--` prefix), must name one sampling option, and must map to a
+/// JSON number; two spellings of one option are refused, not collapsed. The
+/// map merges into the rendered `server` section, where the server applies
+/// each value as the default a request may still override.
+///
+/// # Errors
+///
+/// [`BasaltRowError::Bad`] for a non-object, a foreign key, a non-number, or
+/// a double spelling.
+fn sampling_object(
+    model: &ModelEntry,
+    text: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, BasaltRowError> {
+    let parsed: serde_json::Value = serde_json::from_str(text).map_err(|e| {
+        bad(
+            model,
+            "basalt_sampling",
+            format!("must hold one JSON object ({e}): {text}"),
+        )
+    })?;
+    let map = parsed.as_object().ok_or_else(|| {
+        bad(
+            model,
+            "basalt_sampling",
+            format!("must hold one JSON object: {text}"),
+        )
+    })?;
+    let mut out = serde_json::Map::new();
+    for (key, value) in map {
+        let name = key
+            .trim()
+            .to_ascii_lowercase()
+            .replace('_', "-")
+            .trim_start_matches("--")
+            .to_string();
+        if !SAMPLING_SERVER_OPTIONS.contains(&name.as_str()) {
+            return Err(bad(
+                model,
+                "basalt_sampling",
+                format!(
+                    "`{key}` is not a sampling default; the knob models only {}",
+                    SAMPLING_SERVER_OPTIONS.join(", ")
+                ),
+            ));
+        }
+        if !matches!(value, serde_json::Value::Number(_)) {
+            if name == "answer-room" && value.as_bool().is_some() {
+                // The server's BooleanOptionalAction accepts a boolean here.
+            } else {
+                return Err(bad(
+                    model,
+                    "basalt_sampling",
+                    format!("`{key}` must map to a number: {value}"),
+                ));
+            }
+        }
+        if out.insert(name.clone(), value.clone()).is_some() {
+            return Err(bad(
+                model,
+                "basalt_sampling",
+                format!("`{name}` is spelled twice: one server option, one value"),
+            ));
+        }
+    }
+    Ok(out)
+}
+
 /// The basalt profile: the three figures only — the alias the server serves,
 /// the weights it loads, the pool it sizes. Every network/key placement the
 /// strata profile also keeps out rides here the same way: absent by
@@ -377,6 +479,11 @@ fn profile_model(row: &BasaltRow) -> serde_json::Map<String, serde_json::Value> 
     server.insert("parallel".to_string(), serde_json::json!(row.parallel));
     if let Some(mode) = &row.vision {
         server.insert("vision".to_string(), serde_json::json!(mode));
+    }
+    if let Some(sampling) = &row.sampling {
+        for (name, value) in sampling {
+            server.insert(name.clone(), value.clone());
+        }
     }
     server
 }
@@ -613,6 +720,56 @@ mod tests {
     fn spec_of(overrides: &[(&str, &str)]) -> LaunchSpec {
         let (_dir, model) = fixture(overrides);
         BasaltAdapter.spec(&model, 18199).expect("fixture renders")
+    }
+
+    /// The sampling defaults merge into the rendered `server` section under
+    /// the server's own dash spelling (config.py normalizes `_`→`-`), never
+    /// into argv — the forced command line stays byte-stable.
+    #[test]
+    fn basalt_sampling_merges_numbers_and_budgets_into_the_server_section() {
+        let spec = spec_of(&[(
+            "basalt_sampling",
+            r#"{"temperature": 0.7, "top_p": 0.9, "seed": 7, "reasoning-budget-tokens": 2048, "thinking-loop-tokens": 64, "answer-room": false}"#,
+        )]);
+        let text = spec.rendered_profile.as_ref().expect("render").text.clone();
+        let profile: serde_json::Value = serde_json::from_str(&text).expect("rendered JSON");
+        let server = if cfg!(windows) {
+            profile["server"].clone()
+        } else {
+            profile["models"][0].clone()
+        };
+        assert_eq!(server["temperature"], serde_json::json!(0.7));
+        assert_eq!(server["top-p"], serde_json::json!(0.9));
+        assert_eq!(server["seed"], serde_json::json!(7));
+        assert_eq!(server["reasoning-budget-tokens"], serde_json::json!(2048));
+        assert_eq!(server["thinking-loop-tokens"], serde_json::json!(64));
+        assert_eq!(server["answer-room"], serde_json::json!(false));
+    }
+
+    /// The key surface is closed by the allow-list: a foreign server option,
+    /// a non-number, a non-object and a double spelling all refuse naming
+    /// `basalt_sampling`; the launch never sees them.
+    #[test]
+    fn basalt_sampling_refuses_everything_outside_the_sampling_defaults() {
+        for (text, needle) in [
+            (r#"{"gpu": 1}"#, "gpu"),
+            (r#"{"model": "smuggled.basalt"}"#, "model"),
+            (r#"{"idle-unload": 60}"#, "idle-unload"),
+            (r#"{"temperature": "hot"}"#, "temperature"),
+            (r#"{"top-p": 0.9, "--top_p": 0.5}"#, "top-p"),
+            ("not json", "basalt_sampling"),
+            ("[1]", "basalt_sampling"),
+        ] {
+            let (_dir, model) = fixture(&[("basalt_sampling", text)]);
+            let err = BasaltAdapter
+                .spec(&model, 18199)
+                .expect_err("`{text}` must refuse");
+            let reason = err.to_string();
+            assert!(
+                reason.contains("basalt_sampling") && reason.contains(needle),
+                "`{text}` refused blind: {reason}"
+            );
+        }
     }
 
     #[test]

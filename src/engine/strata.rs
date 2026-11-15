@@ -440,9 +440,13 @@ fn env_map(
 /// key set — `exe`, `mmproj` and `model` are absolute paths (required together,
 /// the vision server cannot start without them), `gpu` is truthy (default on,
 /// as every manual profile has it), `max_tokens`, `min_tokens` and `threads`
-/// unsigned counts — the set mirrors the vision
-/// spawn's full cfg contract in `serve.server` — server.py:1936-1946 — so no
-/// hand-edited engine key can ride the knob unreported). Rendering
+/// unsigned counts, and the elastic trio `elastic` (truthy), `mib` and `idle_s`
+/// — the set mirrors the vision
+/// spawn's full cfg contract in `serve.server` — server.py:1936-1946, and
+/// server.py:2786-2788 for the elastic trio — so no
+/// hand-edited engine key can ride the knob unreported. `mib` and `idle_s`
+/// render under the names the server reads them (`elastic_mib`,
+/// `elastic_idle_s`). Rendering
 /// the block also appends the engine's `--vision` switch to `args` (server.py
 /// derives the switch from the block's presence); the canonical row therefore
 /// spells the vision ONCE, in the block.
@@ -458,11 +462,14 @@ fn vision_block(
     let mut max_tokens: Option<u64> = None;
     let mut min_tokens: Option<u64> = None;
     let mut threads: Option<u64> = None;
+    let mut elastic: Option<bool> = None;
+    let mut elastic_mib: Option<u64> = None;
+    let mut elastic_idle_s: Option<serde_json::Value> = None;
     for token in line.split_whitespace() {
         let Some((key, value)) = token.split_once('=') else {
             return Err(rejected(format!(
                 "`strata_vision` tokens must be k=v over exe, mmproj, model, gpu, \
-                 max_tokens, min_tokens, threads: {token}"
+                 max_tokens, min_tokens, threads, elastic, mib, idle_s: {token}"
             )));
         };
         match key {
@@ -497,10 +504,30 @@ fn vision_block(
                     rejected(format!("`strata_vision` threads must be a number: {value}"))
                 })?);
             }
+            "elastic" => elastic = Some(crate::model::truthy(value)),
+            "mib" => {
+                elastic_mib = Some(value.parse::<u64>().map_err(|_| {
+                    rejected(format!("`strata_vision` mib must be a number: {value}"))
+                })?);
+            }
+            "idle_s" => {
+                elastic_idle_s = Some(value.parse::<u64>().map(|n| serde_json::json!(n)).or_else(
+                    |_| {
+                        value
+                            .parse::<f64>()
+                            .map(serde_json::Value::from)
+                            .map_err(|_| {
+                                rejected(format!(
+                                    "`strata_vision` idle_s must be a number: {value}"
+                                ))
+                            })
+                    },
+                )?);
+            }
             other => {
                 return Err(rejected(format!(
                     "`strata_vision` key `{other}` is not one of exe, mmproj, model, gpu, \
-                 max_tokens, min_tokens, threads"
+                 max_tokens, min_tokens, threads, elastic, mib, idle_s"
                 )))
             }
         }
@@ -521,6 +548,15 @@ fn vision_block(
     }
     if let Some(n) = threads {
         taken.insert("threads".to_string(), serde_json::json!(n));
+    }
+    if let Some(on) = elastic {
+        taken.insert("elastic".to_string(), serde_json::Value::Bool(on));
+    }
+    if let Some(mib) = elastic_mib {
+        taken.insert("elastic_mib".to_string(), serde_json::json!(mib));
+    }
+    if let Some(seconds) = elastic_idle_s {
+        taken.insert("elastic_idle_s".to_string(), seconds);
     }
     Ok(Some(taken))
 }
@@ -589,6 +625,183 @@ fn uncensored_switch(
             "`strata_uncensored` must be `true` or `false`: {value}"
         ))),
     }
+}
+
+/// The profile keys `strata_profile_extra` may never carry, each with the
+/// mechanism that owns it (the slice 10c refusal voice). Three families: the
+/// harness-forced fields the renderer structurally keeps out (bind, port, key
+/// material, residency, origin policy), the typed keys the row already owns
+/// under its own name (the extra map must not smuggle a second, unchecked
+/// spelling of one), and the admission-affecting families only the witness
+/// may size (replicas, split, multi-GPU placement, the memory floor) plus the
+/// `before_load` hook that executes a program — pending its own ruling.
+/// Every other top-level profile key the engine reads is operator data and
+/// merges through.
+const PROFILE_EXTRA_DENIED: &[(&str, &str)] = &[
+    ("host", "the bind is harness-forced (loopback, §5)"),
+    ("port", "the port is harness-assigned from category config"),
+    ("key", "request authentication is harness-owned"),
+    ("api_key", "request authentication is harness-owned"),
+    ("idle_unload_s", "residency is the harness scheduler's"),
+    ("cors_origins", "CORS is harness-owned (loopback only)"),
+    ("trusted_origins", "CORS is harness-owned (loopback only)"),
+    ("allowed_hosts", "the host allow-list is harness-owned"),
+    ("telemetry_read_key", "key material is harness-owned"),
+    ("min_free_vram_mib", "the memory floor is the witness's"),
+    ("slot_save_path", "slot custody paths are harness-owned"),
+    ("vram_elastic", "the memory budget is the harness witness's"),
+    (
+        "vram_segment_mib",
+        "the memory budget is the harness witness's",
+    ),
+    (
+        "fit_max_tokens",
+        "the memory budget is the harness witness's",
+    ),
+    (
+        "lazy_load",
+        "load timing is the harness scheduler's decision",
+    ),
+    (
+        "replicas",
+        "replicas multiply memory: admission must size them",
+    ),
+    (
+        "replica_cpus",
+        "replicas multiply memory: admission must size them",
+    ),
+    (
+        "replica_load_tokens",
+        "replicas multiply memory: admission must size them",
+    ),
+    (
+        "split_serve",
+        "split placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "split_skip_if_fits",
+        "split placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "layer_split",
+        "multi-GPU placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "gpu_order",
+        "multi-GPU placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "hip_ordinal",
+        "multi-GPU placement is the witness's (one-GPU §5)",
+    ),
+    (
+        "before_load",
+        "a profile hook that runs a program needs its own ruling",
+    ),
+    (
+        "before_load_strict",
+        "a profile hook that runs a program needs its own ruling",
+    ),
+    (
+        "before_load_timeout_s",
+        "a profile hook that runs a program needs its own ruling",
+    ),
+    (
+        "before_load_ignore_failure",
+        "a profile hook that runs a program needs its own ruling",
+    ),
+    ("model", "the weights are harness-owned custody"),
+    ("config", "the profile path is harness-owned custody"),
+    ("exe", "`strata_exe` renders this key"),
+    ("args", "`strata_args` renders this key"),
+    ("cwd", "`strata_cwd` renders this key"),
+    ("tokenizer", "`strata_tokenizer` renders this key (custody)"),
+    ("model_name", "the served id is harness-owned"),
+    ("log", "the harness owns the log path"),
+    ("lib_dirs", "`strata_lib_dirs` renders this key"),
+    ("env", "`strata_env` renders this key"),
+    ("gpu", "`strata_gpu` renders this key"),
+    ("parallel", "`strata_parallel` renders this key"),
+    ("gpus_asked", "`strata_gpus_asked` renders this key"),
+    ("vision", "`strata_vision` renders this key"),
+    ("sampling", "`strata_sampling` renders this key"),
+    ("uncensored", "`strata_uncensored` renders this key"),
+    ("aliases", "`strata_aliases` renders this key"),
+    (
+        "reasoning_budget_tokens",
+        "`strata_reasoning_budget` renders this key",
+    ),
+];
+
+/// The `strata_profile_extra` map: one operator JSON object merged into the
+/// rendered profile AFTER the typed keys. It is the gate's policy-filtered
+/// passthrough door for the profile keys no typed knob models (the audit's
+/// strata list): parse first, refuse every key the harness owns or admission
+/// must size (naming each one's owner at once, the `policy_field_claims`
+/// voice), and let the rest merge. Path values inside the merged keys still
+/// meet the renderer-independent existence walk, so an extra key pointing at
+/// a missing file refuses before admission exactly like a typed one.
+fn profile_extra(
+    model: &ModelEntry,
+    rejected: &dyn Fn(String) -> EngineError,
+) -> Result<serde_json::Map<String, serde_json::Value>, EngineError> {
+    let mut out = serde_json::Map::new();
+    let Some(text) = knob(model, "strata_profile_extra") else {
+        return Ok(out);
+    };
+    let parsed: serde_json::Value = serde_json::from_str(text).map_err(|e| {
+        rejected(format!(
+            "`strata_profile_extra` must hold one JSON object ({e}): {text}"
+        ))
+    })?;
+    let map = parsed.as_object().ok_or_else(|| {
+        rejected(format!(
+            "`strata_profile_extra` must hold one JSON object: {text}"
+        ))
+    })?;
+    let mut denied: Vec<String> = Vec::new();
+    for (key, value) in map {
+        match PROFILE_EXTRA_DENIED
+            .iter()
+            .find(|(name, _)| *name == key.as_str())
+        {
+            Some((_, owner)) => denied.push(format!("`{key}` \u{2014} {owner}")),
+            None => {
+                out.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    if !denied.is_empty() {
+        return Err(rejected(format!(
+            "`strata_profile_extra` carries harness-owned keys ({}); delete them \
+             from the object — the typed knobs and forced fields own those decisions",
+            denied.join("; ")
+        )));
+    }
+    Ok(out)
+}
+
+/// The `strata_aliases` list: comma-separated served alias names rendered as
+/// the profile's `aliases` array (the `xolotl_aliases` shape, one list per
+/// row; the shim/router resolves suffix-routed spellings from the served id).
+fn aliases_list(
+    model: &ModelEntry,
+    rejected: &dyn Fn(String) -> EngineError,
+) -> Result<Option<Vec<serde_json::Value>>, EngineError> {
+    let Some(line) = knob(model, "strata_aliases") else {
+        return Ok(None);
+    };
+    let mut names = Vec::new();
+    for entry in line.split(',') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            return Err(rejected(format!(
+                "`strata_aliases` entries must be non-empty, comma-separated names: {line}"
+            )));
+        }
+        names.push(serde_json::Value::String(entry.to_string()));
+    }
+    Ok(Some(names))
 }
 
 /// Renders the complete strata profile JSON from the row's yaml — the L3 render
@@ -723,6 +936,20 @@ pub(crate) fn render_profile(model: &ModelEntry, cwd: &Path) -> Result<String, E
     }
     if let Some(on) = uncensored_switch(model, rejected)? {
         profile.insert("uncensored".to_string(), serde_json::Value::Bool(on));
+    }
+    if let Some(aliases) = aliases_list(model, rejected)? {
+        profile.insert("aliases".to_string(), serde_json::Value::Array(aliases));
+    }
+    if let Some(budget) = unsigned(model, "strata_reasoning_budget", rejected)? {
+        profile.insert(
+            "reasoning_budget_tokens".to_string(),
+            serde_json::json!(budget),
+        );
+    }
+    // The passthrough door merges LAST: it can never overwrite a typed key
+    // (every typed name is denied by name), and it never re-orders one.
+    for (key, value) in profile_extra(model, rejected)? {
+        profile.insert(key, value);
     }
     // The content address is the version: one deterministic render per yaml,
     // so the pretty form only has to stay stable across harness builds, and
@@ -1157,6 +1384,125 @@ mod tests {
         )
         .spec(&entry(&pairs), 18109)
         .expect("valid template spec")
+    }
+
+    /// The elastic trio renders under the names the server reads them
+    /// (server.py:2786-2788), not the row's short tokens. Falsifier: insert
+    /// `mib`/`idle_s` verbatim and the server's Vision class never sees the
+    /// figures.
+    #[test]
+    fn vision_elastic_tokens_render_under_the_server_spelling() {
+        let base = fixture_pairs();
+        let vex = real_file_with_extension("v-exe", "exe");
+        let vmmproj = real_file_with_extension("v-mmproj", "gguf");
+        let vmodel = real_file_with_extension("v-model", "gguf");
+        let spec = spec_of(
+            &base,
+            &[(
+                "strata_vision",
+                &format!(
+                    "exe={} mmproj={} model={} elastic=1 mib=2048 idle_s=45",
+                    path_text(&vex),
+                    path_text(&vmmproj),
+                    path_text(&vmodel)
+                ),
+            )],
+        );
+        let profile: serde_json::Value =
+            serde_json::from_str(&spec.rendered_profile.expect("render").text).expect("json");
+        assert_eq!(profile["vision"]["elastic"], serde_json::json!(true));
+        assert_eq!(profile["vision"]["elastic_mib"], serde_json::json!(2048));
+        assert_eq!(profile["vision"]["elastic_idle_s"], serde_json::json!(45));
+    }
+
+    /// The xolotl-mirror shapes: a comma list renders the served `aliases`
+    /// array, and the budget renders `reasoning_budget_tokens` (SS:9432).
+    #[test]
+    fn aliases_and_reasoning_budget_render_like_the_xolotl_shape() {
+        let base = fixture_pairs();
+        let spec = spec_of(
+            &base,
+            &[
+                ("strata_aliases", "qwen-fast, qwen-exact"),
+                ("strata_reasoning_budget", "32768"),
+            ],
+        );
+        let profile: serde_json::Value =
+            serde_json::from_str(&spec.rendered_profile.expect("render").text).expect("json");
+        assert_eq!(profile["aliases"][0], "qwen-fast");
+        assert_eq!(
+            profile["aliases"].as_array().expect("aliases").len(),
+            2,
+            "the comma list keeps both names"
+        );
+        assert_eq!(profile["reasoning_budget_tokens"], serde_json::json!(32768));
+    }
+
+    #[test]
+    fn aliases_refuse_an_empty_entry() {
+        let base = fixture_pairs();
+        let err = StrataAdapter::new(
+            std::env::current_exe().expect("real .exe"),
+            std::env::temp_dir(),
+        )
+        .spec(
+            &entry(
+                &base
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                    .chain(std::iter::once(("strata_aliases", "good, , bad")))
+                    .collect::<Vec<_>>(),
+            ),
+            18109,
+        )
+        .expect_err("an empty alias entry must refuse");
+        let EngineError::Rejected { reason, .. } = &err else {
+            panic!("expected Rejected, got {err:?}");
+        };
+        assert!(reason.contains("strata_aliases"), "{reason}");
+    }
+
+    /// The passthrough door: an unmodeled engine key merges; a harness-owned,
+    /// admission-sized or hook key refuses naming its owner; anything that is
+    /// not one JSON object refuses as shape.
+    #[test]
+    fn profile_extra_merges_unmodeled_keys_and_refuses_owned_ones_by_name() {
+        let base = fixture_pairs();
+        let spec = spec_of(
+            &base,
+            &[(
+                "strata_profile_extra",
+                r#"{"drafting": true, "answer_room": 512}"#,
+            )],
+        );
+        let profile: serde_json::Value =
+            serde_json::from_str(&spec.rendered_profile.expect("render").text).expect("json");
+        assert_eq!(profile["drafting"], serde_json::json!(true));
+        assert_eq!(profile["answer_room"], serde_json::json!(512));
+        for (text, needle) in [
+            (r#"{"host": "0.0.0.0"}"#, "host"),
+            (r#"{"idle_unload_s": 60}"#, "idle_unload_s"),
+            (r#"{"replicas": 2}"#, "replicas"),
+            (r#"{"layer_split": "auto"}"#, "layer_split"),
+            (r#"{"before_load": "evil.exe"}"#, "before_load"),
+            (r#"{"gpu": 1}"#, "strata_gpu"),
+            ("[1]", "JSON object"),
+            ("not json", "JSON object"),
+        ] {
+            let mut pairs: Vec<(&str, &str)> =
+                base.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+            pairs.push(("strata_profile_extra", text));
+            let err = StrataAdapter::new(
+                std::env::current_exe().expect("real .exe"),
+                std::env::temp_dir(),
+            )
+            .spec(&entry(&pairs), 18109)
+            .expect_err("`{text}` must refuse");
+            let EngineError::Rejected { reason, .. } = &err else {
+                panic!("expected Rejected, got {err:?}");
+            };
+            assert!(reason.contains(needle), "`{text}` refused blind: {reason}");
+        }
     }
 
     /// The full-contract pin (row 19): the harness forces the bind and port as

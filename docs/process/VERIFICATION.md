@@ -27,6 +27,7 @@ node scripts/check-docs.mjs
 node scripts/check-instructions.mjs
 node scripts/check-comments.mjs -Fail
 node scripts/check-test-paths.mjs
+node scripts/check-engine-knobs.mjs
 ```
 
 - `cargo test` includes the doc-test.

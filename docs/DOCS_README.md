@@ -25,6 +25,7 @@ this file is the table of contents; other documents link to it.
 | Understand the system design | [docs/architecture/OVERVIEW.md](architecture/OVERVIEW.md) |
 | Know what the OpenAI surface does and does not do | [docs/reference/COMPATIBILITY.md](reference/COMPATIBILITY.md) |
 | Set up an engine to run with the harness | [docs/reference/ENGINE-RECIPES.md](reference/ENGINE-RECIPES.md) |
+| Compare an engine knob with the adapter manifest | [docs/reference/ENGINE_KNOBS.md](reference/ENGINE_KNOBS.md) |
 | Know the security policy or report a security problem | [SECURITY.md](../SECURITY.md) |
 | Operate the harness: autostart, upgrade, backup, logs | [docs/reference/OPERATIONS.md](reference/OPERATIONS.md) |
 | Recover from a down listener, stuck release, or refusal | [docs/reference/RUNBOOK.md](reference/RUNBOOK.md) |
@@ -100,6 +101,7 @@ is durable and belongs in this tree.
 |---|---|---|
 | [CONFIG.md](reference/CONFIG.md) | Harness config keys and eviction rules | active |
 | [MODELS.md](reference/MODELS.md) | ModelConf schema and engine-specific model keys | active |
+| [ENGINE_KNOBS.md](reference/ENGINE_KNOBS.md) | Per-engine servicing-knob manifests and the adapter gate | active |
 | [ENGINE-RECIPES.md](reference/ENGINE-RECIPES.md) | Minimal per-engine setup for users and their agents | active |
 | [API.md](reference/API.md) | HTTP control API contract, error codes, memory provenance | active |
 | [COMPATIBILITY.md](reference/COMPATIBILITY.md) | OpenAI compatibility matrix, known-good configurations | active |

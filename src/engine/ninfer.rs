@@ -102,16 +102,72 @@ const DEFAULT_PROFILE: &str = "b";
 /// edit from silently breaking a live yaml's launch.
 const ALLOWED_KV_DTYPES: [&str; 6] = ["fp8", "nvfp4", "fp16", "bf16", "int8", "rk8v4"];
 
-/// The environment variables a yaml may set inside the container, as
-/// `ninfer_env: NAME=VALUE ...`. This is an **allow-list, not a parse rule**: an
-/// arbitrary `NAME=VALUE` would let the yaml inject `LD_PRELOAD` or rewrite
-/// `PATH` inside a root-adjacent container, so every admissible name is a
-/// reviewed constant with its own closed value set. `CUDA_MODULE_LOADING=LAZY`
-/// is the operator's card-verified cold-start flag for the NInfer-all forks
-/// (`--gdn-state-fp16`/`--fast-prefill-kernel` line); extending the list is the
-/// day a card demands another one, and the addition is a code review, not a
-/// yaml edit.
+/// The closed `ninfer_env` names with their reviewed value sets.
+/// `CUDA_MODULE_LOADING=LAZY` is the operator's card-verified cold-start flag
+/// for the NInfer-all forks (`--gdn-state-fp16`/`--fast-prefill-kernel` line);
+/// its value set stays closed because the card tested exactly these words.
 const ALLOWED_ENV_VARS: [(&str, &[&str]); 1] = [("CUDA_MODULE_LOADING", &["EAGER", "LAZY"])];
+
+/// The `ninfer_env` name family: a documented knob that needs an adapter
+/// hotfix is the defect. Engine knobs the forks ship as
+/// env — fork-tuning flags, allocator settings — reach the container under the
+/// engine's own `NINFER_` prefix, so any name in the family passes with a
+/// shell-bare value, while the deny-by-name posture stands for the
+/// process-loader and lookup names (`LD_PRELOAD`, `PATH`, `LD_LIBRARY_PATH`)
+/// that live outside the family. A `NINFER_` name with nothing after the
+/// prefix names no knob and is refused.
+const NINFER_ENV_FAMILY_PREFIX: &str = "NINFER_";
+
+/// Whether a `ninfer_env` name is admissible: a closed [`ALLOWED_ENV_VARS`]
+/// name, or an all-uppercase name inside the [`NINFER_ENV_FAMILY_PREFIX`]
+/// family with at least one more character.
+fn valid_env_name(name: &str) -> bool {
+    ALLOWED_ENV_VARS.iter().any(|(n, _)| *n == name)
+        || (name.starts_with(NINFER_ENV_FAMILY_PREFIX)
+            && name.len() > NINFER_ENV_FAMILY_PREFIX.len()
+            && name
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'))
+}
+
+/// The shell-safety floor for a `ninfer_env` value: a non-empty word over a
+/// conservative charset (no space, quote, `$`, backtick, semicolon, pipe,
+/// redirect, paren, brace, `~`, `,` — the comma is a pair separator), never
+/// option-shaped. Each pair is quoted at substitution; this floor is what
+/// keeps the quoting honest for family values, where the name review cannot
+/// vouch for the value text.
+fn valid_env_value(value: &str) -> bool {
+    !value.is_empty()
+        && !value.starts_with('-')
+        && value.chars().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '+' | '@')
+        })
+}
+
+/// Why one `ninfer_env` token is not an admissible `NAME=VALUE` pair, or `None`
+/// when it is: a closed name must carry its reviewed value, a family name must
+/// carry a shell-bare word.
+fn env_pair_problem(token: &str) -> Option<&'static str> {
+    let Some((name, value)) = token.split_once('=') else {
+        return Some("not a NAME=VALUE pair");
+    };
+    if ALLOWED_ENV_VARS.iter().any(|(n, _)| *n == name) {
+        return ALLOWED_ENV_VARS
+            .iter()
+            .find(|(n, _)| *n == name)
+            .filter(|(_, values)| values.contains(&value))
+            .map_or(Some("value outside the closed set for this name"), |_| None);
+    }
+    if !valid_env_name(name) {
+        return Some("name is neither a closed name nor inside the `NINFER_` family");
+    }
+    if !valid_env_value(value) {
+        return Some(
+            "value is not a shell-bare word (no space, quote, `$`, `,`, `;`, `|`, or option shape)",
+        );
+    }
+    None
+}
 
 /// The port a ninfer container binds when its yaml names no `ninfer_internal_port`:
 /// the SE container-internal number, 8808 — the harness's own 87xx family at a
@@ -268,13 +324,17 @@ fn valid_word_list(value: &str) -> bool {
 /// [`crate::engine::policy::forbidden_serve_flag`]) are refused. `--model-id`
 /// has its own key (`ninfer_model_id`), so it is refused here too. The denylist
 /// is checked against an option token's *name* (so `--flag=value` cannot
-/// smuggle past a whole-token comparison) and against every strict *prefix* of
-/// one, because argparse-style parsers (the Python precedent behind this
-/// engine) resolve unique abbreviations: `--max-cont` is `--max-context` to
-/// such a parser, and the llama `extra_args` deny-list leak (8/8 smuggles) is
-/// the in-repo precedent for closing the abbreviation door
-/// rather than betting on the parser being strict. A value token that begins
-/// with `-` is refused, so a value can never disguise itself as another flag.
+/// smuggle past a whole-token comparison) and against every strict *abbreviation*
+/// of a reserved flag, because argparse-style parsers (the Python precedent
+/// behind this engine) resolve unique prefixes: `--max-cont` is `--max-context`
+/// to such a parser, and the llama `extra_args` deny-list leak (8/8 smuggles)
+/// is the in-repo precedent for closing the abbreviation door
+/// rather than betting on the parser being strict. The extension direction
+/// does NOT refuse: a longer option is a *different*
+/// engine knob — `--host-context-mib` is not `--host` to any parser, and
+/// refusing it would make a documented knob require an adapter hotfix. A
+/// value token that begins with `-` is refused, so a value can
+/// never disguise itself as another flag.
 fn valid_serve_arg(token: &str) -> bool {
     let name = token.split('=').next().unwrap_or(token);
     !token.is_empty()
@@ -658,23 +718,37 @@ fn template_params(
     } else {
         "nokey"
     };
+    // Pairs are whitespace- or comma-separated (a row can spell one knob list
+    // as `CUDA_MODULE_LOADING=LAZY,NINFER_FAST_PREFILL=1`); the comma is a
+    // separator, so no admissible value carries one. Each name may appear
+    // once — two pairs for one name would silently fight inside `docker run`.
     let env: Vec<String> = optional_param(model, "ninfer_env")
-        .map(|line| line.split_whitespace().map(str::to_string).collect())
+        .map(|line| {
+            line.split_whitespace()
+                .flat_map(|token| token.split(','))
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default();
+    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for token in &env {
-        let ok = ALLOWED_ENV_VARS.iter().any(|(name, values)| {
-            token
-                .strip_prefix(&format!("{name}="))
-                .is_some_and(|value| values.contains(&value))
-        });
-        if !ok {
+        if let Some(problem) = env_pair_problem(token) {
             return Err(rejected(format!(
-                "`ninfer_env` tokens must be an allow-listed NAME=VALUE ({}): {token}",
+                "`ninfer_env` pairs must be {} or a `NINFER_`-prefixed NAME=<shell-bare word>; \
+                 names outside those (LD_PRELOAD, PATH) are refused \u{2014} {problem}: {token}",
                 ALLOWED_ENV_VARS
                     .iter()
                     .map(|(name, values)| format!("{name}={}", values.join("|")))
                     .collect::<Vec<_>>()
                     .join(", ")
+            )));
+        }
+        let name = token
+            .split_once('=')
+            .map_or(token.as_str(), |(name, _)| name);
+        if !seen.insert(name) {
+            return Err(rejected(format!(
+                "`ninfer_env` names each variable once; `{name}` appears twice: {token}"
             )));
         }
     }
@@ -729,9 +803,10 @@ fn render_canonical(params: &NinferParams) -> Result<String, EngineError> {
         .model_id
         .as_deref()
         .map_or_else(String::new, |id| format!("--model-id \"{id}\" \\\n  "));
-    // Each token is one reviewed `NAME=VALUE` from `ALLOWED_ENV_VARS`; quoting it
-    // keeps the value literal to `docker run`, and the allow-list is what makes an
-    // arbitrary `NAME` (e.g. `LD_PRELOAD`) unrepresentable in the first place.
+    // Each token is one admissible `NAME=VALUE` pair (closed name or
+    // `NINFER_` family, shell-bare value); quoting it keeps the value literal
+    // to `docker run`, and the name floor is what keeps an arbitrary `NAME`
+    // (e.g. `LD_PRELOAD`) unrepresentable in the first place.
     let env_args = params
         .env
         .iter()
@@ -1221,13 +1296,47 @@ mod tests {
         );
         assert!(script.contains("\"64\""), "{script}");
         // A value may never masquerade as an option: single-dash tokens and
-        // anything extending a harness-owned name are still refused.
+        // exact or abbreviated harness-owned names are still refused.
         for bad in ["-x 5", "--host 0.0.0.0", "--data-dir-permissions /x"] {
             let mut pairs = template_pairs();
             pairs.retain(|(k, _)| *k != "ninfer_serve_args");
             pairs.push(("ninfer_serve_args", bad));
             let reason = refused(&pairs);
             assert!(reason.contains("ninfer_serve_args"), "{bad}: {reason}");
+        }
+    }
+
+    /// The matcher refuses exact names and strict abbreviations but does not
+    /// swallow a longer engine option: `--host-context-mib` — the operator's
+    /// row knob, dropped from the live yaml when template mode arrived because
+    /// the extension direction blocked it — reaches the launch line, while
+    /// `--host` and the abbreviation `--hos` are refused by name. Falsifier:
+    /// restore `name.starts_with(flag)` in the matcher and the legitimate
+    /// knob dies again — the documented-knob-needs-a-hotfix class the
+    /// 2026-11-15 gate ruling calls a HIGH defect.
+    #[test]
+    fn a_longer_option_extending_a_reserved_name_still_launches() {
+        let mut pairs = template_pairs();
+        pairs.retain(|(k, _)| *k != "ninfer_serve_args");
+        pairs.push((
+            "ninfer_serve_args",
+            "--host-context-mib 2048 --spec dflash2",
+        ));
+        let spec = NinferAdapter::new("Ubuntu", "ops")
+            .spec(&entry(&pairs), 18109)
+            .expect("--host-context-mib is an engine option, not a reserved flag");
+        let script = spec.script.expect("template renders");
+        let line = script
+            .lines()
+            .find(|l| l.starts_with("SERVE_ARGS=("))
+            .expect("the canonical script carries the SERVE_ARGS line");
+        assert!(line.contains("\"--host-context-mib\" \"2048\""), "{script}");
+        for bad in ["--host", "--hos 0.0.0.0", "--host=x"] {
+            let mut pairs = template_pairs();
+            pairs.retain(|(k, _)| *k != "ninfer_serve_args");
+            pairs.push(("ninfer_serve_args", bad));
+            let reason = refused(&pairs);
+            assert!(reason.contains("harness-owned flag"), "{bad}: {reason}");
         }
     }
 
@@ -1252,21 +1361,30 @@ mod tests {
         }
     }
 
-    /// The `ninfer_env` allow-list is a review gate, not a parse rule: the one
-    /// card-verified flag reaches the container quoted and complete, and an
-    /// arbitrary `NAME` — `LD_PRELOAD`, `PATH` — is refused by name. Falsifier:
-    /// widening the check to any `NAME=VALUE` shape makes the refusals land, and
-    /// dropping the render substitution makes the acceptance leg land.
+    /// The `ninfer_env` floor is a name review, not a parse rule: the closed
+    /// card flag and family (`NINFER_`) pairs reach the container quoted and
+    /// complete, comma- or space-separated, and an arbitrary name outside the
+    /// family — `LD_PRELOAD`, `PATH` — is refused by name, as is a second pair
+    /// for one name. Falsifier: widening the check to any `NAME=VALUE` shape
+    /// makes the refusals land, and dropping the render substitution makes the
+    /// acceptance leg land.
     #[test]
-    fn ninfer_env_admits_only_the_allow_listed_pair() {
+    fn ninfer_env_admits_closed_pairs_and_the_ninfer_family() {
         let mut pairs = template_pairs();
-        pairs.push(("ninfer_env", "CUDA_MODULE_LOADING=LAZY"));
+        pairs.push((
+            "ninfer_env",
+            "CUDA_MODULE_LOADING=LAZY,NINFER_FAST_PREFILL=1",
+        ));
         let spec = NinferAdapter::new("Ubuntu", "ops")
             .spec(&entry(&pairs), 18109)
-            .expect("allow-listed env");
+            .expect("closed pair plus family pair");
         let script = spec.script.expect("template renders");
         assert!(
             script.contains("--env \"CUDA_MODULE_LOADING=LAZY\""),
+            "{script}"
+        );
+        assert!(
+            script.contains("--env \"NINFER_FAST_PREFILL=1\""),
             "{script}"
         );
         assert!(!script.contains("{{"), "no placeholder survives");
@@ -1277,7 +1395,11 @@ mod tests {
             "CUDA_MODULE_LOADING=LAZY;rm -f /",
             "LD_PRELOAD=/x.so",
             "PATH=/tmp/bin",
+            "NINFER_X=$HOME",
+            "NINFER_=1",
+            "NINFER_lower=1",
             "CUDA_MODULE_LOADING=LAZY CUDA_MODULE_LOADING=EAGER PATH=/tmp",
+            "NINFER_A=1,NINFER_A=2",
         ] {
             let mut pairs = template_pairs();
             pairs.push(("ninfer_env", bad));

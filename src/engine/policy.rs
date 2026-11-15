@@ -12,9 +12,11 @@
 //! appear in L3).
 //!
 //! Cell rule (10a): a cell exists only where a real row populates it AND a
-//! reader consumes it — `serve_template` for ninfer, `allow_words` and the
-//! absence-refused `forbidden_words` for llama, `path_markers` for the runtime's
-//! early-exit diagnosis, `custody_data_roots` for the ninfer key file. Cells
+//! reader consumes it — `serve_template` for ninfer, the name-refused
+//! `forbidden_words` for llama (open, policy-filtered `extra_args` passthrough
+//! per the 2026-11-15 gate ruling) and for ninfer, `path_markers` for the
+//! runtime's early-exit diagnosis, `custody_data_roots` for the ninfer key
+//! file. Cells
 //! the §20-9 ruling listed but today's code holds no per-engine fact for
 //! (`stop_grace`, `cost_default`) are absent, not stubbed. The custody
 //! enforcement the later slices owe (config wiring, strata sidecar, root
@@ -71,33 +73,22 @@ pub(crate) const MAYA_RENDERED_PROFILES_ROOT: &str = ".simpleharn/maya-profiles"
 /// (`process::rendered_profiles_dir` resolves it).
 pub(crate) const XOLOTL_RENDERED_PROFILES_ROOT: &str = ".simpleharn/xolotl-profiles";
 
-/// The CLOSED allow-list of `extra_args` option words an operator may pass
-/// through to llama-server: the inversion of the old
-/// `HARNESS_OWNED_FLAGS` denial list, which could only ever name ten of the
-/// pinned build's ~200 options and therefore left the harness-owned decisions —
-/// which weights serve, the bind host/port, the key, the transport, the served
-/// static roots, egress and port reuse — reachable from a single yaml line. A
-/// word passes iff it names one of these entries (or, for a value-taking
-/// entry, that spelling with `=value` appended); the entry's `arity` following
-/// words are its values and pass verbatim as data. Everything else is refused,
-/// so the parser is never reached from the catalog.
-///
-/// Adding a word here is a review decision, and the entry must state which
-/// harness-owned decision it cannot move. The set is admitted because every
-/// entry is (a) present in the pinned build (checked against the
-/// `llama-common.dll` option string table, so an admitted word is one the
-/// engine actually parses) and (b) unable to choose weights, bind address,
+/// The RECOMMENDED surface of `extra_args` option words for llama — recorded,
+/// no longer the gate. Since the 2026-11-15 gate ruling
+/// ("ideally we should never need to hotfix an adapter"; a documented knob
+/// blocked by policy is the HIGH-defect class), `extra_args` is an open,
+/// policy-filtered passthrough ([`crate::engine::llama`]): every option token
+/// that is not an exact or prefix-abbreviation match of
+/// [`LLAMA_FORBIDDEN_EXTRA_WORDS`] reaches the engine. This record keeps the
+/// reviewed, operator-proven words — the catalog's only `extra_args` line
+/// (ModelConf/embeddinggemma-2-GGUF.yaml) rides the first two — with the arity
+/// notes documenting how many values each word takes. A policy test pins the
+/// record against self-contradiction: no word recommended here may appear in
+/// the forbidden record. Adding a recommendation is a review decision, and
+/// every recommended word must be unable to choose weights, bind address,
 /// port, authentication, TLS, static roots, download/RPC egress,
-/// `--reuse-port`, or to flip a flag the harness itself emits. Deliberately
-/// absent — reviewed and refused, along with everything else:
-/// `-m`/`--model`/`--model-url`/`--hf-repo`/`--hf-file`/`--docker-repo` (which
-/// weights serve), `--models-dir`/`--models-preset`/`--models-autoload` (an
-/// engine-side router file), `--mmproj` (a second weights file),
-/// `--host`/`--port` and `-ngl` with all its alias spellings (harness-forced),
-/// `--api-key*`, `--ssl-*`, `--rpc`, `--path`, `--reuse-port`, `--lora*`,
-/// `--control-vector*`, `--override-kv` and `--jinja`/`--no-jinja` (each moves
-/// a harness-owned decision or rewrites the template the harness would have
-/// emitted).
+/// `--reuse-port`, or flip a flag the harness itself emits — the same review
+/// floor that guards the forbidden record's complement.
 pub(crate) const LLAMA_EXTRA_ARGS: &[(&str, usize)] = &[
     // Reply shape only: serves embeddings instead of chat. No weights, bind, key,
     // root or egress choice; `/health` still answers, so readiness is unaffected.
@@ -123,16 +114,27 @@ pub(crate) const LLAMA_EXTRA_ARGS: &[(&str, usize)] = &[
     ("--no-warmup", 0),
 ];
 
-/// The llama `extra_args` words that must never reach the argv from L1. The
-/// enforcement is absence from [`LLAMA_EXTRA_ARGS`], not a name match — this
-/// list is the reviewed record of that complement, and the policy acceptance
-/// test feeds each word back through `extra_args` to prove the closed set
-/// still refuses it (the table cross-checks itself, so neither list can drift
-/// into lying about the other). Every spelling that moves a harness-owned
-/// decision: weights, bind, offload depth, key/TLS/egress, the jinja pair the
-/// harness emits itself, and each `FLAG_TABLE` decision (one yaml key per
-/// decision; a second spelling would make that key a dead claim).
+/// The llama `extra_args` words that must never reach the argv — the reviewed
+/// record that filters the open passthrough (2026-11-15 gate ruling: the
+/// mechanism is this name match, not absence from a closed list). A token
+/// fails when it names one of these words exactly, or is a strict
+/// prefix-abbreviation of one (a defense-in-depth refusal; the pinned llama.cpp
+/// parser is exact-match, but the historical 8/8 smuggle leak keeps one
+/// abbreviation rule across the engine family rather than betting on a parser).
+/// The policy acceptance test feeds every word back through `extra_args`
+/// (exact and abbreviated) to prove the filter still refuses it, and every
+/// word carries an owner sentence in [`LLAMA_EXTRA_ARG_OWNERS`]. The set is
+/// the audit's pinned-build review (2026-11-15, `llama-server --help`, 261
+/// entries): every spelling that moves a harness-owned decision — weights and
+/// download egress, bind, offload depth, key/TLS/egress, engine-side model
+/// custody, built-in tool execution, the jinja pair the harness emits itself,
+/// server-global and scheduler-owned timing — plus every `FLAG_TABLE`
+/// decision's spellings (one yaml key per decision; a second spelling would
+/// make that key a dead claim). Everything else in the pinned build is
+/// reachable from the row without a code change.
 pub(crate) const LLAMA_FORBIDDEN_EXTRA_WORDS: &[&str] = &[
+    // Weights, bind, offload, key/TLS, transport, roots, reuse: the
+    // harness-owned originals.
     "-m",
     "--model",
     "--host",
@@ -149,6 +151,7 @@ pub(crate) const LLAMA_FORBIDDEN_EXTRA_WORDS: &[&str] = &[
     "--models-dir",
     "--models-preset",
     "--models-autoload",
+    "--no-models-autoload",
     "--ssl-key-file",
     "--ssl-cert-file",
     "--model-url",
@@ -156,13 +159,19 @@ pub(crate) const LLAMA_FORBIDDEN_EXTRA_WORDS: &[&str] = &[
     "--hf-file",
     "--docker-repo",
     "--reuse-port",
+    // The jinja pair the harness emits itself (from `jinja:`).
     "--jinja",
     "--no-jinja",
+    // Adapter and KV loading, second weights, static roots.
     "--lora",
     "--override-kv",
     "--mmproj",
+    // FLAG_TABLE spellings: long forms join the short ones now that the
+    // passthrough admits anything this record does not name.
     "-c",
+    "--ctx-size",
     "-b",
+    "--batch-size",
     "--ubatch-size",
     "--flash-attn",
     "--cache-type-k",
@@ -171,6 +180,81 @@ pub(crate) const LLAMA_FORBIDDEN_EXTRA_WORDS: &[&str] = &[
     "--fit",
     "--fit-target",
     "--fit-ctx",
+    // Download egress and credentials beyond the originals (audit 2026-11-15).
+    "--hf-token",
+    "--mmproj-url",
+    "--embd-gemma-default",
+    "--fim-qwen-1.5b-default",
+    "--fim-qwen-3b-default",
+    "--fim-qwen-7b-default",
+    "--fim-qwen-7b-spec",
+    "--fim-qwen-14b-spec",
+    "--fim-qwen-30b-default",
+    "--gpt-oss-20b-default",
+    "--gpt-oss-120b-default",
+    "--vision-gemma-4b-default",
+    "--vision-gemma-12b-default",
+    // llama-connect egress tunnel and the offline posture the harness owns.
+    "--connect",
+    "--connect-code",
+    "--offline",
+    // Engine-side model router beyond the original trio, and custody paths.
+    "--models-max",
+    "--models-memory-margin",
+    "--slot-save-path",
+    "--media-path",
+    // Readiness contract and server globals the harness talks to.
+    "--api-prefix",
+    "--props",
+    // CORS the loopback posture owns (both spellings of the pair switch).
+    "--cors-origins",
+    "--cors-methods",
+    "--cors-headers",
+    "--cors-credentials",
+    "--no-cors-credentials",
+    // Built-in UI/MCP/tools surface: server-side execution the harness
+    // refuses, every spelling the pinned build parses.
+    "--ui-config",
+    "--webui-config",
+    "--ui-config-file",
+    "--webui-config-file",
+    "--ui-mcp-proxy",
+    "--webui-mcp-proxy",
+    "--no-ui-mcp-proxy",
+    "--no-webui-mcp-proxy",
+    "--tools",
+    "--tools-runtime",
+    "--mcp-servers-config",
+    "--mcp-servers-json",
+    "--agent",
+    "--no-agent",
+    // Unload timing is the swap scheduler's single writer.
+    "--sleep-idle-seconds",
+    // The harness runs one GPU; the witness owns placement.
+    "--device",
+    "--device-draft",
+    "--split-mode",
+    "--tensor-split",
+    "--main-gpu",
+    "--spec-draft-device",
+    // Adapter and steering loading beyond `--lora`/`--control-vector`.
+    "--lora-scaled",
+    "--lora-init-without-apply",
+    "--control-vector",
+    "--control-vector-scaled",
+    "--control-vector-layer-range",
+    // Utility and removed entries are not serve knobs.
+    "--help",
+    "--version",
+    "--cache-list",
+    "--completion-bash",
+    "--list-devices",
+    "--draft",
+    "--draft-min",
+    "--spec-ngram-min-hits",
+    "--spec-ngram-size-m",
+    "--spec-ngram-size-n",
+    "--defrag-thold",
 ];
 
 /// The ninfer serve flags a yaml may never contribute: the ones the canonical
@@ -260,15 +344,19 @@ pub(crate) const NINFER_SERVE_ARG_OWNERS: &[(&str, &str)] = &[
 ];
 
 /// The denylist match a serve-args token fails: the token's *name* collides
-/// with a forbidden flag itself or as a unique abbreviation of one (argparse
+/// with a forbidden flag exactly or as a unique abbreviation of one (argparse
 /// parsers resolve prefixes, so `--max-cont` is `--max-context` to the engine).
+/// The other direction — a token that *extends* a reserved name — is not a
+/// collision: the engine defines the longer option, and refusing it was the
+/// documented-knob-needs-an-adapter-hotfix class the 2026-11-15 gate ruling
+/// calls a defect (`--host-context-mib` is not `--host` to any parser).
 /// `None` = the name is not harness-owned.
 #[must_use]
 pub(crate) fn forbidden_serve_flag(name: &str) -> Option<&'static str> {
     NINFER_FORBIDDEN_SERVE_FLAGS
         .iter()
         .copied()
-        .find(|flag| name.starts_with(flag) || flag.starts_with(name))
+        .find(|flag| *flag == name || (name.len() < flag.len() && flag.starts_with(name)))
 }
 
 /// Where the decision behind a refused serve-args flag actually lives.
@@ -406,39 +494,39 @@ pub(crate) const BASALT_SERVER_ARG_OWNERS: &[(&str, &str)] = &[
     ),
     (
         "--temperature",
-        "sampling defaults are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--top-p",
-        "sampling defaults are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--top-k",
-        "sampling defaults are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--min-p",
-        "sampling defaults are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--presence-penalty",
-        "sampling defaults are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--frequency-penalty",
-        "sampling defaults are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--repetition-penalty",
-        "sampling defaults are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--penalty-last-n",
-        "sampling defaults are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--seed",
-        "sampling defaults are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--min-free-vram-mib",
@@ -446,19 +534,19 @@ pub(crate) const BASALT_SERVER_ARG_OWNERS: &[(&str, &str)] = &[
     ),
     (
         "--reasoning-budget-tokens",
-        "generation budgets are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--thinking-loop-tokens",
-        "generation budgets are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--answer-room",
-        "generation budgets are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
     (
         "--no-answer-room",
-        "generation budgets are request-time values, not launch argv",
+        "`basalt_sampling` is the launch-time default; a request may override it",
     ),
 ];
 
@@ -485,9 +573,10 @@ pub(crate) fn basalt_server_arg_owner(flag: &str) -> Option<&'static str> {
 
 /// The harness mechanism that owns each decision a refused `extra_args` word
 /// moves (slice 10c): the refusal names the yaml key or forced line that owns
-/// it, so the operator edits the live key instead of fighting the closed list.
-/// One entry per [`LLAMA_FORBIDDEN_EXTRA_WORDS`] member (the table test fails
-/// on drift); unknown words have no owner and keep the plain list refusal.
+/// it, so the operator edits the live key instead of fighting the forbidden
+/// record. One entry per [`LLAMA_FORBIDDEN_EXTRA_WORDS`] member (the table
+/// test fails on drift); a word the record does not name passes through and
+/// needs no owner.
 pub(crate) const LLAMA_EXTRA_ARG_OWNERS: &[(&str, &str)] = &[
     ("-m", "`model:` names the weights"),
     ("--model", "`model:` names the weights"),
@@ -529,6 +618,10 @@ pub(crate) const LLAMA_EXTRA_ARG_OWNERS: &[(&str, &str)] = &[
         "--models-autoload",
         "an engine-side model router is not catalog custody",
     ),
+    (
+        "--no-models-autoload",
+        "an engine-side model router is not catalog custody",
+    ),
     ("--ssl-key-file", "TLS is harness-owned (loopback only)"),
     ("--ssl-cert-file", "TLS is harness-owned (loopback only)"),
     (
@@ -557,7 +650,9 @@ pub(crate) const LLAMA_EXTRA_ARG_OWNERS: &[(&str, &str)] = &[
         "`mmproj:` is the harness's vision-file decision",
     ),
     ("-c", "`context:` owns the context size"),
+    ("--ctx-size", "`context:` owns the context size"),
     ("-b", "`batch:` owns the batch size"),
+    ("--batch-size", "`batch:` owns the batch size"),
     ("--ubatch-size", "`ubatch:` owns the micro-batch size"),
     ("--flash-attn", "`flash_attn:` owns the attention kernel"),
     ("--cache-type-k", "`cache_type_k:` owns the K-cache type"),
@@ -566,6 +661,176 @@ pub(crate) const LLAMA_EXTRA_ARG_OWNERS: &[(&str, &str)] = &[
     ("--fit", "`fit:` owns the auto-fit switch"),
     ("--fit-target", "`fit_target:` owns the fit target"),
     ("--fit-ctx", "`fit_ctx:` owns the fit context"),
+    // Pinned-build review (audit 2026-11-15): every excluded spelling.
+    (
+        "--hf-token",
+        "download credentials are harness-owned key material",
+    ),
+    (
+        "--mmproj-url",
+        "download egress is harness-owned; `mmproj:` names the projector",
+    ),
+    (
+        "--embd-gemma-default",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--fim-qwen-1.5b-default",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--fim-qwen-3b-default",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--fim-qwen-7b-default",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--fim-qwen-7b-spec",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--fim-qwen-14b-spec",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--fim-qwen-30b-default",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--gpt-oss-20b-default",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--gpt-oss-120b-default",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--vision-gemma-4b-default",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    (
+        "--vision-gemma-12b-default",
+        "a download preset fetches weights the catalog never booked",
+    ),
+    ("--connect", "llama-connect egress is harness-owned"),
+    ("--connect-code", "llama-connect egress is harness-owned"),
+    ("--offline", "network posture is harness-owned"),
+    (
+        "--models-max",
+        "an engine-side model router is not catalog custody",
+    ),
+    (
+        "--models-memory-margin",
+        "an engine-side model router is not catalog custody",
+    ),
+    ("--slot-save-path", "slot custody paths are harness-owned"),
+    ("--media-path", "static roots are harness-owned"),
+    ("--api-prefix", "moves `/health` off the readiness contract"),
+    (
+        "--props",
+        "POST /props mutates server globals the harness owns",
+    ),
+    ("--cors-origins", "CORS is harness-owned (loopback only)"),
+    ("--cors-methods", "CORS is harness-owned (loopback only)"),
+    ("--cors-headers", "CORS is harness-owned (loopback only)"),
+    (
+        "--cors-credentials",
+        "CORS is harness-owned (loopback only)",
+    ),
+    (
+        "--no-cors-credentials",
+        "CORS is harness-owned (loopback only)",
+    ),
+    ("--ui-config", "the built-in UI config surface is refused"),
+    (
+        "--webui-config",
+        "the built-in UI config surface is refused",
+    ),
+    (
+        "--ui-config-file",
+        "the built-in UI config surface is refused",
+    ),
+    (
+        "--webui-config-file",
+        "the built-in UI config surface is refused",
+    ),
+    (
+        "--ui-mcp-proxy",
+        "the built-in MCP proxy executes tools; refused",
+    ),
+    (
+        "--webui-mcp-proxy",
+        "the built-in MCP proxy executes tools; refused",
+    ),
+    (
+        "--no-ui-mcp-proxy",
+        "the built-in MCP proxy executes tools; refused",
+    ),
+    (
+        "--no-webui-mcp-proxy",
+        "the built-in MCP proxy executes tools; refused",
+    ),
+    ("--tools", "built-in tool execution is refused"),
+    ("--tools-runtime", "built-in tool execution is refused"),
+    ("--mcp-servers-config", "built-in tool execution is refused"),
+    ("--mcp-servers-json", "built-in tool execution is refused"),
+    ("--agent", "built-in tool execution is refused"),
+    ("--no-agent", "built-in tool execution is refused"),
+    ("--sleep-idle-seconds", "unload timing is the scheduler's"),
+    (
+        "--device",
+        "the harness is one-GPU; the witness owns placement",
+    ),
+    (
+        "--device-draft",
+        "the harness is one-GPU; the witness owns placement",
+    ),
+    (
+        "--split-mode",
+        "the harness is one-GPU; the witness owns placement",
+    ),
+    (
+        "--tensor-split",
+        "the harness is one-GPU; the witness owns placement",
+    ),
+    (
+        "--main-gpu",
+        "the harness is one-GPU; the witness owns placement",
+    ),
+    (
+        "--spec-draft-device",
+        "the harness is one-GPU; the witness owns placement",
+    ),
+    ("--lora-scaled", "adapter loading is harness-owned"),
+    (
+        "--lora-init-without-apply",
+        "adapter loading is harness-owned",
+    ),
+    (
+        "--control-vector",
+        "steering-vector loading is harness-owned",
+    ),
+    (
+        "--control-vector-scaled",
+        "steering-vector loading is harness-owned",
+    ),
+    (
+        "--control-vector-layer-range",
+        "steering-vector loading is harness-owned",
+    ),
+    ("--help", "utility flag, not a serve knob"),
+    ("--version", "utility flag, not a serve knob"),
+    ("--cache-list", "utility flag, not a serve knob"),
+    ("--completion-bash", "utility flag, not a serve knob"),
+    ("--list-devices", "utility flag, not a serve knob"),
+    ("--draft", "removed in the pinned build"),
+    ("--draft-min", "removed in the pinned build"),
+    ("--spec-ngram-min-hits", "removed in the pinned build"),
+    ("--spec-ngram-size-m", "removed in the pinned build"),
+    ("--spec-ngram-size-n", "removed in the pinned build"),
+    ("--defrag-thold", "removed in the pinned build"),
 ];
 
 /// Where the decision behind a refused `extra_args` word actually lives.
@@ -624,6 +889,9 @@ const STRATA_KNOBS: &[&str] = &[
     "strata_gpus_asked",
     "strata_vision",
     "strata_sampling",
+    "strata_aliases",
+    "strata_reasoning_budget",
+    "strata_profile_extra",
     "strata_uncensored",
 ];
 
@@ -634,6 +902,7 @@ const BASALT_KNOBS: &[&str] = &[
     "basalt_parallel",
     "basalt_vision",
     "basalt_engine_args",
+    "basalt_sampling",
 ];
 
 const MAYA_KNOBS: &[&str] = &["maya_python", "maya_cwd", "maya_config"];
@@ -655,6 +924,9 @@ const XOLOTL_KNOBS: &[&str] = &[
     "xolotl_sampling",
     "xolotl_aliases",
     "xolotl_reasoning_budget",
+    "xolotl_vision",
+    "xolotl_parallel",
+    "xolotl_profile_extra",
 ];
 
 const NINFER_KNOBS: &[&str] = &[
@@ -888,14 +1160,15 @@ pub(crate) struct EnginePolicy {
     /// (the bind, port and capacity lines the template hard-codes), so its row
     /// carries no argv-level cells.
     pub forced_fields: &'static [ForcedField],
-    /// Words never admitted from L1. Enforced: the ninfer serve-args prefix
-    /// check; recorded (enforced by absence through [`Self::allow_words`]):
-    /// the llama `extra_args` complement. Consumed adversarially by the policy
+    /// Words never admitted from L1, matched by name (exact or unique
+    /// abbreviation): the ninfer serve-args check and the llama
+    /// `extra_args` passthrough filter. Consumed adversarially by the policy
     /// acceptance test, which proves each word absent from a rendered L3.
     pub forbidden_words: &'static [&'static str],
-    /// The closed allow-list for an engine's operator-extra words; the closed
-    /// set is the enforcement and emptiness means "no extra-args surface".
-    /// Read by the llama adapter for `extra_args`.
+    /// The RECOMMENDED operator-extra surface: recorded, not the gate since
+    /// the 2026-11-15 gate ruling — enforcement lives in [`Self::forbidden_words`]
+    /// (see [`LLAMA_EXTRA_ARGS`]). The table test pins the recommendation
+    /// against self-contradiction; emptiness means no recommended surface.
     pub allow_words: &'static [(&'static str, usize)],
     /// The operator-extra-words surface the scan enforces at validate time
     /// (slice 10c); `None` = the engine admits no operator word at all, so
@@ -2215,6 +2488,15 @@ mod tests {
         let abbreviated = forbidden_serve_flag("--max-cont").expect("--max-cont is --max-context");
         assert!(ninfer_serve_arg_owner(abbreviated).is_some());
         assert_eq!(forbidden_serve_flag("--spec"), None);
+        // The extension direction does not refuse (2026-11-15 ruling): a
+        // longer engine option is a different knob, and the matcher must keep
+        // the exact-and-abbreviation directions only.
+        assert_eq!(
+            forbidden_serve_flag("--host-context-mib"),
+            None,
+            "a longer option extending a reserved name is an engine knob, not that name"
+        );
+        assert!(forbidden_serve_flag("--hos").is_some(), "--hos is --host");
         assert_eq!(llama_extra_arg_owner("--foo"), None);
         // The other direction (the "one entry per member" claim both owner
         // tables make): an owner entry no forbidden word cites is a dead
@@ -2246,6 +2528,21 @@ mod tests {
                 .collect::<BTreeSet<_>>(),
             "the basalt owner table must carry exactly one entry per forbidden flag"
         );
+    }
+
+    /// The recommended surface and the forbidden record cannot contradict
+    /// each other: a word recommended by the `allow_words` cell and refused
+    /// by `forbidden_words` in the same table is the doc lying about the
+    /// code (the pass-through makes the two sets directly observable —
+    /// recommendation and refusal cannot both be true of one word).
+    #[test]
+    fn the_recommended_surface_never_recommends_a_forbidden_word() {
+        for (word, _) in LLAMA_EXTRA_ARGS {
+            assert!(
+                !LLAMA_FORBIDDEN_EXTRA_WORDS.contains(word),
+                "`{word}` is recommended and forbidden at once"
+            );
+        }
     }
 
     /// R2/BS-03: the deny-list test above iterates the list itself, so deleting
