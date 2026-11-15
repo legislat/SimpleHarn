@@ -45,10 +45,13 @@ Do not run ritual reviews on exempt changes.
   never a finding.
 - The reviewer must not read `Cargo.lock` or `target/`.
 - **Engine adapter changes:** read the engine's current serve entry point and the
-  adapter's knob manifest. Every engine key must be exposed by a row key or
-  classified harness-forced with a named reason (DOCTRINE item 19). An
-  unclassified key is a HIGH finding. A manifest row without an adapter change,
-  or an adapter knob without a manifest row, is incomplete.
+  adapter's knob manifest. Every non-forced key must be usable by editing the row
+  or config alone, through a typed key or a policy-filtered passthrough
+  (DOCTRINE item 19). An unclassified key is a HIGH finding. A knob that still
+  needs an adapter code change is a HIGH defect, even when the row field is
+  hidden. The reviewer asks for the falsifier: an unmodeled, non-forced key
+  added to the config reaches the rendered profile/args, while a forced key is
+  refused.
 
 ## Chunking and lenses
 

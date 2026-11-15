@@ -226,11 +226,17 @@ as it was. Set the key to `0` to disable the rule.
 ### Engine adapter gate: all serving knobs
 
 Operator ruling 2026-11-15: **the harness MUST support serving config with all
-available engine knobs.** This is a binding adapter gate, not a best effort.
+available engine knobs.** Clarification, same day: **a supported engine knob
+must be usable by editing the row or config alone; hiding a row is fine if
+adding it back still gets the job done.** The gate is "no adapter hotfix to use
+a supported knob", not "every knob needs a first-class YAML field".
 
-Every adapter exposes every knob its engine's serve entry point accepts, through
-a row key or the rendered profile. Only these harness-owned launch decisions are
-excluded, and each exclusion is named in the adapter's manifest:
+Every non-harness-owned serving knob must be honored through a typed row key or
+a policy-filtered passthrough (an operator config map or an open args/env path
+with forced-field refusals). A knob may be hidden from the UI and omitted from
+the row template; it is still supported when the config path carries it and the
+renderer honors it. Only these harness-owned launch decisions are excluded, and
+each exclusion is named in the adapter's manifest:
 
 | Excluded class | Why it stays harness-owned |
 |---|---|
@@ -242,14 +248,17 @@ excluded, and each exclusion is named in the adapter's manifest:
 | Admission/memory policy | `vram_gb`, `cost`, floor, reserve, and eviction are scheduler decisions, not engine config. |
 
 Each engine section below must carry a **knob manifest**: one row per engine key,
-naming the row key that exposes it or the forced-field reason above. A key that
-the pinned engine build accepts but the manifest does not classify is an adapter
-defect. A new engine knob therefore lands as a manifest row plus an adapter
-change (or a named refusal), never as a silent omission. Review treats an
-unclassified key as a HIGH finding (`docs/process/REVIEW.md`).
+classifying it as `typed`, `passthrough`, or `forced` (with the reason above).
+The manifest is a review aid, not the gate itself: the gate is the falsifier
+that an unmodeled, non-forced key still reaches the rendered profile/args after
+a config/row edit. Requiring an adapter change to use a supported knob is a HIGH
+defect; an unclassified key is a HIGH review finding
+(`docs/process/REVIEW.md`).
 
 Known gap at this ruling: the Xolotl adapter renders no `vision` block and has
-no `xolotl_vision` knob, although `serve_ds41.py` accepts one. See
+no `xolotl_vision` knob, although `serve_ds41.py` accepts one. Either a
+policy-filtered `xolotl_config`/passthrough or a typed knob closes it without a
+future hotfix for the next key. See
 `handoff/research/Search#4-xolotl-vision-on.md` for the audit and handoff.
 
 ### Llama engines

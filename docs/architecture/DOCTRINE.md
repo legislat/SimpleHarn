@@ -123,14 +123,20 @@ non-ASCII punctuation in quotes is replaced with ASCII equivalents only.
     strictly ownership-scoped"; "v3.3 `external: true` inert; `sticky:`->AUX
     alias deleted from the parser". Consequence: work that reintroduces any
     of these needs a new operator ruling first.
-19. **Engine adapter completeness (operator ruling 2026-11-15).** "Harness MUST
-    support serving config with all available engine knobs." Every adapter
-    exposes every knob its engine's serve entry point accepts, through the row
-    or rendered config, except the harness-owned launch decisions: bind host,
-    port, key material, which weights serve, the executable and config path,
-    and custody/tokenizer roots. Each adapter carries a knob manifest that
-    classifies every engine key as exposed (row key) or harness-forced (named
-    reason). An unclassified engine knob is an adapter defect, not a feature
-    gap. Consequence: an engine capability is never silently unreachable from
-    the harness; enabling it is a row edit or a reviewed adapter change, and a
-    missing classification is a HIGH review finding.
+19. **Engine adapter completeness (operator ruling 2026-11-15; clarified
+    2026-11-15).** "Harness MUST support serving config with all available
+    engine knobs"; "ideally we should never have a situation when we need to add
+    a supported engine knob in a config and discover we need to hotfix an
+    adapter"; "hiding rows is fine if adding them back still gets the job
+    done." Every non-harness-owned serving knob must be usable by editing the
+    row or config alone — through a typed row key or a policy-filtered
+    passthrough. A knob hidden from the UI or the row template is acceptable
+    when the config path carries it and the renderer honors it. The only
+    exclusions are harness-owned launch decisions: bind host, port, key
+    material, which weights serve, the executable and config path, and
+    custody/tokenizer/static roots, plus admission policy. Each adapter carries
+    a manifest classifying every engine key as typed, passthrough, or forced.
+    Requiring an adapter change to use a supported knob is a HIGH defect; an
+    unclassified key is a HIGH review finding. Consequence: an engine capability
+    is never silently unreachable, and enabling it is a row/config edit, not a
+    hotfix.
