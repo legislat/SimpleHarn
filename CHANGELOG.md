@@ -50,6 +50,12 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   not byte-reproducible (MSVC PE timestamp/debug directory), so the published
   artifact is verified by `SHA256SUMS.txt`.
 
+Tag: `v1.5.1.6`. Commit: `62f78af` (release prep). Artifact: `simpleharn.exe`,
+built 2026-11-16, SHA256
+`160511E407060FF39D1D5E7D3551A4602427ED544D237B52C38CFDB6B490864E`, zip
+`SimpleHarn-1.5.1.6-win-x64.zip` SHA256
+`39EE02E522EF7077AB1887E2A071F2441A4D1BA11293A04184BC94DF4E89AE3B`.
+
 ## v1.5.1.5 - 2026-11-10
 
 ### Changed
