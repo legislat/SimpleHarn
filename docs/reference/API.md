@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent]
 source_of_truth_for: [HTTP control API contract, error codes, memory provenance]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-16
 review_trigger: behavior-change, release
 ---
 
@@ -209,7 +209,9 @@ actor has stopped, it still answers `200` with `scheduler_state: "down"`,
 `scheduler_reason` naming the restart remedy, and empty `slots`/`jobs` (the actor
 owns them). Load, unload, cancel, and reload answer `503` with
 `scheduler_unavailable`; the page shows a persistent banner. Restart the harness
-to recover. The detailed stop reason stays in the harness log.
+to recover. The detailed stop reason stays in the harness log. A scheduler
+invariant refusal is different: the actor stays up, the refused command answers
+500 with `invariant_violation`, and the detailed reason stays in the harness log.
 
 ## Error codes
 
@@ -229,6 +231,8 @@ scanner would refuse to publish), `method_not_allowed` (405),
 stopped or panicked; restart the harness), `upstream` (502), `readiness_timeout` (502, the engine
 missed its readiness deadline; the message names the deadline and a sanitized
 probe outcome, the probe detail stays in the log), `not_implemented` (501),
+`invariant_violation` (500, a scheduler precondition failed; the client sees
+only generic wording, while the detailed reason stays in the harness log),
 `internal` (500). A refusal that carries numbers puts them in `message` and
 in the job ledger, never in a bare status.
 

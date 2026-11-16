@@ -117,6 +117,14 @@ pub enum SchedulerError {
     /// The actor task is gone (shutting down).
     #[error("scheduler is not running")]
     ActorGone,
+    /// A scheduler state precondition was violated while answering a command.
+    /// The detailed reason belongs in the harness log; the generic message keeps
+    /// client surfaces from quoting actor internals.
+    #[error("scheduler invariant violation")]
+    InvariantViolation {
+        /// Internal detail of the violated precondition, logged never returned.
+        reason: String,
+    },
     /// The command is real but lands with a later milestone.
     #[error("unsupported in this milestone: {0}")]
     Unsupported(String),

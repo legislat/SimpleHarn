@@ -75,6 +75,12 @@ impl ActorState {
             .filter(|(_, s)| s.category == category)
             .map(|(i, _)| i)
             .collect();
+        if slots.is_empty() {
+            let _ = reply.send(Err(Self::invariant_error(
+                "the category has at least one slot",
+            )));
+            return;
+        }
         // A4 fix: "already serving" matches name AND category.
         for &s in &slots {
             if let (Some(occupant), None) = (&self.slots[s].occupant, self.slots[s].job) {
@@ -120,11 +126,9 @@ impl ActorState {
             if let Some(job_id) = self.slots[s].job {
                 if let Some(job) = self.jobs.get(&job_id) {
                     if job.kind == JobKind::Load && job.model == model && !job.terminal {
-                        self.jobs
-                            .get_mut(&job_id)
-                            .expect("invariant: job exists when its id is on a slot")
-                            .waiters
-                            .push(reply);
+                        if let Some(job) = self.jobs.get_mut(&job_id) {
+                            job.waiters.push(reply);
+                        }
                         return;
                     }
                 }
@@ -145,11 +149,9 @@ impl ActorState {
                         && job.model == model
                         && job.category == category
                     {
-                        self.jobs
-                            .get_mut(&job_id)
-                            .expect("invariant: pending names an existing job")
-                            .waiters
-                            .push(reply);
+                        if let Some(job) = self.jobs.get_mut(&job_id) {
+                            job.waiters.push(reply);
+                        }
                         return;
                     }
                 }
@@ -186,7 +188,7 @@ impl ActorState {
                 // parked row's place while an in-flight load could be killed
                 // instead. A parked row behind a running job stays under that
                 // job's slot exactly as before.
-                let target = slots
+                let Some(target) = slots
                     .iter()
                     .copied()
                     .filter(|&s| self.slots[s].job.is_none() && self.pending.contains_key(&s))
@@ -204,7 +206,12 @@ impl ActorState {
                                 .map_or(Instant::now(), |j| j.t0)
                         })
                     })
-                    .expect("invariant: the category has at least one slot");
+                else {
+                    let _ = reply.send(Err(Self::invariant_error(
+                        "the category has at least one slot",
+                    )));
+                    return;
+                };
                 // The parked load gets its ledger row now, not when it starts: a
                 // queued load must be visible at `/har/jobs` while its caller waits
                 // One queue place per slot, so the load it
@@ -281,11 +288,12 @@ impl ActorState {
         });
         match slot {
             Some(slot) => {
-                let occupant_port = self.slots[slot]
-                    .occupant
-                    .as_ref()
-                    .expect("invariant: the matched slot has an occupant")
-                    .port;
+                let Some(occupant_port) = self.slots[slot].occupant.as_ref().map(|o| o.port) else {
+                    let _ = reply.send(Err(Self::invariant_error(
+                        "the matched slot has an occupant",
+                    )));
+                    return;
+                };
                 if occupant_port != failed_port {
                     tracing::info!(
                         %model,
@@ -350,11 +358,15 @@ impl ActorState {
                     "the proxy's forward refused a second connection to this resident: \
                      terminalizing the dead engine"
                 );
-                self.begin_unload_slot(slot, "engine died");
-                let _ = reply.send(Ok(Reply::Unloaded {
-                    unloading: 1,
-                    jobs_cancelled: 0,
-                }));
+                if self.begin_unload_slot(slot, "engine died") {
+                    let _ = reply.send(Ok(Reply::Unloaded {
+                        unloading: 1,
+                        jobs_cancelled: 0,
+                    }));
+                } else {
+                    let _ =
+                        reply.send(Err(Self::invariant_error("begin unload for a dead engine")));
+                }
             }
             None => {
                 // The witness is stale or the slot moved on: a successor on
@@ -501,8 +513,9 @@ impl ActorState {
                     self.cancel_job(job_id, "unloaded by request");
                 }
                 None => {
-                    if self.slots[slot].occupant.is_some() {
-                        self.begin_unload_slot(slot, "unloaded");
+                    if self.slots[slot].occupant.is_some()
+                        && self.begin_unload_slot(slot, "unloaded")
+                    {
                         unloading += 1;
                     }
                 }
@@ -516,23 +529,34 @@ impl ActorState {
 
     /// Starts one unload job for a specific slot (`note` becomes the job outcome:
     /// "unloaded" for operator/eviction paths, "idle timeout" for the sweep).
-    pub(super) fn begin_unload_slot(&mut self, slot: usize, note: &str) {
-        let job_id = JobId(self.next_job);
-        self.next_job += 1;
-        let category = self.slots[slot].category;
-        let victim = {
-            let occupant = self.slots[slot]
-                .occupant
-                .as_ref()
-                .expect("invariant: caller checks occupant.is_some");
-            Victim {
-                model: occupant.model.clone(),
-                ticket: occupant.ticket.clone(),
-                slot,
-                evicted: false,
-                cost: occupant.need.0,
+    pub(super) fn begin_unload_slot(&mut self, slot: usize, note: &str) -> bool {
+        let (job_id, category, victim) = match self.slots.get(slot) {
+            Some(slot_state) => {
+                let Some(occupant) = slot_state.occupant.as_ref() else {
+                    tracing::error!(
+                        slot = slot_state.index,
+                        "scheduler invariant violation: an unload was asked for an empty slot"
+                    );
+                    return false;
+                };
+                let victim = Victim {
+                    model: occupant.model.clone(),
+                    ticket: occupant.ticket.clone(),
+                    slot,
+                    evicted: false,
+                    cost: occupant.need.0,
+                };
+                (JobId(self.next_job), slot_state.category, victim)
+            }
+            None => {
+                tracing::error!(
+                    slot,
+                    "scheduler invariant violation: an unload named a missing slot"
+                );
+                return false;
             }
         };
+        self.next_job += 1;
         let job = Job {
             kind: JobKind::Unload,
             // An unload row never stands before the admission gate: no rung.
@@ -579,11 +603,29 @@ impl ActorState {
             queue_fingerprint: None,
         };
         self.jobs.insert(job_id, job);
-        self.slots[slot].job = Some(job_id);
-        self.step(job_id, SwapState::Admit);
-        self.step(job_id, SwapState::Quiesce);
-        self.step(job_id, SwapState::Dispose);
-        self.spawn_kill_confirm(job_id);
+        if let Some(slot_state) = self.slots.get_mut(slot) {
+            slot_state.job = Some(job_id);
+        } else {
+            self.jobs.remove(&job_id);
+            tracing::error!(
+                slot,
+                "scheduler invariant violation: a slot vanished during unload setup"
+            );
+            return false;
+        }
+        if !self.step(job_id, SwapState::Admit)
+            || !self.step(job_id, SwapState::Quiesce)
+            || !self.step(job_id, SwapState::Dispose)
+        {
+            if let Some(slot_state) = self.slots.get_mut(slot) {
+                if slot_state.job == Some(job_id) {
+                    slot_state.job = None;
+                }
+            }
+            self.jobs.remove(&job_id);
+            return false;
+        }
+        self.spawn_kill_confirm(job_id)
     }
 
     /// The idle sweep (Step 5, tick-driven): every occupied, job-free slot whose

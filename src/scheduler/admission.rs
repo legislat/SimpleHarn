@@ -13,6 +13,15 @@ use super::{
     SwapState, Victim, Waiter,
 };
 
+enum VictimPlan {
+    Planned(Vec<Victim>),
+    NoPlan(
+        Vec<crate::budget::VictimInfo>,
+        Vec<crate::budget::BlockerInfo>,
+    ),
+    Invariant(String),
+}
+
 /// How many recent confirmed releases the wait-estimate ring keeps. Bounded by
 /// design (same posture as the log ring): the median answers a refusal, and 32
 /// confirmed releases describe recent release behavior as well as a longer
@@ -238,7 +247,15 @@ impl ActorState {
         if let Some(port) = crate::engine::ninfer::declared_internal_port(&entry) {
             if let Some(claim) = self.cfg.port_claim(port) {
                 let error = SchedulerError::Admission(AdmissionError::PortClaimed { port, claim });
-                self.slots[slot].job = Some(job_id);
+                let Some(slot_state) = self.slots.get_mut(slot) else {
+                    self.finish(
+                        job_id,
+                        Err(Self::invariant_error("the load slot exists")),
+                        "invariant",
+                    );
+                    return;
+                };
+                slot_state.job = Some(job_id);
                 self.step(job_id, SwapState::Admit);
                 self.step(job_id, SwapState::AdmitFail);
                 self.log_refusal(job_id, &error, "config");
@@ -255,7 +272,15 @@ impl ActorState {
                 Ok(ram) => (Some(Gibibytes(0.0)), Some(ram)),
                 Err(error) => {
                     let error = SchedulerError::Admission(error);
-                    self.slots[slot].job = Some(job_id);
+                    let Some(slot_state) = self.slots.get_mut(slot) else {
+                        self.finish(
+                            job_id,
+                            Err(Self::invariant_error("the load slot exists")),
+                            "invariant",
+                        );
+                        return;
+                    };
+                    slot_state.job = Some(job_id);
                     self.step(job_id, SwapState::Admit);
                     self.step(job_id, SwapState::AdmitFail);
                     self.log_refusal(job_id, &error, "need");
@@ -268,7 +293,15 @@ impl ActorState {
                 Ok(booking) => (booking, None),
                 Err(error) => {
                     let error = SchedulerError::Admission(error);
-                    self.slots[slot].job = Some(job_id);
+                    let Some(slot_state) = self.slots.get_mut(slot) else {
+                        self.finish(
+                            job_id,
+                            Err(Self::invariant_error("the load slot exists")),
+                            "invariant",
+                        );
+                        return;
+                    };
+                    slot_state.job = Some(job_id);
                     self.step(job_id, SwapState::Admit);
                     self.step(job_id, SwapState::AdmitFail);
                     self.log_refusal(job_id, &error, "need");
@@ -286,7 +319,15 @@ impl ActorState {
         // unbooked, so the RAM settle witness reads the freed bytes instead of a
         // credit this gate cannot honestly state. A VRAM row keeps the card
         // figure, unchanged.
-        let victim = self.slots[slot].occupant.as_ref().map(|o| Victim {
+        let Some(slot_state) = self.slots.get(slot) else {
+            self.finish(
+                job_id,
+                Err(Self::invariant_error("the load slot exists")),
+                "invariant",
+            );
+            return;
+        };
+        let victim = slot_state.occupant.as_ref().map(|o| Victim {
             model: o.model.clone(),
             ticket: o.ticket.clone(),
             slot,
@@ -297,21 +338,42 @@ impl ActorState {
                 o.need.0
             },
         });
-        if let Some(job) = self.jobs.get_mut(&job_id) {
-            job.need = booking;
-            job.ram_need = ram_booking;
-            job.victim = victim;
-        }
-        self.slots[slot].job = Some(job_id);
+        let Some(job) = self.jobs.get_mut(&job_id) else {
+            self.log_invariant_missing_job(job_id, "arm load booking");
+            return;
+        };
+        job.need = booking;
+        job.ram_need = ram_booking;
+        job.victim = victim;
+        let Some(slot_state) = self.slots.get_mut(slot) else {
+            self.finish(
+                job_id,
+                Err(Self::invariant_error("the load slot exists")),
+                "invariant",
+            );
+            return;
+        };
+        slot_state.job = Some(job_id);
         self.step(job_id, SwapState::Admit);
         // The gate is evaluated against the card's own
         // reading, sampled on a task — never inline in the actor, which must not stall
         // behind a witness call. The two ladders sample their own witness: a
         // CPU-resident row never reads the card (not even to
         // waste a cached sample on it), and a VRAM row never spends the host reading.
+        let Some(ram_row) = self
+            .jobs
+            .get(&job_id)
+            .map(|job| job.resource == crate::model::Resource::Ram)
+        else {
+            self.finish(
+                job_id,
+                Err(Self::invariant_error("caller holds a live job id")),
+                "invariant",
+            );
+            return;
+        };
         let witness = Arc::clone(&self.witness);
         let ram_witness = Arc::clone(&self.ram_witness);
-        let ram_row = self.jobs[&job_id].resource == crate::model::Resource::Ram;
         let tx = self.tx.clone();
         let handle = tokio::spawn(async move {
             let event = if ram_row {
@@ -321,11 +383,13 @@ impl ActorState {
             };
             let _ = tx.send(ActorMsg::Event { job: job_id, event });
         });
-        self.jobs
-            .get_mut(&job_id)
-            .expect("invariant: caller holds a live job id")
-            .tasks
-            .push(handle);
+        if !self.attach_task(job_id, handle) {
+            self.finish(
+                job_id,
+                Err(Self::invariant_error("caller holds a live job id")),
+                "invariant",
+            );
+        }
     }
 
     /// The Admit decision, once the witness sample returns. The card's own reading
@@ -348,7 +412,11 @@ impl ActorState {
         card: Option<Result<crate::budget::MemorySample, String>>,
         ram: Option<crate::witness::RamSample>,
     ) {
-        if self.jobs[&job_id].resource == crate::model::Resource::Ram {
+        let Some(resource) = self.jobs.get(&job_id).map(|job| job.resource) else {
+            self.log_invariant_missing_job(job_id, "admit decision");
+            return;
+        };
+        if resource == crate::model::Resource::Ram {
             self.finish_admit_ram(job_id, ram);
             return;
         }
@@ -377,42 +445,38 @@ impl ActorState {
                 (self.cfg.vram_total_gb, self.ledger_sum().0, None)
             }
         };
-        let declared = self.jobs[&job_id].need;
+        let Some((declared, vram_gate, job_slot, job_cost)) = self
+            .jobs
+            .get(&job_id)
+            .map(|job| (job.need, job.vram_gate, job.slot, job.cost))
+        else {
+            self.log_invariant_missing_job(job_id, "admit budget facts");
+            return;
+        };
         let need = declared.unwrap_or_default();
         // The whole determination reads only the job's gate, so it stands before
-        // the victim block: the whole posture never evicts, so the 2026-11-06
-        // release projection must not ride its `free` either (GSC-02, review
-        // 2026-11-06). The `(greedy, vram_gate)` block below keeps its own reads
-        // and must not redefine this.
-        let whole = matches!(self.jobs[&job_id].vram_gate, crate::model::VramGate::Whole);
-        let victim_need = self.jobs[&job_id]
-            .slot
-            .map(|slot| self.slots[slot].occupant.as_ref().map_or(0.0, |o| o.need.0))
-            .unwrap_or(0.0);
-        // The release PROJECTION for the same-slot victim (operator ruling
-        // 2026-11-06): a release frees what the resident physically holds, and for
-        // a greedy row the booking is the nominal `vram_gb` (DOCTRINE 12 keeps the
-        // booking at the declared cost — it does not fix what a release frees), so
-        // the booked figure can badly understate the reclaim. The honest projection
-        // is the larger of the booking and the footprint this spawn's own fold
-        // witnessed (`live_measured_gb`: spawn-ticket matched, never seeded from
-        // disk, so never a stale pair), clamped to what the card actually holds.
-        // The field incident this closes (Strata booked 12.0 / held 68.4, Basalt
-        // floor 60 refused): the swap physically fit and died on paper anyway.
-        // The projection rides the NON-whole credit only (GSC-02): the whole
-        // posture never evicts, so its `free` and its `unreleasable` arm stay on
-        // the booking.
-        let victim_release = self.jobs[&job_id]
-            .slot
-            .map(|slot| {
-                self.slots[slot].occupant.as_ref().map_or(0.0, |o| {
-                    o.need
-                        .0
-                        .max(o.live_measured_gb.unwrap_or(0.0))
-                        .min(occupied)
-                })
-            })
-            .unwrap_or(0.0);
+        // the victim block: the whole posture never evicts, so the release
+        // projection must not ride its `free` either. The greedy block below
+        // uses these same reads and must not redefine them.
+        let whole = matches!(vram_gate, crate::model::VramGate::Whole);
+        let victim_need = job_slot
+            .and_then(|slot| self.slots.get(slot))
+            .and_then(|slot| slot.occupant.as_ref())
+            .map_or(0.0, |o| o.need.0);
+        // The release projection for the same-slot victim: a release frees what the
+        // resident physically holds, and a greedy booking can understate it. The
+        // projection is the larger of the booking and the folded footprint, clamped
+        // to the occupied figure. It rides the non-whole credit only: a whole row
+        // replaces its named occupant but never spends a projection for its wait.
+        let victim_release = job_slot
+            .and_then(|slot| self.slots.get(slot))
+            .and_then(|slot| slot.occupant.as_ref())
+            .map_or(0.0, |o| {
+                o.need
+                    .0
+                    .max(o.live_measured_gb.unwrap_or(0.0))
+                    .min(occupied)
+            });
         // One figure per posture: a `whole` row waits and replaces nothing beyond
         // its named occupant's booking, so it never spends a projection; every
         // other posture credits the projected release.
@@ -440,10 +504,7 @@ impl ActorState {
             job.observed_at_admit = observed_free;
         }
         self.set_timing(job_id, |t| &mut t.admit_ms);
-        let (greedy, vram_gate) = {
-            let job = &self.jobs[&job_id];
-            (job.cost == crate::model::CostClass::Greedy, job.vram_gate)
-        };
+        let greedy = job_cost == crate::model::CostClass::Greedy;
         // Launch floor: the model's numeric key, else the global greedy
         // default — a greedy quant spawned onto a card already busy with
         // foreign processes thrashes RAM/SSD for minutes before serving.
@@ -496,7 +557,13 @@ impl ActorState {
         // explicit same-slot replacement still re-gates on the physical card
         // after its release ([`ActorState::spawn_settle_task`]).
         if whole {
-            let required = floor.expect("invariant: the whole gate always carries its auto floor");
+            let Some(required) = floor else {
+                self.step(job_id, SwapState::AdmitFail);
+                let error = Self::invariant_error("the whole gate always carries its auto floor");
+                self.log_refusal(job_id, &error, "gate");
+                self.finish(job_id, Err(error), "invariant");
+                return;
+            };
             let holders = self.whole_machine_holders(job_id);
             if free.0 < required || !holders.is_empty() {
                 self.step(job_id, SwapState::AdmitFail);
@@ -562,23 +629,31 @@ impl ActorState {
             // machine leg, so the planner provably has no candidate to find —
             // and must never be asked: the whole gate never evicts.
             let planned = if whole {
-                Err((Vec::new(), Vec::new()))
+                VictimPlan::NoPlan(Vec::new(), Vec::new())
             } else {
                 self.plan_victims(job_id, deficit)
             };
             match planned {
-                Ok(victims) => {
+                VictimPlan::Planned(victims) => {
+                    let names: Vec<String> = victims.iter().map(|v| v.model.clone()).collect();
                     if let Some(job) = self.jobs.get_mut(&job_id) {
                         job.victims = victims;
                     }
                     tracing::info!(
                         %job_id,
-                        victims = ?self.jobs[&job_id].victims.iter().map(|v| &v.model).collect::<Vec<_>>(),
+                        victims = ?names,
                         deficit_gib = deficit,
                         "admission short: evicting victims"
                     );
                 }
-                Err((considered, blockers)) => {
+                VictimPlan::Invariant(reason) => {
+                    self.step(job_id, SwapState::AdmitFail);
+                    let error = Self::invariant_error(&reason);
+                    self.log_refusal(job_id, &error, "planner");
+                    self.finish(job_id, Err(error), "invariant");
+                    return;
+                }
+                VictimPlan::NoPlan(considered, blockers) => {
                     // Row-10 guard (RULED 2026-11-01): when NO release the harness
                     // may perform reaches the floor, refuse BEFORE any kill —
                     // "no releases allow for the VRAM floor - check foreign
@@ -608,10 +683,21 @@ impl ActorState {
                     // queued here: the planner found no sufficient set, and nothing
                     // beyond the already-doomed resident may be killed on a paper
                     // decision.
-                    if !no_releases_reach
-                        && self.jobs[&job_id].victim.is_some()
-                        && !self.jobs[&job_id].release_first
-                    {
+                    let Some((has_victim, release_first, has_slot)) = self
+                        .jobs
+                        .get(&job_id)
+                        .map(|job| (job.victim.is_some(), job.release_first, job.slot.is_some()))
+                    else {
+                        self.finish(
+                            job_id,
+                            Err(Self::invariant_error(
+                                "the load row exists while covering a deficit",
+                            )),
+                            "invariant",
+                        );
+                        return;
+                    };
+                    if !no_releases_reach && has_victim && !release_first {
                         if let Some(job) = self.jobs.get_mut(&job_id) {
                             job.release_first = true;
                         }
@@ -622,10 +708,10 @@ impl ActorState {
                         );
                     } else if in_flight > 0.0
                         && deficit <= in_flight
-                        && self.jobs[&job_id].victim.is_none()
+                        && !has_victim
                         && considered.is_empty()
                         && !no_releases_reach
-                        && self.jobs[&job_id].slot.is_some()
+                        && has_slot
                     {
                         // Operator 2026-11-10: the deficit is covered
                         // ONLY by other loads' paper bookings - no same-slot
@@ -662,13 +748,13 @@ impl ActorState {
                         // rolling median of our own measured releases, never a
                         // promise — see [`ActorState::wait_hint`]).
                         let wait_hint = self.wait_hint(job_id);
-                        let error = if (floor_deficit > 0.0 && floor_deficit >= need_deficit)
-                            || no_releases_reach
-                        {
-                            AdmissionError::BelowLaunchFloor {
-                                min_free: Gibibytes(floor.expect(
-                                    "invariant: floor_deficit > 0 implies a configured floor",
-                                )),
+                        let error = match (
+                            (floor_deficit > 0.0 && floor_deficit >= need_deficit)
+                                || no_releases_reach,
+                            floor,
+                        ) {
+                            (true, Some(min_free)) => AdmissionError::BelowLaunchFloor {
+                                min_free: Gibibytes(min_free),
                                 // G13: the figure the gate actually compared.
                                 free,
                                 reserve,
@@ -677,9 +763,16 @@ impl ActorState {
                                 blockers,
                                 no_releases_reach,
                                 wait_hint,
+                            },
+                            (true, None) => {
+                                let error = Self::invariant_error(
+                                    "a floor refusal must carry its configured floor",
+                                );
+                                self.log_refusal(job_id, &error, "gate");
+                                self.finish(job_id, Err(error), "invariant");
+                                return;
                             }
-                        } else {
-                            AdmissionError::Insufficient {
+                            (false, _) => AdmissionError::Insufficient {
                                 need,
                                 // G13: the compared figure, never the flattering one.
                                 free,
@@ -688,7 +781,7 @@ impl ActorState {
                                 victims_considered: considered,
                                 blockers,
                                 wait_hint,
-                            }
+                            },
                         };
                         self.log_refusal(job_id, &SchedulerError::Admission(error.clone()), "gate");
                         self.finish(
@@ -707,12 +800,12 @@ impl ActorState {
         // be gone before spawn). Never its offload-able nominal size (starves the
         // card) and never zero when it will hold real VRAM (under-books the gate).
         if greedy {
-            let planned_room = free.0
-                + self.jobs[&job_id]
-                    .victims
-                    .iter()
-                    .map(|v| v.cost)
-                    .sum::<f64>();
+            let victim_cost: f64 = self
+                .jobs
+                .get(&job_id)
+                .map(|job| job.victims.iter().map(|v| v.cost).sum())
+                .unwrap_or(0.0);
+            let planned_room = free.0 + victim_cost;
             let booked = declared
                 .map_or(planned_room, |n| n.0.min(planned_room))
                 .max(0.0);
@@ -729,9 +822,12 @@ impl ActorState {
         // The rung derivation and the release-or-spawn commit are the shared
         // admitted tail — the gate leg above only proved the numbers.
         if crate::observability::extended_logging() {
-            // Decision-level evidence for rehearsal post-checks (operator,
-            // 2026-10-26): the exact numbers the gate compared on the pass path.
-            let job = &self.jobs[&job_id];
+            // Decision-level evidence for rehearsal post-checks: the exact numbers
+            // the gate compared on the pass path.
+            let Some(job) = self.jobs.get(&job_id) else {
+                self.log_invariant_missing_job(job_id, "admission decision log");
+                return;
+            };
             tracing::info!(
                 %job_id,
                 model = %job.model,
@@ -760,17 +856,25 @@ impl ActorState {
     /// rung (B6: the decision quotes its rung, the numbers stay where they
     /// already live).
     fn finish_admit_tail(&mut self, job_id: JobId) {
-        let path = if self.jobs[&job_id].release_first {
+        let Some((release_first, no_victims, no_reclaim, model, category)) =
+            self.jobs.get(&job_id).map(|job| {
+                (
+                    job.release_first,
+                    job.victims.is_empty(),
+                    job.reclaim.victims.is_empty(),
+                    job.model.clone(),
+                    job.category,
+                )
+            })
+        else {
+            self.log_invariant_missing_job(job_id, "admission tail");
+            return;
+        };
+        let path = if release_first {
             AdmissionPath::ReleaseFirst
-        } else if self.jobs[&job_id].victims.is_empty()
-            && self.jobs[&job_id].reclaim.victims.is_empty()
-        {
+        } else if no_victims && no_reclaim {
             AdmissionPath::FitsNow
         } else {
-            // A reclaim-only drain is this rung too: the eviction planner
-            // (here, the expert-offload arm) queued cross-category victims
-            // and the load admitted to drain them (operator ruling
-            // 2026-11-06) — the rung says exactly that, no new vocabulary.
             AdmissionPath::Drain
         };
         if let Some(job) = self.jobs.get_mut(&job_id) {
@@ -779,37 +883,48 @@ impl ActorState {
         tracing::info!(
             %job_id,
             path = ?path,
-            model = %self.jobs[&job_id].model,
-            category = ?self.jobs[&job_id].category,
+            model = %model,
+            category = ?category,
             "admission path"
         );
-        // Chunk 10 [2]: everything the adapter validates about a launch — required
-        // keys, profile/interpreter existence, WSL word and container legality — must
-        // be settled *before* the eviction. Run after Dispose it would destroy the
-        // resident model and every victim, then refuse, leaving an empty slot and
-        // work nobody can un-kill. Read-only, so a refusal here changes nothing.
+        // The adapter validates the launch before any eviction. If it refuses,
+        // the resident model and every victim must survive unchanged.
         if let Err(error) = self.preflight_spec(job_id) {
             self.step(job_id, SwapState::AdmitFail);
             self.log_refusal(job_id, &error, "launch");
             self.finish(job_id, Err(error), "launch refused");
             return;
         }
-        self.step(job_id, SwapState::Quiesce);
-        self.step(job_id, SwapState::Dispose);
-        // Ensure a release target: the same-slot replacement first, else the first
-        // queued cross-category victim, else the first queued reclaim victim
-        // (reclaim drains after the deficit queue).
-        if self.jobs[&job_id].victim.is_none() && !self.dequeue_victim(job_id) {
+        if !self.step(job_id, SwapState::Quiesce) || !self.step(job_id, SwapState::Dispose) {
+            return;
+        }
+        if self
+            .jobs
+            .get(&job_id)
+            .is_some_and(|job| job.victim.is_none())
+            && !self.dequeue_victim(job_id)
+        {
             self.dequeue_reclaim_victim(job_id);
         }
-        if self.jobs[&job_id].victim.is_some() {
-            // The release is committed and its wait is about to open: warm
-            // the incoming model's files for the reload that follows
-            // (knob-gated, detached, never able to change this job's path).
+        if self
+            .jobs
+            .get(&job_id)
+            .is_some_and(|job| job.victim.is_some())
+        {
             self.start_release_prefetch(job_id);
-            self.spawn_kill_confirm(job_id);
-        } else {
-            self.begin_spawn(job_id);
+            if !self.spawn_kill_confirm(job_id) {
+                self.finish(
+                    job_id,
+                    Err(Self::invariant_error("release task follows admission")),
+                    "invariant",
+                );
+            }
+        } else if !self.begin_spawn(job_id) {
+            self.finish(
+                job_id,
+                Err(Self::invariant_error("begin spawn after admission")),
+                "invariant",
+            );
         }
     }
 
@@ -841,7 +956,14 @@ impl ActorState {
             self.finish(job_id, Err(error), "ram witness down");
             return;
         };
-        let need = self.jobs[&job_id].ram_need.unwrap_or_default();
+        let Some((need, job_slot)) = self
+            .jobs
+            .get(&job_id)
+            .map(|job| (job.ram_need.unwrap_or_default(), job.slot))
+        else {
+            self.log_invariant_missing_job(job_id, "ram admit decision");
+            return;
+        };
         let reserve = Gibibytes(self.cfg.ram_reserve_gb);
         // Defense in depth (the card leg's rule, mirrored): a NaN need would
         // make every comparison false and read as "fits".
@@ -858,13 +980,11 @@ impl ActorState {
         // anywhere, it rides the reading). What other loads have committed to
         // RAM but not yet installed is debited, or two concurrent loads spend
         // the same host GiB.
-        let same_slot_credit = self.jobs[&job_id].slot.map_or(0.0, |slot| {
-            self.slots[slot]
-                .occupant
-                .as_ref()
-                .and_then(|o| o.ram_need)
-                .map_or(0.0, |n| n.0)
-        });
+        let same_slot_credit = job_slot
+            .and_then(|slot| self.slots.get(slot))
+            .and_then(|slot| slot.occupant.as_ref())
+            .and_then(|o| o.ram_need)
+            .map_or(0.0, |n| n.0);
         let in_flight = self.ram_in_flight_need(job_id);
         let free = Gibibytes(
             sample.total_gib - self.cfg.ram_reserve_gb - sample.used_gib + same_slot_credit
@@ -888,18 +1008,26 @@ impl ActorState {
             // residents through the unchanged release path, never a GPU
             // resident — its host RAM rides the reading, uncontrolled.
             match self.plan_victims(job_id, need.0 - free.0) {
-                Ok(victims) => {
+                VictimPlan::Planned(victims) => {
+                    let names: Vec<String> = victims.iter().map(|v| v.model.clone()).collect();
                     if let Some(job) = self.jobs.get_mut(&job_id) {
                         job.victims = victims;
                     }
                     tracing::info!(
                         %job_id,
-                        victims = ?self.jobs[&job_id].victims.iter().map(|v| &v.model).collect::<Vec<_>>(),
+                        victims = ?names,
                         deficit_gib = need.0 - free.0,
                         "ram admission short: evicting RAM victims"
                     );
                 }
-                Err((considered, blockers)) => {
+                VictimPlan::Invariant(reason) => {
+                    self.step(job_id, SwapState::AdmitFail);
+                    let error = Self::invariant_error(&reason);
+                    self.log_refusal(job_id, &error, "planner");
+                    self.finish(job_id, Err(error), "invariant");
+                    return;
+                }
+                VictimPlan::NoPlan(considered, blockers) => {
                     self.step(job_id, SwapState::AdmitFail);
                     // R3 mirrored on the RAM leg: the RAM no eviction can
                     // reclaim is the host reading minus the same-slot credit
@@ -940,7 +1068,10 @@ impl ActorState {
             }
         }
         if crate::observability::extended_logging() {
-            let job = &self.jobs[&job_id];
+            let Some(job) = self.jobs.get(&job_id) else {
+                self.log_invariant_missing_job(job_id, "ram admission decision log");
+                return;
+            };
             tracing::info!(
                 %job_id,
                 model = %job.model,
@@ -989,9 +1120,16 @@ impl ActorState {
     /// (`in_flight > 0`) fails and the ordinary named `AdmitFail` runs — the
     /// wait therefore cannot swallow a real refusal or spin forever.
     fn park_short_on_in_flight_bookings(&mut self, job_id: JobId, deficit: f64, in_flight: f64) {
-        let slot = self.jobs[&job_id]
-            .slot
-            .expect("invariant: the park arm checked the row has a slot");
+        let Some(slot) = self.jobs.get(&job_id).and_then(|job| job.slot) else {
+            self.finish(
+                job_id,
+                Err(Self::invariant_error(
+                    "the park arm checked the row has a slot",
+                )),
+                "invariant",
+            );
+            return;
+        };
         let booked: Vec<String> = self
             .jobs
             .iter()
@@ -1005,8 +1143,10 @@ impl ActorState {
             .map(|(_, job)| format!("{} ({:.1} GiB)", job.model, job.need.map_or(0.0, |n| n.0)))
             .collect();
         self.step(job_id, SwapState::Idle);
-        if self.slots[slot].job == Some(job_id) {
-            self.slots[slot].job = None;
+        if let Some(slot_state) = self.slots.get_mut(slot) {
+            if slot_state.job == Some(job_id) {
+                slot_state.job = None;
+            }
         }
         // A row armed on a slot holds no queue place there by construction
         // (every arm path removes it first). A stale one would strand its
@@ -1025,10 +1165,16 @@ impl ActorState {
             }
         }
         self.pending.insert(slot, job_id);
+        let model = self
+            .jobs
+            .get(&job_id)
+            .map(|job| job.model.clone())
+            .unwrap_or_default();
+        let slot_index = self.slots.get(slot).map(|slot| slot.index).unwrap_or(slot);
         tracing::info!(
             %job_id,
-            model = %self.jobs[&job_id].model,
-            slot = self.slots[slot].index,
+            %model,
+            slot = slot_index,
             deficit_gib = deficit,
             in_flight_gib = in_flight,
             in_flight_models = ?booked,
@@ -1052,7 +1198,9 @@ impl ActorState {
     /// `None` until the first driver-confirmed release: the estimate is then
     /// absent from the refusal, never invented from a default.
     pub(super) fn wait_hint(&self, refused: JobId) -> WaitHint {
-        let category = self.jobs[&refused].category;
+        let Some(category) = self.jobs.get(&refused).map(|job| job.category) else {
+            return WaitHint::default();
+        };
         let ahead = self
             .jobs
             .iter()
@@ -1080,7 +1228,7 @@ impl ActorState {
     /// reason "whole machine requested"; a foreign resident the harness
     /// cannot name rides the `unreleasable` figure instead.
     fn whole_machine_holders(&self, job_id: JobId) -> Vec<crate::budget::BlockerInfo> {
-        let own_slot = self.jobs[&job_id].slot;
+        let own_slot = self.jobs.get(&job_id).and_then(|job| job.slot);
         let mut holders = Vec::new();
         for (index, slot) in self.slots.iter().enumerate() {
             if Some(index) == own_slot {
@@ -1133,24 +1281,18 @@ impl ActorState {
     /// is named as an uncontrolled blocker but never considered. The
     /// `evictable_by` matrix stays category-scoped and resource-agnostic.
     /// Release order: least-protected first, LRU within a category.
-    fn plan_victims(
-        &self,
-        job_id: JobId,
-        deficit: f64,
-    ) -> Result<
-        Vec<Victim>,
-        (
-            Vec<crate::budget::VictimInfo>,
-            Vec<crate::budget::BlockerInfo>,
-        ),
-    > {
-        let load_category = self.jobs[&job_id].category;
-        let job_slot = self.jobs[&job_id].slot;
+    fn plan_victims(&self, job_id: JobId, deficit: f64) -> VictimPlan {
+        let Some((load_category, job_slot, planned)) = self
+            .jobs
+            .get(&job_id)
+            .map(|job| (job.category, job.slot, job.resource))
+        else {
+            return VictimPlan::Invariant("the load row exists while planning victims".to_string());
+        };
         // The one resource this job is short on: a Ram row deficits its
         // `ram_need`, every other row the card. The filter below is derived
         // from the row, so the two arms of the gate can never ask the planner
         // for the other ladder's bytes.
-        let planned = self.jobs[&job_id].resource;
         let evictable_by = |category: CategoryId| {
             self.cfg
                 .categories
@@ -1254,7 +1396,7 @@ impl ActorState {
         }
         let n = candidates.len();
         if n == 0 {
-            return Err((considered, blockers));
+            return VictimPlan::NoPlan(considered, blockers);
         }
         // Exhaustive cheapest covering subset (n ≤ 9 slots → ≤512 masks).
         //
@@ -1290,42 +1432,48 @@ impl ActorState {
             }
         }
         let Some(mask) = best else {
-            return Err((considered, blockers));
+            return VictimPlan::NoPlan(considered, blockers);
         };
         // Release order: least-protected first (more categories may evict it),
         // LRU within the same protection level.
         let mut chosen: Vec<usize> = (0..n).filter(|bit| mask & (1 << bit) != 0).collect();
         chosen.sort_by(|&a, &b| {
             let (slot_a, slot_b) = (candidates[a].0, candidates[b].0);
-            let prot = |index: usize| evictable_by(self.slots[index].category).len();
+            let prot = |index: usize| {
+                self.slots
+                    .get(index)
+                    .map(|slot| evictable_by(slot.category).len())
+                    .unwrap_or(0)
+            };
             prot(slot_b).cmp(&prot(slot_a)).then_with(|| {
                 let lru = |index: usize| {
-                    self.slots[index]
-                        .occupant
-                        .as_ref()
+                    self.slots
+                        .get(index)
+                        .and_then(|slot| slot.occupant.as_ref())
                         .map_or(Instant::now(), |o| o.loaded_at)
                 };
                 lru(slot_a).cmp(&lru(slot_b))
             })
         });
-        let victims = chosen
-            .into_iter()
-            .map(|bit| {
-                let (index, freed, _) = candidates[bit];
-                let occupant = self.slots[index]
-                    .occupant
-                    .as_ref()
-                    .expect("invariant: candidates come from live occupants");
-                Victim {
-                    model: occupant.model.clone(),
-                    ticket: occupant.ticket.clone(),
-                    slot: index,
-                    evicted: true,
-                    cost: freed,
-                }
-            })
-            .collect();
-        Ok(victims)
+        let mut victims = Vec::with_capacity(chosen.len());
+        for bit in chosen {
+            let (index, freed, _) = candidates[bit];
+            let Some(occupant) = self
+                .slots
+                .get(index)
+                .and_then(|slot| slot.occupant.as_ref())
+            else {
+                return VictimPlan::Invariant("candidates come from live occupants".to_string());
+            };
+            victims.push(Victim {
+                model: occupant.model.clone(),
+                ticket: occupant.ticket.clone(),
+                slot: index,
+                evicted: true,
+                cost: freed,
+            });
+        }
+        VictimPlan::Planned(victims)
     }
 
     /// Moves the next queued victim into the release slot; `false` when the queue
@@ -1381,16 +1529,20 @@ impl ActorState {
     /// greedy booking must never see host GiB credited as VRAM.
     fn plan_expert_offload_reclaim(&mut self, job_id: JobId) {
         let threshold = self.cfg.expert_offload_evict_cpu_above_gb;
-        let (greedy, card_ladder, expert, own_slot, load_category, release_first) = {
-            let job = &self.jobs[&job_id];
-            (
-                job.cost == crate::model::CostClass::Greedy,
-                job.resource == crate::model::Resource::Gpu,
-                crate::engine::policy::expert_offload_engine(&job.engine),
-                job.slot,
-                job.category,
-                job.release_first,
-            )
+        let Some((greedy, card_ladder, expert, own_slot, load_category, release_first)) =
+            self.jobs.get(&job_id).map(|job| {
+                (
+                    job.cost == crate::model::CostClass::Greedy,
+                    job.resource == crate::model::Resource::Gpu,
+                    crate::engine::policy::expert_offload_engine(&job.engine),
+                    job.slot,
+                    job.category,
+                    job.release_first,
+                )
+            })
+        else {
+            self.log_invariant_missing_job(job_id, "expert reclaim plan");
+            return;
         };
         // A release-first admission has not passed the gate yet — its spawn
         // is parked on the physical re-gate, and a kill made before that
@@ -1491,7 +1643,11 @@ impl ActorState {
             .iter()
             .map(|(model, reason)| format!("{model}: {reason}"))
             .collect();
-        let model = self.jobs[&job_id].model.clone();
+        let model = self
+            .jobs
+            .get(&job_id)
+            .map(|job| job.model.clone())
+            .unwrap_or_default();
         if let Some(job) = self.jobs.get_mut(&job_id) {
             job.reclaim.victims = victims;
             job.reclaim.skipped = skipped;

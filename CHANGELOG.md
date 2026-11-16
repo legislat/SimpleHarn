@@ -17,6 +17,14 @@ three-part (see `docs/process/GIT_WORKFLOW.md`).
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
+## Unreleased
+
+### Changed
+
+- Scheduler invariant violations now answer the refused command with `500`
+  `invariant_violation` instead of stopping the actor. The client receives
+  generic wording, while the detailed reason stays in the harness log.
+
 ## v1.5.1.6 - 2026-11-16
 
 ### Added

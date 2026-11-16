@@ -869,9 +869,10 @@ impl ActorState {
         // An amber the rescan earned says the row and the process diverged:
         // the fold still records what the process holds, but the booking
         // gesture is unload + reload, never a re-read of a stale row.
-        if self.slots[slot]
-            .occupant
-            .as_ref()
+        if self
+            .slots
+            .get(slot)
+            .and_then(|slot| slot.occupant.as_ref())
             .is_some_and(|o| o.stale_config)
         {
             return false;
@@ -894,7 +895,11 @@ impl ActorState {
         let Ok(Some(need)) = Self::booking_need(entry) else {
             return false;
         };
-        let Some(occupant) = self.slots[slot].occupant.as_mut() else {
+        let Some(occupant) = self
+            .slots
+            .get_mut(slot)
+            .and_then(|slot| slot.occupant.as_mut())
+        else {
             return false;
         };
         if occupant.need == need {
@@ -1077,9 +1082,10 @@ impl ActorState {
         // An amber the rescan earned says the row and the process diverged: the
         // fold still records what the process holds, but the booking gesture is
         // unload + reload, never a re-read of a stale row.
-        if self.slots[slot]
-            .occupant
-            .as_ref()
+        if self
+            .slots
+            .get(slot)
+            .and_then(|slot| slot.occupant.as_ref())
             .is_some_and(|o| o.stale_config)
         {
             return false;
@@ -1105,7 +1111,11 @@ impl ActorState {
         let Ok(need) = Self::ram_booking(entry) else {
             return false;
         };
-        let Some(occupant) = self.slots[slot].occupant.as_mut() else {
+        let Some(occupant) = self
+            .slots
+            .get_mut(slot)
+            .and_then(|slot| slot.occupant.as_mut())
+        else {
             return false;
         };
         let Some(booked) = occupant.ram_need else {

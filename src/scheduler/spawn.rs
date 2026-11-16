@@ -38,19 +38,28 @@ impl ActorState {
     /// witness and `ram_reserve_gb` — in [`Self::spawn_ram_settle_task`]; comparing
     /// it against a VRAM target would block a CPU load behind the very card the RAM
     /// ladder rules out.
-    pub(super) fn spawn_settle_task(&mut self, job_id: JobId) {
-        if self.jobs[&job_id].resource == crate::model::Resource::Ram {
-            self.spawn_ram_settle_task(job_id);
-            return;
+    pub(super) fn spawn_settle_task(&mut self, job_id: JobId) -> bool {
+        let Some(resource) = self.jobs.get(&job_id).map(|job| job.resource) else {
+            self.log_invariant_missing_job(job_id, "settle task");
+            return false;
+        };
+        if resource == crate::model::Resource::Ram {
+            return self.spawn_ram_settle_task(job_id);
         }
         let tolerance = self.cfg.witness_tolerance_gb;
         let reserve = self.cfg.vram_reserve_gb;
-        let gate = self.jobs[&job_id].gate_target.unwrap_or(0.0);
+        let Some((gate, model)) = self
+            .jobs
+            .get(&job_id)
+            .map(|job| (job.gate_target.unwrap_or(0.0), job.model.clone()))
+        else {
+            self.log_invariant_missing_job(job_id, "card settle task");
+            return false;
+        };
         // The figure the window actually compares: the planned gate plus the reserve
         // band the admit-time gate subtracted, so the swap path keeps the same guard
         // band as the no-release path.
         let required = gate + reserve;
-        let model = self.jobs[&job_id].model.clone();
         let deadline = Duration::from_secs(self.cfg.settle_timeout_s);
         let ledger_only = self.witness.ledger_only();
         let witness = Arc::clone(&self.witness);
@@ -135,11 +144,7 @@ impl ActorState {
                 tokio::time::sleep(PROBE_INTERVAL).await;
             }
         });
-        self.jobs
-            .get_mut(&job_id)
-            .expect("invariant: caller holds a live job id")
-            .tasks
-            .push(handle);
+        self.attach_task(job_id, handle)
     }
 
     /// Memory evidence on the RAM ladder: after a **confirmed** Ram release,
@@ -157,15 +162,21 @@ impl ActorState {
     /// window expires — fail-closed, exactly as the card window above (there is
     /// no ledger-only mode for RAM). Windows returns physical pages at process
     /// exit, so the window is short in practice; the discipline is the point.
-    fn spawn_ram_settle_task(&mut self, job_id: JobId) {
+    fn spawn_ram_settle_task(&mut self, job_id: JobId) -> bool {
+        let Some((gate, model)) = self
+            .jobs
+            .get(&job_id)
+            .map(|job| (job.gate_target.unwrap_or(0.0), job.model.clone()))
+        else {
+            self.log_invariant_missing_job(job_id, "RAM settle task");
+            return false;
+        };
         let tolerance = self.cfg.witness_tolerance_gb;
         let reserve = self.cfg.ram_reserve_gb;
-        let gate = self.jobs[&job_id].gate_target.unwrap_or(0.0);
         // The figure the window actually compares: the planned RAM need plus the
         // reserve band the admit-time gate subtracted, so the swap path keeps the
         // same guard band as the no-release RAM path.
         let required = gate + reserve;
-        let model = self.jobs[&job_id].model.clone();
         let deadline = Duration::from_secs(self.cfg.settle_timeout_s);
         let ram_witness = Arc::clone(&self.ram_witness);
         let tx = self.tx.clone();
@@ -235,11 +246,7 @@ impl ActorState {
                 tokio::time::sleep(PROBE_INTERVAL).await;
             }
         });
-        self.jobs
-            .get_mut(&job_id)
-            .expect("invariant: caller holds a live job id")
-            .tasks
-            .push(handle);
+        self.attach_task(job_id, handle)
     }
 
     /// The engine port the slot plan assigned to this job's slot (Step 8/11).
@@ -247,7 +254,8 @@ impl ActorState {
         self.jobs
             .get(&job_id)
             .and_then(|job| job.slot)
-            .map_or(0, |slot| self.slots[slot].engine_port)
+            .and_then(|slot| self.slots.get(slot))
+            .map_or(0, |slot| slot.engine_port)
     }
 
     /// Read-only launch preparation for a live job: adapter lookup, catalog lookup,
@@ -278,12 +286,13 @@ impl ActorState {
         &self,
         job_id: JobId,
     ) -> Result<(LaunchSpec, ModelEntry), SchedulerError> {
-        let (engine, model) = {
-            let job = self
-                .jobs
-                .get(&job_id)
-                .expect("invariant: callers hold live job ids");
-            (job.engine.clone(), job.model.clone())
+        let Some((engine, model)) = self
+            .jobs
+            .get(&job_id)
+            .map(|job| (job.engine.clone(), job.model.clone()))
+        else {
+            self.log_invariant_missing_job(job_id, "launch preflight");
+            return Err(Self::invariant_error("callers hold live job ids"));
         };
         // The adapter's platform list is a compiled-in property. A row whose
         // engine does not run on this host refuses here, before any eviction,
@@ -314,25 +323,23 @@ impl ActorState {
 
     /// `Dispose -> Spawn` edge (G12): only called after release is confirmed, or when
     /// there was nothing to release.
-    pub(super) fn begin_spawn(&mut self, job_id: JobId) {
-        self.step(job_id, SwapState::Spawn);
+    pub(super) fn begin_spawn(&mut self, job_id: JobId) -> bool {
+        if !self.step(job_id, SwapState::Spawn) {
+            return false;
+        }
         let engine_port = self.slot_engine_port(job_id);
         let spawn_error = |reason: String| Event::Spawned(Err(SpawnError::SpawnFailed { reason }));
         let (spec, entry) = match self.preflight_spec(job_id) {
             Ok(launch) => launch,
             Err(error) => {
-                // The `Spawn` arm already reads like a spawn failure; anything else
-                // (an adapter refusal) is quoted verbatim, as before.
                 let reason = match &error {
                     SchedulerError::Spawn(reason) => reason.clone(),
                     other => other.to_string(),
                 };
                 self.on_event(job_id, spawn_error(reason));
-                return;
+                return true;
             }
         };
-        // The provenance type carries the container identity (review, 2026-10-26):
-        // the runtime reaps by the ticket's label, never by re-reading the spec.
         let kind = match &spec.container {
             Some(name) => ResourceKind::Container { name: name.clone() },
             None => ResourceKind::ChildProcess,
@@ -344,19 +351,16 @@ impl ActorState {
             port: engine_port,
         };
         self.next_gen += 1;
-        {
-            let job = self
-                .jobs
-                .get_mut(&job_id)
-                .expect("invariant: caller holds a live job id");
-            job.spawned = Some(ticket.clone());
-            job.readiness = Some(spec.readiness.clone());
-            job.container = spec.container.clone();
-            // The measured anchor is taken from the same entry the argv above was
-            // built from, in the same actor turn: what the fold may later say about
-            // this process is fixed here, and no `reload()` can move it.
-            job.measured = Some(MeasuredAnchor::at_spawn(&entry));
-        }
+        let Some(job) = self.jobs.get_mut(&job_id) else {
+            self.log_invariant_missing_job(job_id, "spawn provenance stamp");
+            return false;
+        };
+        job.spawned = Some(ticket.clone());
+        job.readiness = Some(spec.readiness.clone());
+        job.container = spec.container.clone();
+        // The measured anchor is taken from the same entry the launch came from,
+        // in this actor turn: a later reload cannot move the spawn's basis.
+        job.measured = Some(MeasuredAnchor::at_spawn(&entry));
         let tx = self.tx.clone();
         let runtime = Arc::clone(&self.runtime);
         let handle = tokio::spawn(async move {
@@ -365,27 +369,28 @@ impl ActorState {
                 event: Event::Spawned(runtime.spawn(&spec, ticket).await),
             });
         });
-        self.jobs
-            .get_mut(&job_id)
-            .expect("invariant: caller holds a live job id")
-            .tasks
-            .push(handle);
+        self.attach_task(job_id, handle)
     }
 
     /// Readiness loop as a task; sends exactly one terminal event (Step 7 + §0.3).
-    pub(super) fn spawn_probe_task(&mut self, job_id: JobId, port: u16) {
-        let readiness = self.jobs[&job_id]
-            .readiness
-            .clone()
-            .expect("invariant: readiness is set when a spawn exists");
+    pub(super) fn spawn_probe_task(&mut self, job_id: JobId, port: u16) -> bool {
+        let Some((readiness, container, load_timeout_s)) = self.jobs.get(&job_id).map(|job| {
+            (
+                job.readiness.clone(),
+                job.container.clone(),
+                job.load_timeout_s.unwrap_or(self.cfg.load_timeout_s),
+            )
+        }) else {
+            self.log_invariant_missing_job(job_id, "readiness task");
+            return false;
+        };
+        let Some(readiness) = readiness else {
+            tracing::error!(%job_id, "scheduler invariant violation: readiness is set when a spawn exists");
+            return false;
+        };
         let tx = self.tx.clone();
         let runtime = Arc::clone(&self.runtime);
-        let container = self.jobs[&job_id].container.clone();
-        let deadline = Duration::from_secs(
-            self.jobs[&job_id]
-                .load_timeout_s
-                .unwrap_or(self.cfg.load_timeout_s),
-        );
+        let deadline = Duration::from_secs(load_timeout_s);
         let handle = tokio::spawn(async move {
             let started = Instant::now();
             let mut discovered = None;
@@ -433,11 +438,7 @@ impl ActorState {
                 event: Event::Probed(terminal, discovered),
             });
         });
-        self.jobs
-            .get_mut(&job_id)
-            .expect("invariant: caller holds a live job id")
-            .tasks
-            .push(handle);
+        self.attach_task(job_id, handle)
     }
 
     /// Whether a reap error on one target should abort the whole reap.
@@ -522,14 +523,12 @@ impl ActorState {
 
     /// Kill every process this job owns (its pending victim and its own spawn) and
     /// confirm release with evidence, inside `release_timeout_s` (G12).
-    pub(super) fn spawn_kill_confirm(&mut self, job_id: JobId) {
-        // Both targets, never one chosen by preference. `job.victim` is only ever
-        // assigned (when a victim is queued or dequeued) and never cleared, so the old
-        // `match job.victim.as_ref()` re-killed a victim that had already been released
-        // and never killed the engine this job had itself started — leaving it holding
-        // the card and its port while the slot read empty (review CRITICAL, 2026-10-27).
+    pub(super) fn spawn_kill_confirm(&mut self, job_id: JobId) -> bool {
+        let Some(job) = self.jobs.get(&job_id) else {
+            self.log_invariant_missing_job(job_id, "release task");
+            return false;
+        };
         let targets: Vec<Victim> = {
-            let job = &self.jobs[&job_id];
             let mut targets: Vec<Victim> = Vec::with_capacity(2);
             if let Some(victim) = job.victim.clone() {
                 targets.push(victim);
@@ -554,7 +553,7 @@ impl ActorState {
                 %job_id,
                 "nothing to reap: release phase with neither a victim nor a spawn"
             );
-            return;
+            return true;
         }
         // Accept-to-confirmed clock for the wait-estimate ring: stamped at the
         // accept of this reap (the moment the release was committed), elapsed
@@ -619,11 +618,7 @@ impl ActorState {
                 }),
             });
         });
-        self.jobs
-            .get_mut(&job_id)
-            .expect("invariant: caller holds a live job id")
-            .tasks
-            .push(handle);
+        self.attach_task(job_id, handle)
     }
 
     /// Whether the late-release watch has spent its bound: exactly one

@@ -2952,6 +2952,34 @@ fn a_repeat_load_of_a_parked_model_attaches_to_its_row() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn a_category_without_a_slot_answers_the_swap_with_an_invariant() {
+    use super::SchedulerError;
+
+    let dir = crate::testutil::temp_dir("category-without-slot-invariant");
+    let yaml = dir.join("swap-a.yaml");
+    std::fs::write(&yaml, "engine: mock\nvram_gb: 4\n").expect("seed");
+    let mut state = busy_work_slot_state(&dir);
+    state.slots.clear();
+    state.catalog = vec![entry_from(&yaml, "swap-a")];
+
+    let (reply_tx, mut reply_rx) = tokio::sync::oneshot::channel();
+    state.on_swap("swap-a".to_string(), CategoryId::Work, reply_tx);
+    let answer = match reply_rx.try_recv().expect("the swap answers immediately") {
+        Ok(reply) => panic!("expected an invariant refusal, got {reply:?}"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(
+            &answer,
+            SchedulerError::InvariantViolation { reason }
+                if reason.contains("the category has at least one slot")
+        ),
+        "expected the missing-category-slot invariant, got {answer:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The other half of the same rule: a repeat only attaches to a parked row
 /// of the SAME model. A different model in the same category still parks and
 /// supersedes, because nothing in flight can serve it. Falsifier: let the

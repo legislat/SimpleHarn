@@ -188,6 +188,11 @@ pub enum ApiError {
     /// Harness-side failure — `500`.
     #[error("internal error: {reason}")]
     Internal { reason: String },
+    /// A scheduler state precondition failed while serving a command — `500`.
+    /// The detailed reason is logged; the client receives only the generic
+    /// invariant class.
+    #[error("internal error: a scheduler invariant was violated")]
+    InvariantViolation { reason: String },
 }
 
 impl ApiError {
@@ -209,6 +214,7 @@ impl ApiError {
             ApiError::NotImplemented { .. } => "not_implemented",
             ApiError::MethodNotAllowed { .. } => "method_not_allowed",
             ApiError::Internal { .. } => "internal",
+            ApiError::InvariantViolation { .. } => "invariant_violation",
         }
     }
 
@@ -230,7 +236,9 @@ impl ApiError {
             ApiError::UnsupportedMedia { .. } => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             ApiError::NotImplemented { .. } => StatusCode::NOT_IMPLEMENTED,
             ApiError::MethodNotAllowed { .. } => StatusCode::METHOD_NOT_ALLOWED,
-            ApiError::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::Internal { .. } | ApiError::InvariantViolation { .. } => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 
@@ -376,6 +384,11 @@ fn error_body(error: &ApiError) -> Value {
                     .to_string()
             })
         }
+        ApiError::InvariantViolation { reason } => {
+            tracing::error!(detail = %reason, code = %error.code(), "scheduler invariant violation; the actor detail stays in the harness log");
+            "internal error: a scheduler invariant was violated; the reason is in the harness log"
+                .to_string()
+        }
         other => other.to_string(),
     };
     let code = error.code();
@@ -487,6 +500,9 @@ impl From<SchedulerError> for ApiError {
             SchedulerError::ActorGone => ApiError::SchedulerUnavailable {
                 reason: "the scheduler is not running".to_string(),
             },
+            SchedulerError::InvariantViolation { reason } => {
+                ApiError::InvariantViolation { reason }
+            }
             SchedulerError::Unsupported(reason) => ApiError::NotImplemented { reason },
         }
     }

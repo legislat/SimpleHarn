@@ -704,12 +704,41 @@ impl ActorState {
         }
     }
 
+    fn invariant_error(reason: &str) -> SchedulerError {
+        SchedulerError::InvariantViolation {
+            reason: reason.to_string(),
+        }
+    }
+
+    fn log_invariant_missing_job(&self, job_id: JobId, action: &str) {
+        tracing::error!(
+            %job_id,
+            action,
+            "scheduler invariant violation: the job ledger row is missing"
+        );
+    }
+
+    fn attach_task(&mut self, job_id: JobId, task: tokio::task::JoinHandle<()>) -> bool {
+        if let Some(job) = self.jobs.get_mut(&job_id) {
+            job.tasks.push(task);
+            return true;
+        }
+        task.abort();
+        self.log_invariant_missing_job(job_id, "attach task");
+        false
+    }
+
     fn fail_job(&mut self, job_id: JobId, error: SchedulerError, note: &str) {
         if let Some(job) = self.jobs.get_mut(&job_id) {
             job.error = Some(error.clone());
         }
-        self.step(job_id, SwapState::Failed);
-        let has_spawn = self.jobs[&job_id].spawned.is_some();
+        if !self.step(job_id, SwapState::Failed) {
+            return;
+        }
+        let has_spawn = self
+            .jobs
+            .get(&job_id)
+            .is_some_and(|job| job.spawned.is_some());
         if has_spawn {
             self.spawn_kill_confirm(job_id);
         } else {
@@ -724,9 +753,10 @@ impl ActorState {
     fn finish_cancelled(&mut self, job_id: JobId) {
         self.step(job_id, SwapState::Reap);
         self.step(job_id, SwapState::Idle);
-        let error = self.jobs[&job_id]
-            .error
-            .clone()
+        let error = self
+            .jobs
+            .get(&job_id)
+            .and_then(|job| job.error.clone())
             .unwrap_or_else(|| SchedulerError::Cancelled("cancelled".to_string()));
         self.finish(job_id, Err(error), "cancelled");
     }
@@ -757,16 +787,26 @@ impl ActorState {
         for waiter in waiters {
             let _ = waiter.send(result.clone());
         }
-        let owned = slot.filter(|&s| self.slots[s].job == Some(job_id));
+        let owned = slot.filter(|&s| {
+            self.slots
+                .get(s)
+                .is_some_and(|slot| slot.job == Some(job_id))
+        });
         if let Some(s) = owned {
-            self.slots[s].job = None;
+            if let Some(slot) = self.slots.get_mut(s) {
+                slot.job = None;
+            }
         }
         // Both the parked-load drain and the unload that follows a cancel belong to the
         // job that owned this slot: a row that never armed (a queued load terminalizing)
         // must not drive either.
         if let Some(slot) = owned {
             if let Some(queued) = self.pending.remove(&slot) {
-                if self.slots[slot].occupant.is_none() {
+                if self
+                    .slots
+                    .get(slot)
+                    .is_some_and(|slot| slot.occupant.is_none())
+                {
                     self.start_pending(slot, queued);
                 } else {
                     // The predecessor did not free the slot, so the queued load will
@@ -783,7 +823,11 @@ impl ActorState {
             // occupant the cancel could not free. The cancel's own
             // release may already have done that, in which case the flag is only
             // consumed: a slot is never unloaded twice.
-            if self.unload_after_finish.remove(&slot) && self.slots[slot].occupant.is_some() {
+            let occupant_present = self
+                .slots
+                .get(slot)
+                .is_some_and(|slot| slot.occupant.is_some());
+            if self.unload_after_finish.remove(&slot) && occupant_present {
                 self.begin_unload_slot(slot, "unloaded");
             }
         }
@@ -803,9 +847,11 @@ impl ActorState {
             .pending
             .iter()
             .filter(|(&slot, &queued)| {
-                self.slots[slot].occupant.is_none()
-                    && self.slots[slot].job.is_none()
-                    && self.jobs.get(&queued).is_some_and(|job| !job.terminal)
+                self.slots.get(slot).is_some_and(|slot| {
+                    slot.occupant.is_none()
+                        && slot.job.is_none()
+                        && self.jobs.get(&queued).is_some_and(|job| !job.terminal)
+                })
             })
             .map(|(&slot, &queued)| (slot, queued))
             .collect();
@@ -933,7 +979,15 @@ impl ActorState {
     /// otherwise leave no trace there at all (operator 2026-10-26: five refusals in
     /// one session, zero lines at `/har/log`).
     fn log_refusal(&self, job_id: JobId, error: &SchedulerError, stage: &str) {
-        let job = &self.jobs[&job_id];
+        let Some(job) = self.jobs.get(&job_id) else {
+            tracing::warn!(
+                %job_id,
+                stage,
+                error = %error,
+                "admission refused without a ledger row"
+            );
+            return;
+        };
         tracing::warn!(
             %job_id,
             model = %job.model,
@@ -1025,11 +1079,11 @@ impl ActorState {
             .sum()
     }
 
-    fn step(&mut self, job_id: JobId, to: SwapState) {
-        let job = self
-            .jobs
-            .get_mut(&job_id)
-            .expect("invariant: callers hold live job ids");
+    fn step(&mut self, job_id: JobId, to: SwapState) -> bool {
+        let Some(job) = self.jobs.get_mut(&job_id) else {
+            self.log_invariant_missing_job(job_id, "state step");
+            return false;
+        };
         debug_assert!(
             vocab::transition_allowed(job.state, to),
             "illegal transition {:?} -> {:?} on {job_id}",
@@ -1037,18 +1091,20 @@ impl ActorState {
             to
         );
         job.state = to;
+        true
     }
 
-    fn set_timing<F>(&mut self, job_id: JobId, field: F)
+    fn set_timing<F>(&mut self, job_id: JobId, field: F) -> bool
     where
         F: FnOnce(&mut JobTimings) -> &mut Option<u64>,
     {
-        let job = self
-            .jobs
-            .get_mut(&job_id)
-            .expect("invariant: callers hold live job ids");
+        let Some(job) = self.jobs.get_mut(&job_id) else {
+            self.log_invariant_missing_job(job_id, "timing stamp");
+            return false;
+        };
         let elapsed = job.t0.elapsed().as_millis() as u64;
         *field(&mut job.timings) = Some(elapsed);
+        true
     }
 }
 

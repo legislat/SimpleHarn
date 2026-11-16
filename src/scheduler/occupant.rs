@@ -28,7 +28,14 @@ impl ActorState {
     /// engine that was there, not to whatever loads into the slot next, so every path
     /// that drops an occupant has to come through here (review, 2026-10-27).
     pub(super) fn clear_occupant(&mut self, slot: usize) {
-        if let Some(occupant) = self.slots[slot].occupant.take() {
+        let Some(slot_state) = self.slots.get_mut(slot) else {
+            tracing::error!(
+                slot,
+                "scheduler invariant violation: clear_occupant named a missing slot"
+            );
+            return;
+        };
+        if let Some(occupant) = slot_state.occupant.take() {
             // The occupant's silence state dies with it:
             // no stale dedupe mark may outlive the spawn it described.
             self.serve_id_silence_warned
@@ -57,9 +64,10 @@ impl ActorState {
         let Some(victim) = self.jobs.get(&job_id).and_then(|job| job.victim.clone()) else {
             return;
         };
-        if self.slots[victim.slot]
-            .occupant
-            .as_ref()
+        if self
+            .slots
+            .get(victim.slot)
+            .and_then(|slot| slot.occupant.as_ref())
             .is_some_and(|o| o.ticket == victim.ticket)
         {
             self.clear_occupant(victim.slot);

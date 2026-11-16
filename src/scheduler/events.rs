@@ -41,60 +41,67 @@ impl ActorState {
         match (state, event) {
             (SwapState::Dispose, Event::Released(Ok(elapsed))) => {
                 self.release_samples.push(elapsed);
-                self.set_timing(job_id, |t| &mut t.release_ms);
+                if !self.set_timing(job_id, |t| &mut t.release_ms) {
+                    return;
+                }
                 self.commit_victim_release(job_id);
-                if let Some(victim) = self.jobs[&job_id].victim.clone() {
+                if let Some(victim) = self.jobs.get(&job_id).and_then(|job| job.victim.clone()) {
                     if let Some(job) = self.jobs.get_mut(&job_id) {
                         job.released_cost += victim.cost;
                         if victim.evicted {
                             job.victims_released.push(victim.model.clone());
                         } else {
                             // The same-slot holder's booked need is already inside
-                            // `free_at_admit` (Step 4 credits the bytes this job is
-                            // about to reclaim). Crediting the same release there
-                            // again is a double count, so it rides a
-                            // separate accumulator the ledger leg subtracts. The
-                            // observed leg keeps the full figure: the physical reading
-                            // at admit never held this credit.
+                            // `free_at_admit`. Crediting the same release there again
+                            // is a double count, so it rides a separate accumulator.
                             job.holder_released_cost += victim.cost;
                         }
                     }
                 }
-                if self.jobs[&job_id].kind == JobKind::Load {
+                let job_kind = match self.jobs.get(&job_id).map(|job| job.kind) {
+                    Some(kind) => kind,
+                    None => {
+                        self.log_invariant_missing_job(job_id, "release event");
+                        return;
+                    }
+                };
+                if job_kind == JobKind::Load {
                     // Step 6: release cross victims one at a time; after each
                     // release re-check the gate and stop as soon as it is satisfied
                     // (minimality — never kill more than the load needs).
                     if self.dequeue_victim(job_id) {
-                        // The planned gate value from finish_admit — max(need, floor),
-                        // never the (greedy-clamped) booking alone, or the floor
-                        // victims would be skipped after the first release
-                        // (review CRITICAL, 2026-10-26).
-                        let target = self.jobs[&job_id]
-                            .gate_target
-                            .unwrap_or_else(|| self.jobs[&job_id].need.map_or(0.0, |n| n.0));
-                        // free_at_admit was computed with everything still in the
-                        // ledger and already carries the same-slot holder's credit, so
-                        // the ledger term adds only the cross-category releases
-                        // (counting the holder twice let the early stop fire
-                        // on a figure the reserve-aware ledger never reached). The
-                        // observed figure is the card as physically sampled at admit —
-                        // never credited — plus every confirmed release.
-                        let job = &self.jobs[&job_id];
-                        let ledger_available = job.free_at_admit.map_or(0.0, |f| f.0)
-                            + (job.released_cost - job.holder_released_cost);
-                        let available = job.observed_at_admit.map_or(ledger_available, |obs| {
-                            ledger_available.min(obs + job.released_cost)
+                        let Some((
+                            target,
+                            free_at_admit,
+                            observed_at_admit,
+                            released_cost,
+                            holder_released_cost,
+                        )) = self.jobs.get(&job_id).map(|job| {
+                            let target = job
+                                .gate_target
+                                .unwrap_or_else(|| job.need.map_or(0.0, |n| n.0));
+                            (
+                                target,
+                                job.free_at_admit.map_or(0.0, |f| f.0),
+                                job.observed_at_admit,
+                                job.released_cost,
+                                job.holder_released_cost,
+                            )
+                        })
+                        else {
+                            self.log_invariant_missing_job(job_id, "victim release re-gate");
+                            return;
+                        };
+                        let ledger_available =
+                            free_at_admit + (released_cost - holder_released_cost);
+                        let available = observed_at_admit.map_or(ledger_available, |obs| {
+                            ledger_available.min(obs + released_cost)
                         });
                         if target <= available {
                             if let Some(job) = self.jobs.get_mut(&job_id) {
                                 job.victims.clear();
                             }
                             tracing::info!(%job_id, "release sufficient; skipping remaining victims");
-                            // Minimality ends the DEFICIT queue only: the
-                            // expert-offload reclaim queue (operator ruling
-                            // 2026-11-06) is not gate-driven — the load needs
-                            // no host GiB — so it drains to completion after
-                            // the card is satisfied, before the settle closes.
                             if !self.dequeue_reclaim_victim(job_id) {
                                 self.spawn_settle_task(job_id);
                             } else {
@@ -104,19 +111,15 @@ impl ActorState {
                             self.spawn_kill_confirm(job_id);
                         }
                     } else if !self.dequeue_reclaim_victim(job_id) {
-                        // §0.3: release is proven; now the memory evidence must
-                        // settle before the spawn fires. The reclaim queue (if
-                        // any) drains one victim at a time first, each through
-                        // the same confirmed release (operator ruling
-                        // 2026-11-06).
                         self.spawn_settle_task(job_id);
                     } else {
                         self.spawn_kill_confirm(job_id);
                     }
                 } else {
-                    let note = self.jobs[&job_id]
-                        .note
-                        .clone()
+                    let note = self
+                        .jobs
+                        .get(&job_id)
+                        .and_then(|job| job.note.clone())
                         .unwrap_or_else(|| "unloaded".to_string());
                     self.step(job_id, SwapState::Reap);
                     self.step(job_id, SwapState::Idle);
@@ -124,9 +127,10 @@ impl ActorState {
                 }
             }
             (SwapState::Dispose, Event::Released(Err(error))) => {
-                let holder = self.jobs[&job_id]
-                    .victim
-                    .as_ref()
+                let holder = self
+                    .jobs
+                    .get(&job_id)
+                    .and_then(|job| job.victim.as_ref())
                     .map(|v| v.model.clone())
                     .unwrap_or_else(|| job_id.to_string());
                 self.fail_job(
@@ -140,9 +144,21 @@ impl ActorState {
                     ticket.port = spawned.port;
                     ticket.pid = spawned.pid;
                 }
-                self.set_timing(job_id, |t| &mut t.spawn_ms);
-                self.step(job_id, SwapState::Ready);
-                self.spawn_probe_task(job_id, spawned.port);
+                if !self.set_timing(job_id, |t| &mut t.spawn_ms) {
+                    return;
+                }
+                if !self.step(job_id, SwapState::Ready) {
+                    return;
+                }
+                if !self.spawn_probe_task(job_id, spawned.port) {
+                    self.fail_job(
+                        job_id,
+                        SchedulerError::InvariantViolation {
+                            reason: "spawn readiness is set when a spawn exists".to_string(),
+                        },
+                        "spawn readiness missing",
+                    );
+                }
             }
             (SwapState::Spawn, Event::Spawned(Err(error))) => {
                 // R9 (C1): a failed client leaves the container it did start (or a
@@ -183,9 +199,10 @@ impl ActorState {
                 }
                 self.step(job_id, SwapState::Reap);
                 self.step(job_id, SwapState::Idle);
-                let error = self.jobs[&job_id]
-                    .error
-                    .clone()
+                let error = self
+                    .jobs
+                    .get(&job_id)
+                    .and_then(|job| job.error.clone())
                     .unwrap_or_else(|| SchedulerError::Spawn("unknown failure".to_string()));
                 self.finish(job_id, Err(error), "failed");
             }
@@ -216,7 +233,13 @@ impl ActorState {
                 self.finish_cancelled(job_id);
             }
             (SwapState::Dispose, Event::Settled(Ok(()))) => {
-                self.begin_spawn(job_id);
+                if !self.begin_spawn(job_id) {
+                    self.fail_job(
+                        job_id,
+                        Self::invariant_error("spawn follows a settled release"),
+                        "spawn setup failed",
+                    );
+                }
             }
             (SwapState::Dispose, Event::Settled(Err(reason))) => {
                 self.fail_job(
@@ -243,35 +266,51 @@ impl ActorState {
     /// lands the id on the occupant and the following forward carries it. The
     /// resolve itself never waits on or fails because of the probe.
     fn install(&mut self, job_id: JobId, discovered_id: Option<String>) {
-        self.set_timing(job_id, |t| &mut t.ready_ms);
-        self.step(job_id, SwapState::Install);
-        let (slot, model, category, port) = {
-            let job = &self.jobs[&job_id];
-            let ticket = job
-                .spawned
-                .clone()
-                .expect("invariant: install only happens after a spawn");
+        if !self.set_timing(job_id, |t| &mut t.ready_ms) {
+            return;
+        }
+        if !self.step(job_id, SwapState::Install) {
+            return;
+        }
+        let Some((slot, model, category, ticket)) = self.jobs.get(&job_id).map(|job| {
             (
                 job.slot,
                 job.model.clone(),
                 job.category,
-                Spawned {
-                    port: ticket.port,
-                    pid: 0,
-                },
+                job.spawned.clone(),
             )
+        }) else {
+            self.log_invariant_missing_job(job_id, "install");
+            return;
         };
-        // A yaml that claims an id the engine never reports becomes a visible
-        // warning at load time, and the engine's real id wins for rewriting. Judged
-        // against the spawn-era anchor, never the live catalog: this install runs
-        // minutes after `begin_spawn`, and the process being judged was launched from
-        // the bytes that anchor captured.
+        let Some(ticket) = ticket else {
+            tracing::error!(%job_id, "scheduler invariant violation: install only happens after a spawn");
+            self.finish(
+                job_id,
+                Err(SchedulerError::InvariantViolation {
+                    reason: "install only happens after a spawn".to_string(),
+                }),
+                "invariant",
+            );
+            return;
+        };
+        let Some(slot) = slot else {
+            tracing::error!(%job_id, "scheduler invariant violation: install needs a slot");
+            self.finish(
+                job_id,
+                Err(SchedulerError::InvariantViolation {
+                    reason: "install needs a slot".to_string(),
+                }),
+                "invariant",
+            );
+            return;
+        };
+        let port = Spawned {
+            port: ticket.port,
+            pid: 0,
+        };
         let serve_id = discovered_id;
         if serve_id.is_none() {
-            // A discovery miss used to be invisible — the slot
-            // reported the model as serving while every forward silently
-            // carried the harness name. Name the model and what was tried, and
-            // point at the recovery this file already runs for it.
             tracing::warn!(
                 %job_id,
                 model = %model,
@@ -287,18 +326,14 @@ impl ActorState {
                 job.warnings.push(warning);
             }
         }
-        if let Some(slot) = slot {
-            // Extract first: `clear_occupant` needs `&mut self`, and a replaced
-            // occupant's sampler must die with it (review, 2026-10-27).
-            let job = &self.jobs[&job_id];
-            let (job_model, job_need, job_ram_need, job_ticket) = (
+        if let Some(job) = self.jobs.get(&job_id).map(|job| {
+            (
                 job.model.clone(),
                 job.need.unwrap_or_default(),
                 job.ram_need,
-                job.spawned
-                    .clone()
-                    .expect("invariant: install only happens after a spawn"),
-            );
+            )
+        }) {
+            let (job_model, job_need, job_ram_need) = job;
             self.clear_occupant(slot);
             let others_booked = self
                 .slots
@@ -310,14 +345,6 @@ impl ActorState {
             if let Some(job) = self.jobs.get_mut(&job_id) {
                 job.other_need_at_admit = others_booked;
             }
-            // Capture the yaml this launch came from at
-            // install — one stat, on the actor, for the one event that creates a
-            // resident. The path is the fold anchor's own file (the identity the
-            // measured persist writes), so the marker and the fold never drift onto
-            // different files; an unreadable stat (or a synthetic row) yields no
-            // capture, and the verdict then never accuses. This yaml capture is the
-            // whole `stale_config` story: no engine ships a harness-tracked profile
-            // file any more (the dormant profile layer is retired).
             let spawn_config = self
                 .jobs
                 .get(&job_id)
@@ -327,20 +354,34 @@ impl ActorState {
                         crate::model::fingerprint(file).map(|fp| (file.clone(), fp))
                     })
                 });
-            self.slots[slot].occupant = Some(Occupant {
-                model: job_model,
-                need: job_need,
-                ram_need: job_ram_need,
-                port: port.port,
-                ticket: job_ticket.clone(),
-                loaded_at: Instant::now(),
-                launched_at_wall: std::time::SystemTime::now(),
-                spawn_config,
-                stale_config: false,
-                serve_id: serve_id.clone(),
-                measure: None,
-                live_measured_gb: None,
-            });
+            if let Some(slot_state) = self.slots.get_mut(slot) {
+                slot_state.occupant = Some(Occupant {
+                    model: job_model,
+                    need: job_need,
+                    ram_need: job_ram_need,
+                    port: port.port,
+                    ticket: ticket.clone(),
+                    loaded_at: Instant::now(),
+                    launched_at_wall: std::time::SystemTime::now(),
+                    spawn_config,
+                    stale_config: false,
+                    serve_id: serve_id.clone(),
+                    measure: None,
+                    live_measured_gb: None,
+                });
+            } else {
+                self.finish(
+                    job_id,
+                    Err(SchedulerError::InvariantViolation {
+                        reason: "install slot exists".to_string(),
+                    }),
+                    "invariant",
+                );
+                return;
+            }
+        } else {
+            self.log_invariant_missing_job(job_id, "install occupant");
+            return;
         }
         // Measured footprint (§0.4, rehearsal item c): witness readings taken while the
         // model serves, folded into its yaml range. The baseline is the free memory
@@ -352,22 +393,16 @@ impl ActorState {
         // `MemorySummary` stands in ahead of even that, so the sampler fetches it
         // first. What to charge is the actor's call alone: it knows who else is booked
         // and which engine actually holds the slot.
-        let sampler_ctx = self.jobs.get(&job_id).map(|job| {
-            let ticket = job
-                .spawned
-                .clone()
-                .expect("invariant: install only happens after a spawn");
-            SamplerCtx {
-                model: job.model.clone(),
-                own_pids: if job.container.is_none() {
-                    vec![ticket.pid]
-                } else {
-                    Vec::new()
-                },
-                ticket,
-                container: job.container.clone(),
-                engine: job.engine.clone(),
-            }
+        let sampler_ctx = self.jobs.get(&job_id).map(|job| SamplerCtx {
+            model: job.model.clone(),
+            own_pids: if job.container.is_none() {
+                vec![ticket.pid]
+            } else {
+                Vec::new()
+            },
+            ticket: ticket.clone(),
+            container: job.container.clone(),
+            engine: job.engine.clone(),
         });
         // A CPU-resident resident walks the RAM ladder's own sampler instead
         // of the card witness one:
@@ -382,7 +417,7 @@ impl ActorState {
             .and_then(|job| job.ram_need)
             .map(|need| need.0);
         let baseline_free = self.post_release_free(job_id);
-        if let (Some(slot), Some(ctx)) = (slot, sampler_ctx) {
+        if let Some(ctx) = sampler_ctx {
             let witness = Arc::clone(&self.witness);
             let runtime = Arc::clone(&self.runtime);
             let tx = self.tx.clone();
@@ -484,8 +519,12 @@ impl ActorState {
                 occupant.measure = Some(handle);
             }
         }
-        self.set_timing(job_id, |t| &mut t.install_ms);
-        self.step(job_id, SwapState::Serving);
+        if !self.set_timing(job_id, |t| &mut t.install_ms) {
+            return;
+        }
+        if !self.step(job_id, SwapState::Serving) {
+            return;
+        }
         self.finish(
             job_id,
             Ok(Reply::Loaded(SwapReceipt {
@@ -558,7 +597,11 @@ impl ActorState {
         }) else {
             return false;
         };
-        let Some(occupant) = self.slots[slot].occupant.as_mut() else {
+        let Some(occupant) = self
+            .slots
+            .get_mut(slot)
+            .and_then(|slot| slot.occupant.as_mut())
+        else {
             return false;
         };
         let Some(id) = discovered else {

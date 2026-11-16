@@ -586,6 +586,31 @@ fn a_dead_actor_maps_to_the_named_scheduler_unavailable_class() {
     );
 }
 
+#[test]
+fn a_scheduler_invariant_violation_maps_to_a_generic_internal_error() {
+    let reason = "internal detail that must stay out of the client body";
+    let mapped = ApiError::from(SchedulerError::InvariantViolation {
+        reason: reason.to_string(),
+    });
+
+    assert_eq!(mapped.code(), "invariant_violation");
+    assert_eq!(mapped.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    let body = error_body(&mapped);
+    let message =
+        "internal error: a scheduler invariant was violated; the reason is in the harness log";
+    assert_eq!(body["code"], "invariant_violation");
+    assert_eq!(body["error"]["code"], "invariant_violation");
+    assert_eq!(body["message"], message);
+    assert_eq!(body["error"]["message"], message);
+
+    let rendered = body.to_string();
+    assert!(
+        !rendered.contains(reason),
+        "the detailed invariant reason must not reach the client: {rendered}"
+    );
+}
+
 #[tokio::test]
 async fn a_dead_actor_answers_status_with_a_degraded_document_not_a_500() {
     let api = unit_state();
