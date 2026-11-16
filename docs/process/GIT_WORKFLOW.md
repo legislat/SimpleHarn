@@ -146,7 +146,10 @@ A release is a task with acceptance criteria. Run the steps in this order:
    `scripts/render-release-notes.ps1`, then publish with
    `scripts/publish-release.ps1` (the only supported publish path). The manual
    `make-public-asset.ps1` packaging remains a fallback for a runner outage; its zip
-   must still pass the wrapper. Deploy the verified Windows artifact, verify the boot,
+   must still pass the wrapper. Windows builds are not byte-reproducible: the
+   MSVC PE COFF timestamp and debug directory differ between two clean builds.
+   Record both hashes, verify the published artifact against `SHA256SUMS.txt`,
+   and never claim a rebuild hash. Deploy the verified Windows artifact, verify the boot,
    and keep the Linux verdict honest: the CI build proves compilation and packaging,
    not a Linux GPU load.
 10. Keep and name the rollback artifact: the previous release stays in the fallback

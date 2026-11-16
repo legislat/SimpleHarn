@@ -242,11 +242,11 @@ jobs:
             Write-Output "REPRO identical: $a"
           } else {
             $repro = 'different'
-            Write-Warning "REPRO differs: first $a second $b; record the named cause and do not claim reproducibility"
+            Write-Warning "REPRO differs: first $a second $b (MSVC PE COFF TimeDateStamp/debug directory; no reproducible-build claim)"
           }
           "HASH=$a" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "REPRO=$repro" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "- repro: $repro ($a vs $b)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- repro: $repro ($a vs $b); a difference is the MSVC PE timestamp/debug directory, not a build-input difference" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Package the five-entry Windows zip and sums
         shell: pwsh
