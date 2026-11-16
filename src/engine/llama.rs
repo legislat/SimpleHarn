@@ -20,7 +20,7 @@
 //! 2026-11-15: a documented knob needing an adapter hotfix is a HIGH defect;
 //! a knob the operator can add back by editing the row "still gets the job
 //! done"). An option token reaches the argv unless it names a word of the
-//! reviewed [`crate::engine::policy::LLAMA_FORBIDDEN_EXTRA_WORDS`] record
+//! reviewed `crate::engine::policy::LLAMA_FORBIDDEN_EXTRA_WORDS` record
 //! exactly or as a strict prefix-abbreviation of one — a defense-in-depth
 //! refusal even though the pinned llama.cpp parser is exact-match; the
 //! historical 8/8 smuggle leak is the in-repo precedent for keeping the
@@ -34,7 +34,7 @@
 //! `-ngl`/`--n-gpu-layers`/`--gpu-layers`, ...) — one yaml key per decision,
 //! and a second spelling would make that key a dead claim. Long options only
 //! pass (this build speaks `--flag`); a value token is data under
-//! [`valid_extra_value`], so an option-shaped value can never masquerade as a
+//! `valid_extra_value`, so an option-shaped value can never masquerade as a
 //! second option. The tail-forced flags (`--host`, `--port`, `-ngl 0`) stay
 //! as the second enforcement for the three options the harness itself
 //! re-emits, under the same last-occurrence assumption (still unverifiable

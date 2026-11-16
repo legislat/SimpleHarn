@@ -18,7 +18,7 @@ fields.
 Every claim here names its evidence: a test name, a source file, or the word
 "untested". A test name runs under `cargo test`. This page makes no claim of
 full OpenAI API coverage. It states the tested behavior and the gaps.
-Current release: **v1.5.1.5**. This page describes the current v1.5.1.5 build.
+Current release: **v1.5.1.6**. This page describes the current v1.5.1.6 build.
 The renamed wire values below shipped in v1.3.1. `CHANGELOG.md` owns the
 dated rename record.
 
@@ -316,3 +316,4 @@ card through NVML. The runtime still needs the NVIDIA driver's
   it (section 4).
 - Witness: the live measured memory that is the budget truth. Home:
   `docs/architecture/OVERVIEW.md`.
+

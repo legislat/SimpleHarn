@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, maintainer]
 source_of_truth_for: [release history]
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-16
 review_trigger: release
 ---
 
@@ -17,7 +17,15 @@ three-part (see `docs/process/GIT_WORKFLOW.md`).
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
-## Unreleased
+## v1.5.1.6 - 2026-11-16
+
+### Added
+
+- `simpleharn --version` prints the crate version and the embedded release tag
+  without reading config or binding a listener.
+- Xolotl `xolotl_vision`, `xolotl_parallel`, and `xolotl_profile_extra`; Strata
+  `strata_aliases`, `strata_reasoning_budget`, and `strata_profile_extra`;
+  Basalt `basalt_sampling`; and a multi-pair `ninfer_env` list.
 
 ### Changed
 
@@ -34,6 +42,13 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   `cargo test --test admission_conformance`: witness outage, in-flight booking
   debit, victim credit, eviction order, and unreachable-floor refusal. The card
   suite remains the hardware proof.
+- Llama `extra_args` is a policy-filtered passthrough for every non-forced
+  engine flag; a new reviewed knob no longer needs an adapter change.
+  `jinja: false` now emits `--no-jinja`.
+- The Windows zip is built in tag CI on `windows-2025` and handed to the publish
+  wrapper; `simpleharn --version` proves the embedded tag. Windows builds are
+  not byte-reproducible (MSVC PE timestamp/debug directory), so the published
+  artifact is verified by `SHA256SUMS.txt`.
 
 ## v1.5.1.5 - 2026-11-10
 
