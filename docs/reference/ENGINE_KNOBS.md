@@ -109,15 +109,16 @@ the checked-in manifest the gate reads.
 
 `strata` covers two different forks, not one drifting schema:
 
-- `C:\Strata-nvfp4` (the `strata-nvfp4-gptq` row; install guide at
-  `D:\WORKSPACE-VS\installation-guide\strata-nvfp4`) reads the top-level
+- `C:\Strata-nvfp4` (the `strata-nvfp4-gptq` row; fork
+  <https://github.com/sergqwer/strata-nvfp4>) reads the top-level
   `uncensored` switch through `uncensored_alias` in `serve\server.py`.
   `strata_uncensored` is a real knob of that fork.
 - `C:\Strata` (the `strata-fp4local` row) is a different fork: it ignores the
   top-level key and uses `sampling.experimental_speed_projection`. Its row does
   not set `strata_uncensored`.
 
-`strata_gpus_asked` is read only by the Strata launcher/setup path in both
-forks, not by `serve.server`, which the harness launches directly. It is
-launcher-only on the harness path; the serve profile should drop it and the
-import report should name it as launcher-only.
+`gpus_asked` is read only by the Strata launcher/setup path in both forks,
+not by `serve.server`, which the harness launches directly. It is not a serve
+knob: the harness does not render `strata_gpus_asked`, and the import reports
+`gpus_asked` as launcher-only instead of emitting a row key.
+

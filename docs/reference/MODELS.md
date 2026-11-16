@@ -100,7 +100,6 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `strata_lib_dirs` | Comma-separated absolute directories rendered as the profile's `lib_dirs`. |
 | `strata_env` | Whitespace-separated `STRATA_<NAME>=<VALUE>` tokens rendered as the profile's `env`. Only uppercase `STRATA_`-prefixed engine settings pass. |
 | `strata_gpu` / `strata_parallel` | Non-negative integers rendered as the profile's `gpu` / `parallel`. |
-| `strata_gpus_asked` | A truthy value renders `gpus_asked: true` in the profile. |
 | `strata_vision` | Whitespace-separated `k=v` vision block over the closed key set `exe`, `mmproj`, `model`, `gpu`, `max_tokens`, `min_tokens`, `threads`, `elastic`, `mib`, `idle_s`. `exe`, `mmproj`, and `model` are absolute paths and are required together. `gpu` defaults on. Rendering the block also appends the `--vision` switch to `args`. |
 | `strata_sampling` | Whitespace-separated `key=value` sampling defaults (number or bool) rendered as the profile's `sampling` dict. |
 | `strata_aliases` | Comma-separated served alias names rendered as the profile's `aliases` list. |
@@ -682,3 +681,4 @@ Notes:
   records a served-id warning.
 - The staged script needs no `chmod` for the harness: it is always run with
   `bash`, so the shebang is documentation.
+

@@ -886,7 +886,6 @@ const STRATA_KNOBS: &[&str] = &[
     "strata_env",
     "strata_gpu",
     "strata_parallel",
-    "strata_gpus_asked",
     "strata_vision",
     "strata_sampling",
     "strata_aliases",

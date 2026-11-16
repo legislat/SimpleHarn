@@ -38,12 +38,16 @@ const MAPPED_KEYS: &[&str] = &[
     "env",
     "gpu",
     "parallel",
-    "gpus_asked",
     "vision",
     "sampling",
     "uncensored",
     "model_name",
 ];
+
+/// Keys that are launcher/setup-only: the profile may carry them, but the
+/// harness serve path (`serve.server`) does not read them. The import reports
+/// them as launcher-only and never emits a row knob.
+const LAUNCHER_ONLY_KEYS: &[&str] = &["gpus_asked"];
 
 /// One profile read through the import mapping: the row fields the profile can
 /// carry, in render order, plus the honesty notes. The emit path prints all of
@@ -243,14 +247,8 @@ fn strata_import(profile_path: &Path) -> Result<StrataImport, String> {
             }
         }
     }
-    if let Some(value) = root.get("gpus_asked") {
-        match value.as_bool() {
-            Some(true) => fields.push(("strata_gpus_asked".to_string(), "true".to_string())),
-            // An explicit false is the renderer's absent-key default (the
-            // profile key is written only when truthy): faithful as absent.
-            Some(false) => {}
-            None => wrong_type.push("gpus_asked"),
-        }
+    if root.contains_key("gpus_asked") {
+        notes.push("gpus_asked (launcher-only; serve.server does not read it)".to_string());
     }
     if let Some(vision) = vision_block {
         let mut tokens: Vec<String> = Vec::new();
@@ -354,7 +352,11 @@ fn strata_import(profile_path: &Path) -> Result<StrataImport, String> {
         .collect();
     unmapped.extend(
         root.keys()
-            .filter(|key| !MAPPED_KEYS.contains(&key.as_str()) && !owned.contains(&key.as_str()))
+            .filter(|key| {
+                !MAPPED_KEYS.contains(&key.as_str())
+                    && !owned.contains(&key.as_str())
+                    && !LAUNCHER_ONLY_KEYS.contains(&key.as_str())
+            })
             .cloned(),
     );
     Ok(StrataImport {
@@ -633,7 +635,14 @@ mod tests {
         assert!(yaml.contains("strata_uncensored: false"), "{yaml}");
         assert!(yaml.contains("strata_gpu: 0"), "{yaml}");
         assert!(yaml.contains("strata_parallel: 1"), "{yaml}");
-        assert!(yaml.contains("strata_gpus_asked: true"), "{yaml}");
+        assert!(
+            !yaml.contains("strata_gpus_asked"),
+            "gpus_asked is launcher-only and must not become a row knob: {yaml}"
+        );
+        assert!(
+            yaml.contains("gpus_asked (launcher-only; serve.server does not read it)"),
+            "the launcher-only key is reported: {yaml}"
+        );
         assert!(yaml.contains("strata_vision: exe=C:\\Strata\\engine\\strata-vision.exe mmproj=D:\\Models\\mmproj.gguf model=D:\\Models\\m.gguf gpu=true max_tokens=1024"), "{yaml}");
         assert!(
             yaml.contains("# harness-owned, dropped")
@@ -694,7 +703,6 @@ mod tests {
             "env",
             "gpu",
             "parallel",
-            "gpus_asked",
             "sampling",
         ] {
             assert!(
@@ -899,7 +907,7 @@ mod tests {
         );
         let outcome = apply_strata_row(&profile, &row).expect("applies");
         assert!(!outcome.unchanged);
-        assert_eq!(outcome.changed, 13, "{outcome:?}");
+        assert_eq!(outcome.changed, 12, "{outcome:?}");
         assert!(!outcome.serve_model_absent, "{outcome:?}");
         assert!(
             !outcome.to_string().contains("serve_model was not replaced"),
@@ -966,7 +974,6 @@ mod tests {
             "strata_env: STRATA_KVA=0",
             "strata_gpu: 0",
             "strata_parallel: 1",
-            "strata_gpus_asked: true",
             "strata_uncensored: false",
             "strata_sampling: temperature=1.0 top_k=20 top_p=0.95",
             "strata_vision: exe=C:\\Strata\\engine\\strata-vision.exe",
@@ -976,15 +983,10 @@ mod tests {
                 "emitted key not merged: `{added}`: {text}"
             );
         }
-        let tail: Vec<usize> = [
-            "strata_gpus_asked:",
-            "strata_vision:",
-            "strata_sampling:",
-            "strata_uncensored:",
-        ]
-        .iter()
-        .map(|key| text.find(key).expect("appended key present"))
-        .collect();
+        let tail: Vec<usize> = ["strata_vision:", "strata_sampling:", "strata_uncensored:"]
+            .iter()
+            .map(|key| text.find(key).expect("appended key present"))
+            .collect();
         assert!(
             tail.windows(2).all(|pair| pair[0] < pair[1]),
             "appended keys ride the field order: {text}"

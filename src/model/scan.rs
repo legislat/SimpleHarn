@@ -168,7 +168,6 @@ const CONSUMED_KEYS: &[&str] = &[
     "strata_env",
     "strata_gpu",
     "strata_parallel",
-    "strata_gpus_asked",
     "strata_vision",
     "strata_sampling",
     "strata_aliases",
@@ -3819,7 +3818,6 @@ mod tests {
              strata_env: STRATA_KVA=0\n\
              strata_gpu: 0\n\
              strata_parallel: 1\n\
-             strata_gpus_asked: true\n\
              strata_vision: exe=C:/Strata/vision.exe mmproj=D:/m/mmproj.gguf model=D:/m/m.gguf\n\
              strata_sampling: temperature=1.0 top_p=0.95 top_k=20\n\
              strata_aliases: golden-a, golden-b\n\
@@ -4072,7 +4070,6 @@ mod tests {
             "strata_env",
             "strata_gpu",
             "strata_parallel",
-            "strata_gpus_asked",
             "strata_vision",
             "strata_sampling",
             "strata_uncensored",

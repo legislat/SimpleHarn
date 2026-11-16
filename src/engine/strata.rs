@@ -722,7 +722,6 @@ const PROFILE_EXTRA_DENIED: &[(&str, &str)] = &[
     ("env", "`strata_env` renders this key"),
     ("gpu", "`strata_gpu` renders this key"),
     ("parallel", "`strata_parallel` renders this key"),
-    ("gpus_asked", "`strata_gpus_asked` renders this key"),
     ("vision", "`strata_vision` renders this key"),
     ("sampling", "`strata_sampling` renders this key"),
     ("uncensored", "`strata_uncensored` renders this key"),
@@ -924,9 +923,6 @@ pub(crate) fn render_profile(model: &ModelEntry, cwd: &Path) -> Result<String, E
     }
     if let Some(parallel) = unsigned(model, "strata_parallel", rejected)? {
         profile.insert("parallel".to_string(), serde_json::json!(parallel));
-    }
-    if knob(model, "strata_gpus_asked").is_some_and(crate::model::truthy) {
-        profile.insert("gpus_asked".to_string(), serde_json::Value::Bool(true));
     }
     if let Some(vision) = vision {
         profile.insert("vision".to_string(), serde_json::Value::Object(vision));
@@ -1592,7 +1588,6 @@ mod tests {
                 ("strata_env", "STRATA_KVA=0 STRATA_HC_Q8=1"),
                 ("strata_gpu", "0"),
                 ("strata_parallel", "1"),
-                ("strata_gpus_asked", "true"),
                 (
                     "strata_sampling",
                     "temperature=1.0 top_k=20 uncensored=false",
@@ -1615,7 +1610,6 @@ mod tests {
         assert_eq!(profile["env"]["STRATA_KVA"], "0");
         assert_eq!(profile["gpu"], 0);
         assert_eq!(profile["parallel"], 1);
-        assert_eq!(profile["gpus_asked"], true);
         assert_eq!(profile["vision"]["max_tokens"], 1024);
         assert_eq!(profile["vision"]["min_tokens"], 4);
         assert_eq!(profile["vision"]["threads"], 16);
@@ -1885,7 +1879,6 @@ mod tests {
                 "lib_dirs": ["{}"],
                 "port": 8003,
                 "gpu": 0,
-                "gpus_asked": true,
                 "host": "0.0.0.0",
                 "env": {{"STRATA_KVA": "0"}},
                 "sampling": {{"temperature": 1.0, "top_p": 0.95, "top_k": 20}},
@@ -1928,7 +1921,6 @@ mod tests {
         assert_eq!(got["model_name"], wanted["model_name"]);
         assert_eq!(got["lib_dirs"], wanted["lib_dirs"]);
         assert_eq!(got["gpu"], wanted["gpu"]);
-        assert_eq!(got["gpus_asked"], wanted["gpus_asked"]);
         assert_eq!(got["env"], wanted["env"]);
         assert_eq!(
             got["sampling"], wanted["sampling"],
