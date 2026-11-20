@@ -24,6 +24,9 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 - Scheduler invariant violations now answer the refused command with `500`
   `invariant_violation` instead of stopping the actor. The client receives
   generic wording, while the detailed reason stays in the harness log.
+- Basalt launches render the v2 config the current server requires, and the
+  alias and pool size ride that config instead of argv, so updated Basalt
+  servers launch again.
 
 ## v1.5.1.6 - 2026-11-16
 

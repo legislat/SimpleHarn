@@ -237,13 +237,14 @@ One harness process, one tokio runtime, plus OS-level children:
 - `basalt` (`src/engine/basalt.rs`): native engine with a Python
   OpenAI-compatible server on Windows and Linux. The harness launches `python -m serve.server`
   directly in `basalt_cwd` (not the source-tree launcher), forces
-  `--host 127.0.0.1` and the assigned `--port`, and supplies `--engine-bin`,
-  `--alias`, `--gpu 0`, and `--parallel` where the engine accepts them
-  (the Linux server refuses the words a config file already sets, and wants
-  the v2 `{"version": 2, "models": [...]}` shape). It renders the
-  `{"server": ...}` profile at every load under `.simpleharn/basalt-profiles`
+  `--host 127.0.0.1` and the assigned `--port`, and supplies `--engine-bin`
+  and `--gpu 0`. It renders the v2 config
+  `{"version": 2, "models": [<model entry>]}` — the shape the current server
+  requires — at every load under `.simpleharn/basalt-profiles`
   (`process::rendered_profiles_dir`, content-addressed, atomic, keep-N
-  prune) and rewrites `--config` to exactly that staged file. Readiness
+  prune) and rewrites `--config` to exactly that staged file. The served
+  alias and the pool size ride the model entry, not argv: the server refuses
+  a command-line value for a key the config file sets. Readiness
   needs `/health` 200 with the JSON `loaded` flag not `false`, then
   `/v1/models` must report the `serve_model` alias. Cost is the declared
   `vram_gb` with `cost: fixed`; no Fit, because the engine reports no

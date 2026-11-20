@@ -110,10 +110,10 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `basalt_python` | **Required for basalt**: the interpreter `.exe`. It must be an absolute path to an existing file, and it is the program the harness launches. |
 | `basalt_cwd` | **Required for basalt**: the Basalt source-root directory. It must be an absolute path to an existing directory. The `-m serve.server` module resolves from this working directory. |
 | `basalt_exe` | **Required for basalt**: the engine binary. It must be an absolute path to an existing file, and the harness passes it as `--engine-bin`. |
-| `basalt_vision` | Image input: `off` (default), `dynamic`, `cpu`, or a GPU number as nvidia-smi spells it. Rendered into the profile as `server.vision`, never into argv: vision files are a harness decision, so `--vision` stays refused in `basalt_engine_args`. |
-| `basalt_parallel` | Optional worker-pool size passed as `--parallel`: a whole number `1..=8`, default `1`. It changes the KV footprint, so the row's declared cost must match it. |
+| `basalt_vision` | Image input: `off` (default), `dynamic`, `cpu`, or a GPU number as nvidia-smi spells it. Rendered into the config's model entry as `vision`, never into argv: vision files are a harness decision, so `--vision` stays refused in `basalt_engine_args`. |
+| `basalt_parallel` | Optional worker-pool size rendered into the config's model entry as `parallel`: a whole number `1..=8`, default `1`. It changes the KV footprint, so the row's declared cost must match it. |
 | `basalt_engine_args` | Comma-separated engine flags appended to the launch line; each entry is exactly one word. Long options only (`--flag` or `--flag=value`). The harness refuses a server-owned flag by exact name and says which mechanism owns that decision. |
-| `basalt_sampling` | One JSON object of launch-time sampling defaults and generation budgets, keyed by the server's dash spelling (`temperature`, `top-p`, `top-k`, `min-p`, presence/frequency/repetition penalty, penalty-last-n, seed, `reasoning-budget-tokens`, `thinking-loop-tokens`, `answer-room`); numeric values, except `answer-room` accepts a boolean. Rendered into the profile's `server` section, never into argv. |
+| `basalt_sampling` | One JSON object of launch-time sampling defaults and generation budgets, keyed by the server's dash spelling (`temperature`, `top-p`, `top-k`, `min-p`, presence/frequency/repetition penalty, penalty-last-n, seed, `reasoning-budget-tokens`, `thinking-loop-tokens`, `answer-room`); values are numbers. `answer-room` alone also accepts the string `auto`: it takes `auto` or a whole number of tokens, and no boolean. Rendered into the config's model entry, never into argv. |
 | `maya_python` | **Required for maya**: the interpreter `.exe`. It must be an absolute path to an existing file, and it is the program the harness launches. |
 | `maya_cwd` | **Required for maya**: the Project Maya root directory. It must be an absolute path to an existing directory. The `-m serve.server` module resolves from this working directory. |
 | `maya_config` | **Required for maya**: the operator's Maya JSON config. It must be an absolute path to an existing file. The harness reads it at every load, validates every path it names, and launches only its own scrubbed, staged copy. `serve_model` must equal the config's `model_name`, and `load_timeout` is required with a floor of 300 seconds. See "Maya engines" below. |
@@ -151,9 +151,10 @@ every load the harness writes the full profile JSON into
 `<model>-<hash>.json`, atomic write, keep-N prune) and launches only its own
 staged copy. See "Strata engines" below.
 
-The harness renders basalt rows the same way. At every load it writes its
-`{"server": ...}` profile into `.simpleharn\basalt-profiles` beside the exe
-and launches only its own staged copy. See "Basalt engines" below.
+The harness renders basalt rows the same way. At every load it writes the
+v2 `{"version": 2, "models": [...]}` config the current server requires into
+`.simpleharn\basalt-profiles` beside the exe and launches only its own staged
+copy. See "Basalt engines" below.
 
 A Maya row keeps the operator's own JSON config as its L1 input. At every
 load the harness reads it, validates every path it names, removes `host`,
@@ -364,21 +365,26 @@ Basalt models (`engine: basalt`) run the Basalt Python server directly. The
 harness launches `python -m serve.server` in `basalt_cwd`. It never uses the
 source-tree launcher. The row names the three executed paths: the
 interpreter (`basalt_python`), the source root (`basalt_cwd`), and the
-engine binary (`basalt_exe`). `serve_model` is the served alias: it is
-passed as `--alias` and verified at readiness. The child receives
+engine binary (`basalt_exe`). `serve_model` is the served alias: it rides the
+rendered config's model entry and is verified at readiness. The child receives
 `USERPROFILE` and `HOME` from the harness for Basalt's model cache; no
 other parent environment passes.
 
-The harness renders the profile itself. The JSON carries one `server`
-object with three figures only: the `alias`, the absolute `.basalt` model
-path, and `parallel`. The render is staged under `.simpleharn\basalt-profiles`
-beside the exe (content-addressed `<model>-<hash>.json`, atomic write,
-keep-N prune). The spawn rewrites `--config` to exactly that file, so the
-child can never point at another profile. The profile carries no `host`,
-`port`, `api-key`, `gpu`, or `engine-bin`: those decisions ride the forced
-argv (`--host 127.0.0.1`, the harness-assigned `--port`, the staged
-`--config`), and the adapter supplies `--engine-bin`, `--alias`, `--gpu 0`,
-and `--parallel`. `basalt_engine_args` entries append after them, and the
+The harness renders the config itself. It is the v2 shape the current
+server requires: `{"version": 2, "models": [<one model entry>]}`. The model
+entry carries the three launch figures: the `alias`, the absolute `.basalt`
+model path, and `parallel`. It also carries `vision` when `basalt_vision` is
+set, and every `basalt_sampling` default when set. The render is staged under
+`.simpleharn\basalt-profiles` beside the exe (content-addressed
+`<model>-<hash>.json`, atomic write, keep-N prune). The spawn rewrites
+`--config` to exactly that file, so the child can never point at another
+profile. `serve_model` and `basalt_parallel` ride the model entry only: the
+current server refuses a command-line value for a key the config file sets,
+so the harness never repeats `--alias` or `--parallel` on argv. The profile
+carries no `host`, `port`, `api-key`, `gpu`, or `engine-bin`: those decisions
+stay harness-forced and ride the argv (`--host 127.0.0.1`, the
+harness-assigned `--port`, the staged `--config`, `--engine-bin`,
+`--gpu 0`). `basalt_engine_args` entries append after them, and the
 server validates each word against the engine binary before load.
 
 Readiness needs `/health` 200 with the JSON `loaded` flag not being `false`,

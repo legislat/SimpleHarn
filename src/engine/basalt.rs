@@ -2,9 +2,12 @@
 //!
 //! Same doctrine as strata template mode,
 //! generalized: the row yaml names the interpreters, the weights and a few
-//! scalars; the harness renders the whole profile itself, stages it
-//! content-addressed into its own custody root (`.simpleharn/basalt-profiles`),
-//! and rewrites the `--config` slot to exactly the staged file. `host`, `port`
+//! scalars; the harness renders the whole profile itself — the v2 config the
+//! server requires, `{"version": 2, "models": [<one model entry>]}` — stages
+//! it content-addressed into its own custody root (`.simpleharn/basalt-profiles`),
+//! and rewrites the `--config` slot to exactly the staged file. The served
+//! alias and the pool size ride the model entry, never argv: the server
+//! refuses a command-line value for a key the config file sets. `host`, `port`
 //! and the key are absent from the profile **by construction** and harness-
 //! forced in argv; the served id is verified at readiness by an exact
 //! [`ReadinessSpec::HttpString`] match against `/v1/models`.
@@ -97,15 +100,15 @@ pub(crate) struct BasaltRow {
     /// Worker-pool size (`basalt_parallel`, default [`PARALLEL_MIN`]).
     pub parallel: u32,
     /// Image-input mode (`basalt_vision`): `off`, `dynamic`, `cpu`, or a GPU
-    /// number as nvidia-smi spells it. Rendered into the profile's
-    /// `server.vision`, never into argv: vision files are a harness decision.
+    /// number as nvidia-smi spells it. Rendered into the profile's model
+    /// entry as `vision`, never into argv: vision files are a harness decision.
     pub vision: Option<String>,
     /// Operator extra words, each comma entry one argv token, all value-checked.
     pub engine_args: Vec<String>,
     /// Launch-time sampling defaults (`basalt_sampling`), keyed by the
-    /// server-option spelling, merged into the profile's `server` section —
-    /// never into argv, so the forced command line stays byte-stable. The
-    /// typed door for the defaults the extra-words surface still refuses
+    /// server-option spelling, merged into the rendered profile's model
+    /// entry — never into argv, so the forced command line stays byte-stable.
+    /// The typed door for the defaults the extra-words surface still refuses
     /// (request-time values must not ride engine args; the server's own
     /// config-file section is their launch-time home).
     pub sampling: Option<serde_json::Map<String, serde_json::Value>>,
@@ -375,8 +378,10 @@ pub(crate) fn check_engine_args_value(
     Ok(())
 }
 
-/// The server options `basalt_sampling` models: the launch-time sampling\r?\n/// defaults and generation budgets, in the server's dash spelling (`config.py` turns each `server`
-/// section key into `--flag value`; `sampling_option` validates the ranges
+/// The server options `basalt_sampling` models: the launch-time sampling
+/// defaults and generation budgets, in the server's dash spelling
+/// (`config.py` turns each staged model-entry key into `--flag value`;
+/// `sampling_option` validates the ranges
 /// server-side). Every other server option stays harness-owned by the
 /// policy table's owner map, so this knob's key surface is closed by the
 /// allow-list, not filtered by it.
@@ -395,18 +400,23 @@ const SAMPLING_SERVER_OPTIONS: &[&str] = &[
     "answer-room",
 ];
 
-/// The `basalt_sampling` value: one JSON object of launch-time sampling\r?\n/// defaults and generation budgets — the free-form object shape of the strata `sampling` dict, with
-/// the key surface closed to [`SAMPLING_SERVER_OPTIONS`]. Each key is
-/// normalized the way `config.py` normalizes it (lowercase, `_`→`-`, an
-/// optional `--` prefix), must name one sampling option, and must map to a
-/// JSON number; two spellings of one option are refused, not collapsed. The
-/// map merges into the rendered `server` section, where the server applies
+/// The `basalt_sampling` value: one JSON object of launch-time sampling
+/// defaults and generation budgets — the free-form object shape of the strata
+/// `sampling` dict, with the key surface closed to
+/// [`SAMPLING_SERVER_OPTIONS`]. Each key is normalized the way `config.py`
+/// normalizes it (lowercase, `_`→`-`, an optional `--` prefix), must name one
+/// sampling option, and must map to a JSON number. `answer-room` alone also
+/// accepts the string `"auto"`: its config-entry contract is `auto` or a
+/// whole number of tokens (0 = none), and the server refuses a boolean or a
+/// float there. Two spellings of one option are refused, not collapsed. The
+/// map merges into the rendered model entry, where the server applies
 /// each value as the default a request may still override.
 ///
 /// # Errors
 ///
-/// [`BasaltRowError::Bad`] for a non-object, a foreign key, a non-number, or
-/// a double spelling.
+/// [`BasaltRowError::Bad`] for a non-object, a foreign key, a non-number (or,
+/// for `answer-room`, anything but `auto` or a whole number), or a double
+/// spelling.
 fn sampling_object(
     model: &ModelEntry,
     text: &str,
@@ -443,16 +453,25 @@ fn sampling_object(
                 ),
             ));
         }
-        if !matches!(value, serde_json::Value::Number(_)) {
-            if name == "answer-room" && value.as_bool().is_some() {
-                // The server's BooleanOptionalAction accepts a boolean here.
-            } else {
+        if name == "answer-room" {
+            // The config-entry contract is `auto` or a whole number of tokens
+            // (0 = none): the server's entry parser refuses a boolean or a
+            // float there, so the harness must refuse the same values here.
+            let whole = value.as_u64().is_some();
+            let auto = matches!(value.as_str(), Some("auto"));
+            if !whole && !auto {
                 return Err(bad(
                     model,
                     "basalt_sampling",
-                    format!("`{key}` must map to a number: {value}"),
+                    format!("`{key}` must map to `auto` or a whole number of tokens: {value}"),
                 ));
             }
+        } else if !matches!(value, serde_json::Value::Number(_)) {
+            return Err(bad(
+                model,
+                "basalt_sampling",
+                format!("`{key}` must map to a number: {value}"),
+            ));
         }
         if out.insert(name.clone(), value.clone()).is_some() {
             return Err(bad(
@@ -465,10 +484,11 @@ fn sampling_object(
     Ok(out)
 }
 
-/// The basalt profile: the three figures only — the alias the server serves,
-/// the weights it loads, the pool it sizes. Every network/key placement the
-/// strata profile also keeps out rides here the same way: absent by
-/// construction, harness-forced in argv (row 19 posture, §5, §22[1]).
+/// The basalt model entry: the three launch figures — the alias the server
+/// serves, the weights it loads, the pool it sizes — plus `vision` and the
+/// sampling defaults when set. Every network/key placement the strata profile
+/// also keeps out rides here the same way: absent by construction,
+/// harness-forced in argv (row 19 posture, §5, §22[1]).
 fn profile_model(row: &BasaltRow) -> serde_json::Map<String, serde_json::Value> {
     let mut server = serde_json::Map::new();
     server.insert("alias".to_string(), serde_json::json!(row.alias));
@@ -488,24 +508,11 @@ fn profile_model(row: &BasaltRow) -> serde_json::Map<String, serde_json::Value> 
     server
 }
 
-/// Windows: the v1 shape `{"server": {...}}`, byte-identical to the build the
-/// Windows tree ships.
-#[cfg(windows)]
-fn render_profile(row: &BasaltRow) -> String {
-    let mut profile = serde_json::Map::new();
-    profile.insert(
-        "server".to_string(),
-        serde_json::Value::Object(profile_model(row)),
-    );
-    // BTreeMap key order makes the render byte-stable across builds (the
-    // staged name is a content address, strata's same rule).
-    serde_json::to_string_pretty(&serde_json::Value::Object(profile))
-        .expect("invariant: a string/number map serializes")
-}
-
-/// Linux: the newer server requires v2 (`{"version": 2, "models": [...]}`);
-/// it refuses a v1 file with "Basalt requires v2 config".
-#[cfg(unix)]
+/// The server's config contract is v2 on every host: the top level is exactly
+/// `{"version": 2, "models": [<one model entry>]}` and a v1 `{"server": ...}`
+/// file is refused ("Basalt requires v2 config"). BTreeMap key order keeps the
+/// render byte-stable across builds (the staged name is a content address,
+/// strata's same rule).
 fn render_profile(row: &BasaltRow) -> String {
     let profile = serde_json::json!({
         "version": 2,
@@ -546,23 +553,15 @@ impl EngineAdapter for BasaltAdapter {
         let staged_name = crate::process::staged_profile_name(&model.name, &text);
         let mut argv = vec![v.python.to_string_lossy().into_owned()];
         argv.extend(super::policy::render_forced(row, port, Some(&staged_name)));
-        // The served alias and the pool size ride the staged profile on both
-        // hosts. Windows also repeats them in argv, byte-identical to the
-        // build it ships; the Linux server rejects a CLI value for a key the
-        // config already sets ("--alias is not supported when using a config
-        // file").
+        // The served alias and the pool size ride the staged model entry.
+        // The server refuses a command-line value for a key the config file
+        // already sets ("--alias is not supported when using a config
+        // file"), so argv never repeats them on any host.
         argv.extend([
             "--engine-bin".to_string(),
             v.engine_bin.to_string_lossy().into_owned(),
             "--gpu".to_string(),
             "0".to_string(),
-        ]);
-        #[cfg(windows)]
-        argv.extend([
-            "--alias".to_string(),
-            v.alias.clone(),
-            "--parallel".to_string(),
-            v.parallel.to_string(),
         ]);
         argv.extend(v.engine_args.iter().cloned());
         Ok(LaunchSpec {
@@ -722,28 +721,62 @@ mod tests {
         BasaltAdapter.spec(&model, 18199).expect("fixture renders")
     }
 
-    /// The sampling defaults merge into the rendered `server` section under
+    /// The sampling defaults merge into the rendered v2 model entry under
     /// the server's own dash spelling (config.py normalizes `_`→`-`), never
     /// into argv — the forced command line stays byte-stable.
     #[test]
-    fn basalt_sampling_merges_numbers_and_budgets_into_the_server_section() {
+    fn basalt_sampling_merges_numbers_and_budgets_into_the_model_entry() {
         let spec = spec_of(&[(
             "basalt_sampling",
-            r#"{"temperature": 0.7, "top_p": 0.9, "seed": 7, "reasoning-budget-tokens": 2048, "thinking-loop-tokens": 64, "answer-room": false}"#,
+            r#"{"temperature": 0.7, "top_p": 0.9, "seed": 7, "reasoning-budget-tokens": 2048, "thinking-loop-tokens": 64, "answer-room": 2048}"#,
         )]);
         let text = spec.rendered_profile.as_ref().expect("render").text.clone();
         let profile: serde_json::Value = serde_json::from_str(&text).expect("rendered JSON");
-        let server = if cfg!(windows) {
-            profile["server"].clone()
-        } else {
-            profile["models"][0].clone()
-        };
-        assert_eq!(server["temperature"], serde_json::json!(0.7));
-        assert_eq!(server["top-p"], serde_json::json!(0.9));
-        assert_eq!(server["seed"], serde_json::json!(7));
-        assert_eq!(server["reasoning-budget-tokens"], serde_json::json!(2048));
-        assert_eq!(server["thinking-loop-tokens"], serde_json::json!(64));
-        assert_eq!(server["answer-room"], serde_json::json!(false));
+        let entry = profile["models"][0].clone();
+        assert_eq!(entry["temperature"], serde_json::json!(0.7));
+        assert_eq!(entry["top-p"], serde_json::json!(0.9));
+        assert_eq!(entry["seed"], serde_json::json!(7));
+        assert_eq!(entry["reasoning-budget-tokens"], serde_json::json!(2048));
+        assert_eq!(entry["thinking-loop-tokens"], serde_json::json!(64));
+        assert_eq!(entry["answer-room"], serde_json::json!(2048));
+    }
+
+    /// The server's config-entry parser takes `answer-room` only as `auto` or
+    /// a whole number of tokens and refuses a boolean or a float, so the
+    /// harness refuses the same values: a validated config can never render a
+    /// launch that dies before weights load.
+    #[test]
+    fn answer_room_accepts_auto_and_whole_numbers_only() {
+        for text in [
+            r#"{"answer-room": false}"#,
+            r#"{"answer-room": true}"#,
+            r#"{"answer-room": 2048.5}"#,
+            r#"{"answer-room": -3}"#,
+            r#"{"answer-room": "never"}"#,
+        ] {
+            let (_dir, model) = fixture(&[("basalt_sampling", text)]);
+            let err = BasaltAdapter
+                .spec(&model, 18199)
+                .expect_err("`{text}` must refuse");
+            let reason = err.to_string();
+            assert!(
+                reason.contains("basalt_sampling") && reason.contains("answer-room"),
+                "`{text}` refused blind: {reason}"
+            );
+        }
+        for (text, expect) in [
+            (r#"{"answer-room": "auto"}"#, serde_json::json!("auto")),
+            (r#"{"answer-room": 2048}"#, serde_json::json!(2048)),
+        ] {
+            let spec = spec_of(&[("basalt_sampling", text)]);
+            let body = spec.rendered_profile.as_ref().expect("render").text.clone();
+            let profile: serde_json::Value = serde_json::from_str(&body).expect("rendered JSON");
+            let entry = profile["models"][0].as_object().expect("model entry");
+            assert_eq!(
+                entry["answer-room"], expect,
+                "`{text}` must render into the model entry: {body}"
+            );
+        }
     }
 
     /// The key surface is closed by the allow-list: a foreign server option,
@@ -780,8 +813,7 @@ mod tests {
         ]);
         let spec = BasaltAdapter.spec(&model, 18199).expect("fixture renders");
         let placeholder = spec.argv[6].clone();
-        #[allow(unused_mut)]
-        let mut expected: Vec<String> = vec![
+        let expected: Vec<String> = vec![
             dir.join("python.exe").to_string_lossy().into_owned(),
             "-m".to_string(),
             "serve.server".to_string(),
@@ -797,23 +829,54 @@ mod tests {
             "0".to_string(),
             "--lazy-off".to_string(),
         ];
-        #[cfg(windows)]
-        {
-            let gpu_at = expected
-                .iter()
-                .position(|word| word == "--gpu")
-                .expect("the fixture passes --gpu");
-            expected.insert(gpu_at + 2, "basalt-test".to_string());
-            expected.insert(gpu_at + 2, "--alias".to_string());
-            let lazy_at = expected
-                .iter()
-                .position(|word| word == "--lazy-off")
-                .expect("the fixture passes an engine arg");
-            expected.insert(lazy_at, "3".to_string());
-            expected.insert(lazy_at, "--parallel".to_string());
-        }
         assert_eq!(spec.argv, expected);
         assert_eq!(spec.cwd, dir);
+    }
+
+    /// The current server requires the v2 shape and refuses a v1
+    /// `{"server": ...}` file. The rendered config is a top-level `version`
+    /// and `models` pair and nothing else, and its one model entry carries the
+    /// served alias, the weights path, and the pool size.
+    #[test]
+    fn the_profile_is_the_v2_models_shape() {
+        let spec = spec_of(&[("basalt_parallel", "3")]);
+        let text = spec.rendered_profile.as_ref().expect("render").text.clone();
+        let profile: serde_json::Value = serde_json::from_str(&text).expect("rendered JSON");
+        let top = profile.as_object().expect("top-level object");
+        assert!(
+            !top.contains_key("server"),
+            "the v1 shape is refused: {text}"
+        );
+        assert_eq!(top.len(), 2, "version and models and nothing else: {text}");
+        assert_eq!(profile["version"], 2, "the server requires version 2");
+        let models = profile["models"].as_array().expect("models array");
+        assert_eq!(models.len(), 1, "one model per staged profile");
+        let entry = models[0].as_object().expect("model entry");
+        assert_eq!(entry["alias"], "basalt-test");
+        assert_eq!(entry["parallel"], 3);
+        assert!(entry["model"].as_str().expect("model").ends_with(".basalt"));
+    }
+
+    /// The server refuses a command-line value for a key the config file
+    /// already sets, so the served alias and the pool size ride only the
+    /// model entry and never argv.
+    #[test]
+    fn the_argv_never_repeats_a_config_set_key() {
+        let spec = spec_of(&[("basalt_parallel", "3")]);
+        for banned in ["--alias", "--parallel"] {
+            assert!(
+                !spec.argv.iter().any(|word| word == banned),
+                "`{banned}` is config-set and must not ride argv: {:?}",
+                spec.argv
+            );
+        }
+        let text = spec.rendered_profile.as_ref().expect("render").text.clone();
+        let profile: serde_json::Value = serde_json::from_str(&text).expect("rendered JSON");
+        let entry = profile["models"][0]
+            .as_object()
+            .expect("the model entry carries the served alias and pool size");
+        assert_eq!(entry["alias"], "basalt-test");
+        assert_eq!(entry["parallel"], 3);
     }
 
     #[test]
@@ -848,46 +911,30 @@ mod tests {
         let spec = spec_of(&[("basalt_parallel", "4")]);
         let text = spec.rendered_profile.as_ref().expect("render").text.clone();
         let profile: serde_json::Value = serde_json::from_str(&text).expect("rendered JSON");
-        let figures = if cfg!(windows) {
-            assert_eq!(profile.as_object().expect("top").len(), 1);
-            assert_eq!(profile["server"].as_object().expect("server").len(), 3);
-            profile["server"].clone()
-        } else {
-            assert_eq!(profile["version"], 2, "the Linux server requires v2");
-            assert_eq!(
-                profile["models"].as_array().expect("models").len(),
-                1,
-                "one model per staged profile"
-            );
-            assert_eq!(
-                profile["models"][0].as_object().expect("model").len(),
-                3,
-                "the three figures and nothing else"
-            );
-            profile["models"][0].clone()
-        };
-        assert_eq!(figures["alias"], "basalt-test");
-        assert_eq!(figures["parallel"], 4);
-        assert!(figures["model"]
-            .as_str()
-            .expect("model")
-            .ends_with(".basalt"));
-        for banned in [
-            "host",
-            "port",
-            "api_key",
-            "api-key",
-            "gpu",
-            "config",
-            "engine_bin",
-            "engine-bin",
-            "python",
-        ] {
-            assert!(
-                !text.contains(banned),
-                "the rendered profile must never carry `{banned}`: {text}"
-            );
-        }
+        let top = profile.as_object().expect("top object");
+        assert_eq!(
+            top.keys()
+                .map(String::as_str)
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from(["models", "version"]),
+            "the top level is version and models and nothing else: {text}"
+        );
+        assert_eq!(profile["version"], 2, "the server requires the v2 shape");
+        let models = profile["models"].as_array().expect("models");
+        assert_eq!(models.len(), 1, "one model per staged profile");
+        let entry = models[0].as_object().expect("model");
+        assert_eq!(
+            entry
+                .keys()
+                .map(String::as_str)
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from(["alias", "model", "parallel"]),
+            "a plain row carries the three launch figures and nothing else: \
+             no host, port, key, gpu, config, or engine-bin figure: {text}"
+        );
+        assert_eq!(entry["alias"], "basalt-test");
+        assert_eq!(entry["parallel"], 4);
+        assert!(entry["model"].as_str().expect("model").ends_with(".basalt"));
     }
 
     #[test]
@@ -1350,8 +1397,8 @@ mod tests {
             None
         );
     }
-    /// `basalt_vision` is a harness-owned mode: it rides the rendered profile's
-    /// `server.vision`, never argv (`--vision` stays refused in engine args).
+    /// `basalt_vision` is a harness-owned mode: it rides the rendered model
+    /// entry as `vision`, never argv (`--vision` stays refused in engine args).
     #[test]
     fn basalt_vision_lands_in_the_profile_and_never_in_argv() {
         for mode in ["dynamic", "cpu", "0", "OFF"] {
@@ -1361,7 +1408,7 @@ mod tests {
             assert_eq!(row.vision.as_deref(), Some(expected.as_str()), "{mode}");
             assert!(
                 render_profile(&row).contains(&format!("\"vision\": \"{expected}\"")),
-                "the profile carries server.vision {mode}"
+                "the profile carries the entry's vision key {mode}"
             );
             let spec = BasaltAdapter.spec(&model, 18199).expect("the spec renders");
             assert!(

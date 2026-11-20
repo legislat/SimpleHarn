@@ -345,8 +345,9 @@ fn rendered_profile_roots_are_per_engine_and_distinct() {
 
 /// Minimal `serve.server` stand-in: the exact `python -m serve.server`
 /// shape the adapter launches. Reports `/health` `loaded: false` for its
-/// first two requests (the readiness must wait), serves the alias on
-/// `/v1/models`, and records its received argv for the spawn-path pin.
+/// first two requests (the readiness must wait), reads the served alias
+/// from the staged `--config` JSON the way the real server does, serves it
+/// on `/v1/models`, and records its received argv for the spawn-path pin.
 const FAKE_BASALT_SERVER: &str = r#"import http.server
 import json
 import os
@@ -365,7 +366,24 @@ def opt(name, default=None):
 
 
 port = int(opt("--port"))
-alias = opt("--alias", "anon")
+
+
+def config_alias(default="anon"):
+    # The staged config is the alias source, as on the real server. A
+    # missing path or a malformed document falls back; the stand-in never
+    # crashes on a spec it does not understand.
+    path = opt("--config")
+    if not path:
+        return default
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        return doc["models"][0]["alias"]
+    except Exception:
+        return default
+
+
+alias = config_alias()
 with open(os.path.join(os.getcwd(), "argv.json"), "w", encoding="utf-8") as fh:
     json.dump(args, fh)
 
@@ -520,6 +538,17 @@ async fn a_fake_python_basalt_launch_serves_the_verified_id_end_to_end() {
         std::fs::read_to_string(&staged).expect("reads back"),
         profile.text
     );
+    let staged_json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&staged).expect("reads back"))
+            .expect("the staged profile is JSON");
+    assert_eq!(
+        staged_json["version"], 2,
+        "the staged render is the v2 shape"
+    );
+    assert_eq!(
+        staged_json["models"][0]["alias"], "fake-alias",
+        "the served alias rides the staged model entry"
+    );
     // The child received the staged path, not the placeholder.
     // The child creates the file before its bytes land, so a read can catch an
     // empty or partial document. Retry the parse, not just the open: the gate saw
@@ -546,6 +575,12 @@ async fn a_fake_python_basalt_launch_serves_the_verified_id_end_to_end() {
         staged.to_string_lossy(),
         "the --config slot carries the staged absolute path"
     );
+    for banned in ["--alias", "--parallel"] {
+        assert!(
+            !child_argv.iter().any(|word| word == banned),
+            "a config-set key must never ride argv: {banned} in {child_argv:?}"
+        );
+    }
     assert_eq!(
         child_argv
             .get(
