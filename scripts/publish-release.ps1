@@ -92,9 +92,6 @@ function Test-AssetCoverage([string]$dir) {
     if ($null -eq $recorded -and (Test-Path -LiteralPath $companion)) {
       $companionSums = Read-Sums $companion
       if ($companionSums.ContainsKey($asset.Name)) { $recorded = $companionSums[$asset.Name] }
-      if ($null -eq $recorded -and $companionSums.Count -eq 1) {
-        $recorded = @($companionSums.Values)[0]
-      }
     }
     Report ($null -ne $recorded) ("archive has a checksum: " + $asset.Name)
     if ($null -ne $recorded) {

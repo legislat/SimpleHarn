@@ -21,7 +21,8 @@ $gate = @(
   @{ Name = 'node scripts/check-instructions.mjs'; Exe = 'node'; CmdArgs = @('scripts/check-instructions.mjs') },
   @{ Name = 'node scripts/check-comments.mjs -Fail'; Exe = 'node'; CmdArgs = @('scripts/check-comments.mjs', '-Fail') },
   @{ Name = 'node scripts/check-test-paths.mjs'; Exe = 'node'; CmdArgs = @('scripts/check-test-paths.mjs') },
-  @{ Name = 'node scripts/check-engine-knobs.mjs'; Exe = 'node'; CmdArgs = @('scripts/check-engine-knobs.mjs') }
+    @{ Name = 'node scripts/check-engine-knobs.mjs'; Exe = 'node'; CmdArgs = @('scripts/check-engine-knobs.mjs') },
+    @{ Name = 'node scripts/check-release-sums.test.mjs'; Exe = 'node'; CmdArgs = @('scripts/check-release-sums.test.mjs') }
 )
 
 function Show-Counts([string]$name, [string[]]$output) {

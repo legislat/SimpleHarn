@@ -20,9 +20,13 @@ if (!dir || !existsSync(dir) || !statSync(dir).isDirectory()) {
 }
 
 const files = readdirSync(dir).filter((name) => statSync(join(dir, name)).isFile());
-const asset = (name) =>
-  (name.endsWith(".zip") || name.endsWith(".tar.gz") || name.endsWith(".exe")) &&
-  !name.endsWith(".sha256");
+const asset = (name) => {
+  const lower = name.toLowerCase();
+  return (
+    (lower.endsWith(".zip") || lower.endsWith(".tar.gz") || lower.endsWith(".exe")) &&
+    !lower.endsWith(".sha256")
+  );
+};
 
 function parseSums(path) {
   const map = new Map();
