@@ -19,8 +19,9 @@
 //! by policing. The external `strata_config` mode is SUPERSEDED: a row that
 //! still declares it is refused with the migration sentence, and
 //! `simpleharn import strata <profile.json>` turns a manual profile into the
-//! row yaml. `C:\Strata` stays the manual-launch home the serve path never
-//! reads.
+//! row yaml. The main install's `C:\Strata\terminal` is the manual-launch home;
+//! the separate `C:\Strata-nvfp4` fork keeps its own. The serve path reads
+//! neither manual config; the import CLI is the one sanctioned reader.
 //!
 //! There is no preload in this harness (engine work is on-demand only), and the
 //! yamls carry no autostart keys: a strata engine spawns only when an operator
@@ -39,12 +40,14 @@ use crate::model::ModelEntry;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Fallback interpreter when a yaml omits `strata_python:` (v3.3 default). The
-/// single home of the harness-side defaults is the config `engines:` section
-/// (slice 10d), resolved through [`crate::config::AppConfig::strata_python`]
-/// into the adapter at `default_adapters` boot time.
+/// Fallback interpreter when a yaml omits `strata_python:` (the main install's
+/// terminal-layout default). The single home of the harness-side defaults is the
+/// config `engines:` section (slice 10d), resolved through
+/// [`crate::config::AppConfig::strata_python`] into the adapter at
+/// `default_adapters` boot time.
 const DEFAULT_PYTHON: &str = crate::config::STRATA_PYTHON_DEFAULT;
-/// Fallback working directory when a yaml omits `strata_cwd:` (v3.3 default).
+/// Fallback working directory when a yaml omits `strata_cwd:` (the main
+/// install's terminal-layout default).
 const DEFAULT_CWD: &str = crate::config::STRATA_CWD_DEFAULT;
 
 /// The top-level profile fields that claim a harness-owned decision —

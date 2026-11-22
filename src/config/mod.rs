@@ -437,15 +437,15 @@ pub fn log_level_from_env() -> Option<String> {
 }
 
 /// Fallback strata interpreter when neither `engines.strata.python` nor a model
-/// yaml's `strata_python` names one (v3.3 default; single home since slice 10d —
-/// the strata adapter's `DEFAULT_PYTHON` is this constant). The `terminal/`
-/// layout holds the private venv.
+/// yaml's `strata_python` names one (adapter default; single home since slice
+/// 10d — the strata adapter's `DEFAULT_PYTHON` is this constant). The value
+/// follows the main install's `terminal/` layout.
 pub const STRATA_PYTHON_DEFAULT: &str = r"C:\Strata\terminal\.venv\Scripts\python.exe";
 
 /// Fallback strata working directory when neither `engines.strata.cwd` nor a
-/// model yaml's `strata_cwd` names one (v3.3 default; single home since slice
-/// 10d). The harness launches `-m serve.server`, which resolves only from the
-/// `terminal/` layout the runtime moved into.
+/// model yaml's `strata_cwd` names one (adapter default; single home since slice
+/// 10d). The harness launches `-m serve.server`, which does not resolve from the
+/// old checkout root.
 pub const STRATA_CWD_DEFAULT: &str = r"C:\Strata\terminal";
 
 /// Harness-side per-engine defaults (slice 10d). Doctrine (`DECISIONS` LOCKED):
@@ -458,7 +458,7 @@ pub const STRATA_CWD_DEFAULT: &str = r"C:\Strata\terminal";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EnginesConfig {
-    /// strata engine defaults; absent means the documented v3.3 fallbacks.
+    /// strata engine defaults; absent means the documented fallbacks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strata: Option<StrataEngineConfig>,
     /// llama engine defaults (R11: the Fit probe switch and its Wave-C

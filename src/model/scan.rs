@@ -4268,11 +4268,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&pdir);
     }
 
-    /// The machine check the sweep left behind: the operator's live ModelConf must
-    /// carry no key the harness does not read. Skipped when the dir is absent (the
-    /// repo copy is gitignored and machine-dependent).
+    /// The fixture check the sweep left behind: the repo-root `ModelConf` copy
+    /// must carry no key the harness does not read. The live install's
+    /// `ModelConf` is covered by the operator rescan, not this test. Skipped
+    /// when the dir is absent (the repo copy is gitignored and machine-dependent).
     #[test]
-    fn the_live_modelconf_directory_has_no_unknown_keys() {
+    fn the_repo_modelconf_fixture_has_no_unknown_keys() {
         let dir = Path::new("ModelConf");
         if !dir.is_dir() {
             eprintln!("no ModelConf directory beside the test cwd; skipping");
@@ -4302,12 +4303,12 @@ mod tests {
     /// line, so the rows no longer carry it. Every entry is pinned by file and
     /// kind: a live file growing any other report, or an unplanned new file,
     /// fails here, and the ledger shrinks as each cleanup gesture lands.
-    /// Windows-only: the live dir is this machine's Windows ModelConf — its
+    /// Windows-only: the fixture is this machine's Windows ModelConf copy — its
     /// `F:\` paths cannot validate as absolute on another host. Skipped when
     /// the dir is absent.
     #[cfg(windows)]
     #[test]
-    fn the_live_modelconf_directory_scans_fully_clean() {
+    fn the_repo_modelconf_fixture_scans_fully_clean() {
         let dir = Path::new("ModelConf");
         if !dir.is_dir() {
             eprintln!(
@@ -4334,9 +4335,11 @@ mod tests {
                 ScanKind::InertKey => "inert",
                 ScanKind::PolicyRefused => "refused",
                 ScanKind::InvalidYaml => {
-                    panic!("the live ModelConf grew an invalid-yaml file: {error:?}")
+                    panic!("the repo ModelConf fixture grew an invalid-yaml file: {error:?}")
                 }
-                other => panic!("the live ModelConf grew an unplanned {other:?} report: {error:?}"),
+                other => panic!(
+                    "the repo ModelConf fixture grew an unplanned {other:?} report: {error:?}"
+                ),
             };
             let first = got.insert(error.file.clone(), label);
             assert!(
@@ -4351,7 +4354,7 @@ mod tests {
             .collect();
         assert_eq!(
             got, want,
-            "the live ModelConf ledger is closed: every report is one of the ruled 10c entries"
+            "the repo ModelConf fixture ledger is closed: every report is one of the ruled 10c entries"
         );
         let refused = want.values().filter(|kind| **kind == "refused").count();
         assert_eq!(

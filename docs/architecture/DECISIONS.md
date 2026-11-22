@@ -810,9 +810,12 @@ references still resolve. Every entry carries one status prefix:
   (venv, `engine\strata.exe`, `engine\strata-vision.exe`, `data`, `serve`, run
   configs). The adapter defaults are
   `C:\Strata\terminal\.venv\Scripts\python.exe` and `C:\Strata\terminal`
-  (`-m serve.server` resolves only from the terminal layout); a row that
-  overrides `strata_exe`, `strata_lib_dirs`, `strata_vision`, or the
-  `--expert-profile` argument names the terminal paths. Engine stays 0.1.55;
-  host/port/key forcing and the render rule are unchanged. The manual-launch
-  home is `C:\Strata\terminal`. The updater's rewritten run configs are not a
-  harness launch source; the row remains the source | 2026-11-22 | `this change`
+  (`-m serve.server` does not resolve from the old checkout root); a row on the
+  main install that overrides `strata_exe`, `strata_lib_dirs`, `strata_vision`,
+  or the `--expert-profile` argument names the terminal paths. Engine stays
+  0.1.55; host/port/key forcing and the render rule are unchanged. The
+  manual-launch home is `C:\Strata\terminal`; this supersedes row 19's
+  manual-home clause for runtime paths. The source checkout root remains
+  `C:\Strata`, and the separate `C:\Strata-nvfp4` fork keeps its own root. The
+  updater's rewritten run configs are not a harness launch source; the row
+  remains the source | 2026-11-22 | `this change`

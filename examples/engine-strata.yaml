@@ -1,15 +1,16 @@
 # strata row template (template mode). Required keys: strata_exe,
 # serve_model, strata_tokenizer. strata_python and strata_cwd are shown
-# at the documented defaults (CONFIG.md); adjust them to your install.
+# at the main install's terminal-layout defaults (CONFIG.md); adjust them
+# to your install. The separate nvfp4 fork keeps its own root.
 # The paths below are PLACEHOLDERS except the two documented defaults:
 # replace them with real absolute paths before copying into ModelConf.
 engine: strata
 category: RP
 serve_model: example-strata-model
-strata_exe: C:\Strata\engine\strata.exe
+strata_exe: C:\Strata\terminal\engine\strata.exe
 strata_tokenizer: C:\Strata\tokenizer.bin
-strata_python: C:\Strata\.venv\Scripts\python.exe
-strata_cwd: C:\Strata
+strata_python: C:\Strata\terminal\.venv\Scripts\python.exe
+strata_cwd: C:\Strata\terminal
 strata_args: --native, C:\models\example-strata.gguf, --max-context, 8192
 vram_gb: 24.0
 cost: fixed

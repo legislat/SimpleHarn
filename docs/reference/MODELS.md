@@ -334,13 +334,15 @@ therefore carries no `host`, `port`, or key at all. Readiness needs `/health`
 200 while weights stream in. A strata engine starts only when you load it,
 or when a client request names it. Booting the harness starts nothing.
 
-**Layout since Strata 0.2.19:** the source checkout stays at `C:\Strata`, but
-the runtime moved under `C:\Strata\terminal` — the venv, `engine\strata.exe`,
-`engine\strata-vision.exe`, `data`, `serve`, and the run configs. A row that
-overrides `strata_exe`, `strata_lib_dirs`, `strata_vision`, or
-`strata_args` must name the `terminal\` paths. The harness-side defaults are
-the terminal venv and the terminal working directory; the manual-launch home
-the serve path never reads is now `C:\Strata\terminal`.
+**Layout since Strata 0.2.19:** the main install's source checkout stays at
+`C:\Strata`, but the runtime moved under `C:\Strata\terminal` — the venv,
+`engine\strata.exe`, `engine\strata-vision.exe`, `data`, `serve`, and the run
+configs. A row on that install that overrides `strata_exe`, `strata_lib_dirs`,
+`strata_vision`, or `strata_args` must name the `terminal\` paths. The separate
+`nvfp4` fork keeps its own root and its own paths. The harness-side
+defaults are the terminal venv and the terminal working directory; the manual
+run configs stay under `C:\Strata\terminal`, and the harness reads them only
+through the import CLI.
 
 Measurement: after readiness the harness reads the `engine` block of the
 engine's own `GET /metrics` snapshot. The card capture of 2026-11-04 proved
