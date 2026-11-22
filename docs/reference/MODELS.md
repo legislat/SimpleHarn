@@ -204,6 +204,19 @@ row reads amber "engine-projected" until a witnessed serve confirms it
 within the margin, then it turns green. The colour is a confidence signal;
 the number never changes between the two.
 
+**Booking precedence for a VRAM row, strongest first:** a guarded
+`engine_report`/`engine_status` above the declared `vram_gb`; a Fit projection
+above it; the declared `vram_gb`; a bookable measured pair; the GGUF estimate
+`file size x 1.15 + 2`. The declared number is a floor, never a ceiling: a
+source above it books instead, and a source at or below it leaves the
+declaration in force. A `total_diff` measured pair displays but never books.
+An `exact` row with no real source is refused. On a `greedy` row a measured
+pair never books; a Fit projection still floors the booking, and the launch
+floor remains the gate. Because the Fit figure is dynamic, a declared
+`vram_gb` is the stable low-risk booking; enable `engines.llama.fit_probe`
+when the row's real footprint is likely above the declaration.
+
+
 **CPU-resident rows price on RAM, not VRAM** (operator ruling 2026-11-05).
 A row with `cpu_offload` on books the host RAM ladder, judged against
 `ram_total - ram_reserve_gb - observed ram_used`: the declared `ram_gb`
