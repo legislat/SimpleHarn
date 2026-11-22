@@ -438,13 +438,15 @@ pub fn log_level_from_env() -> Option<String> {
 
 /// Fallback strata interpreter when neither `engines.strata.python` nor a model
 /// yaml's `strata_python` names one (v3.3 default; single home since slice 10d —
-/// the strata adapter's `DEFAULT_PYTHON` is this constant).
-pub const STRATA_PYTHON_DEFAULT: &str = r"C:\Strata\.venv\Scripts\python.exe";
+/// the strata adapter's `DEFAULT_PYTHON` is this constant). The `terminal/`
+/// layout holds the private venv.
+pub const STRATA_PYTHON_DEFAULT: &str = r"C:\Strata\terminal\.venv\Scripts\python.exe";
 
 /// Fallback strata working directory when neither `engines.strata.cwd` nor a
 /// model yaml's `strata_cwd` names one (v3.3 default; single home since slice
-/// 10d).
-pub const STRATA_CWD_DEFAULT: &str = r"C:\Strata";
+/// 10d). The harness launches `-m serve.server`, which resolves only from the
+/// `terminal/` layout the runtime moved into.
+pub const STRATA_CWD_DEFAULT: &str = r"C:\Strata\terminal";
 
 /// Harness-side per-engine defaults (slice 10d). Doctrine (`DECISIONS` LOCKED):
 /// *"external engines obey only harness-owned configuration"* — the interpreter

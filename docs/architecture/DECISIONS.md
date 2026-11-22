@@ -805,3 +805,14 @@ references still resolve. Every entry carries one status prefix:
   Implementation deferred to `TASK-MAYA-VISION-OVERLAY`.
   `TASK-CONFIG-IMPORT-RESEARCH` covers the per-engine `import` config mechanism,
   implementation deferred | 2026-11-17 | `this task`
+- **Implemented** Strata 0.2.19 layout move (operator update 2026-11-22): the
+  checkout stays `C:\Strata`, but the runtime moved under `C:\Strata\terminal`
+  (venv, `engine\strata.exe`, `engine\strata-vision.exe`, `data`, `serve`, run
+  configs). The adapter defaults are
+  `C:\Strata\terminal\.venv\Scripts\python.exe` and `C:\Strata\terminal`
+  (`-m serve.server` resolves only from the terminal layout); a row that
+  overrides `strata_exe`, `strata_lib_dirs`, `strata_vision`, or the
+  `--expert-profile` argument names the terminal paths. Engine stays 0.1.55;
+  host/port/key forcing and the render rule are unchanged. The manual-launch
+  home is `C:\Strata\terminal`. The updater's rewritten run configs are not a
+  harness launch source; the row remains the source | 2026-11-22 | `this change`

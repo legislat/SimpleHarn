@@ -1833,9 +1833,9 @@ mod tests {
     fn a_missing_or_non_directory_cwd_is_refused_at_spec_time() {
         let base = fixture_pairs();
         // The interpreter is validated before the cwd, so leaving `strata_python`
-        // to the adapter default made this test pass only on a machine where
-        // C:\Strata\.venv exists; name an existing .exe stand-in so the cwd
-        // refusal under test is reached on any machine.
+        // to the adapter default would make this test depend on the machine; name
+        // an existing .exe stand-in so the cwd refusal under test is reached
+        // anywhere.
         let python = real_file_with_extension("cwd-python-stand-in", "exe");
         let not_a_dir = real_file_with_extension("cwd-not-a-dir", "json");
         for value in ["Z:\\no-such-dir", path_text(&not_a_dir)] {

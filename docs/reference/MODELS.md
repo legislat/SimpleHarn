@@ -94,8 +94,8 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `llama_server_exe` | **llama only.** Optional absolute path to an existing `llama-server.exe` that **only this row** uses. It selects a different llama.cpp fork for that model. The working directory follows the executable's parent, so the engine DLLs must sit beside the file. The global `llama_server_exe` config key stays the default for rows that set none (see `CONFIG.md`). See "Llama engines" below. |
 | `strata_exe` | **Required for strata** (template mode): the absolute path of the engine binary that the harness-rendered profile names. Its presence selects template mode. `serve_model` is also required, and it becomes the profile's served model name. |
 | `strata_tokenizer` | **Required for strata**: the absolute tokenizer path that the rendered profile names. |
-| `strata_python` | Interpreter. It must be an existing `.exe` **file**; it is the program the harness launches (default `C:\Strata\.venv\Scripts\python.exe`). |
-| `strata_cwd` | Working directory. It must be an existing directory (default `C:\Strata`). |
+| `strata_python` | Interpreter. It must be an existing `.exe` **file**; it is the program the harness launches (default `C:\Strata\terminal\.venv\Scripts\python.exe`). |
+| `strata_cwd` | Working directory. It must be an existing directory (default `C:\Strata\terminal`; the `-m serve.server` module resolves from the `terminal/` layout since Strata 0.2.19). |
 | `strata_args` | Comma-separated engine argv tokens rendered into the profile's `args`. Put weights, quant, and context here, for example `--native D:\Models\m.gguf`. The harness forces `--host` and `--port` and refuses them in this list. A `strata_vision` block appends the engine's `--vision` switch, so do not write that token here too. |
 | `strata_lib_dirs` | Comma-separated absolute directories rendered as the profile's `lib_dirs`. |
 | `strata_env` | Whitespace-separated `STRATA_<NAME>=<VALUE>` tokens rendered as the profile's `env`. Only uppercase `STRATA_`-prefixed engine settings pass. |
@@ -334,6 +334,14 @@ therefore carries no `host`, `port`, or key at all. Readiness needs `/health`
 200 while weights stream in. A strata engine starts only when you load it,
 or when a client request names it. Booting the harness starts nothing.
 
+**Layout since Strata 0.2.19:** the source checkout stays at `C:\Strata`, but
+the runtime moved under `C:\Strata\terminal` — the venv, `engine\strata.exe`,
+`engine\strata-vision.exe`, `data`, `serve`, and the run configs. A row that
+overrides `strata_exe`, `strata_lib_dirs`, `strata_vision`, or
+`strata_args` must name the `terminal\` paths. The harness-side defaults are
+the terminal venv and the terminal working directory; the manual-launch home
+the serve path never reads is now `C:\Strata\terminal`.
+
 Measurement: after readiness the harness reads the `engine` block of the
 engine's own `GET /metrics` snapshot. The card capture of 2026-11-04 proved
 the routes the earlier phases assumed do not carry a footprint: `/status`
@@ -369,7 +377,8 @@ strata-owned keys and `serve_model` are replaced; `strata_config` and stale
 unreadable, duplicate-key, empty, or non-strata target is refused with a
 named reason, and nothing is written. The apply summary counts the row lines
 the merge actually changed, not the emitted field count. Without `--apply`,
-the command only prints; it never touches the row or the profile file. `C:\Strata` stays the
+the command only prints; it never touches the row or the profile file.
+`C:\Strata\terminal` stays the
 manual-launch home that the harness never reads on the serve path. The
 import CLI is the one sanctioned reader.
 
