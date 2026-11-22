@@ -51,7 +51,6 @@ for (const name of files.filter(asset)) {
     const companion = join(dir, `${name}.sha256`);
     const companionSums = parseSums(companion);
     if (companionSums.has(name)) recorded = companionSums.get(name);
-    else if (companionSums.size === 1) recorded = [...companionSums.values()][0];
   }
   if (!recorded) {
     console.log(`FAIL ${name} has no checksum`);
