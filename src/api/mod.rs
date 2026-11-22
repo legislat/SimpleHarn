@@ -34,7 +34,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio_stream::StreamExt;
-use tower_http::{compression::CompressionLayer, trace::TraceLayer};
+use tower_http::{
+    compression::CompressionLayer,
+    trace::{DefaultOnFailure, TraceLayer},
+};
 
 mod guards;
 
@@ -1588,7 +1591,12 @@ pub fn control_router(api: Arc<ApiState>) -> Router {
             )),
         )
         .layer((
-            TraceLayer::new_for_http(),
+            // The generic trace failure is diagnostic only. The harness's own
+            // named refusal/error log owns the visible severity, so a deliberate
+            // 503 must not duplicate its WARN as a trace ERROR; keep the
+            // classification/latency line at DEBUG.
+            TraceLayer::new_for_http()
+                .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             CompressionLayer::new(),
             // The control listener also carries its category's proxy surface, so the
             // proxy ceiling applies to the merged router; the `/har/*` sub-router

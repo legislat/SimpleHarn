@@ -46,7 +46,12 @@ impl<S: Subscriber> Layer<S> for Capture {
     fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
         let mut parts = Vec::new();
         event.record(&mut LineVisitor { parts: &mut parts });
-        self.0.lock().expect("capture lock").push(parts.join(" "));
+        self.0.lock().expect("capture lock").push(format!(
+            "{} {} {}",
+            event.metadata().level(),
+            event.metadata().target(),
+            parts.join(" ")
+        ));
     }
 }
 
@@ -4320,6 +4325,34 @@ async fn os_failure_text_reaches_the_ring_but_never_the_client_body() {
             && line.contains("osleak.yaml")
             && line.contains("detail")),
         "the full OS reason must reach the harness log, not the client: {lines:?}"
+    );
+}
+
+/// The generic `tower-http` failure line is diagnostic only; a named admission
+/// refusal is already the harness's WARN and must not be duplicated at ERROR.
+/// Falsifier: the default `TraceLayer` failure handler (ERROR) leaves an
+/// `ERROR tower_http::trace::on_failure` line for this 503 and the second pin
+/// below goes red.
+#[tokio::test]
+async fn a_named_503_refusal_is_not_an_error_on_the_http_trace() {
+    let capture = capture_lines();
+    tracing::callsite::rebuild_interest_cache();
+    let (control, _, _, _, _, _) = app(
+        AppConfig::default(),
+        &[("too-big", "mock", CategoryId::Work, Some(1000.0))],
+    );
+    let (status, body) = post_json(&control, "/har/load", r#"{"model":"too-big"}"#).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "body: {body}");
+    let lines = capture.lock().expect("capture lock");
+    assert!(
+        lines.iter().any(|line| line.contains("admission refused")),
+        "the named refusal must stay visible in its WARN: {lines:?}"
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.contains("ERROR") && line.contains("tower_http::trace::on_failure")),
+        "the generic trace failure must not duplicate a named 503 at ERROR: {lines:?}"
     );
 }
 

@@ -17,7 +17,10 @@ use axum::{Json, Router};
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;
-use tower_http::{compression::CompressionLayer, trace::TraceLayer};
+use tower_http::{
+    compression::CompressionLayer,
+    trace::{DefaultOnFailure, TraceLayer},
+};
 
 use super::{
     envelope_router_errors, guard, health, resolve_unique, v1_models, ApiError, ApiState,
@@ -484,7 +487,9 @@ pub fn category_router(api: Arc<ApiState>, category: CategoryId) -> Router {
         )
         .route("/v1/embeddings", post(proxy).with_state(listener))
         .layer((
-            TraceLayer::new_for_http(),
+            // Diagnostic only; the handler's own log owns the visible severity.
+            TraceLayer::new_for_http()
+                .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             CompressionLayer::new(),
             DefaultBodyLimit::max(PROXY_BODY_LIMIT),
         ))
