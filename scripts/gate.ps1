@@ -2,7 +2,7 @@
 # docs/process/VERIFICATION.md. PowerShell 5.1 compatible.
 #
 # The gate never starts an engine, never loads a model, never binds a port,
-# and never calls a live harness. It runs the ten commands in order, stops on
+# and never calls a live harness. It runs the commands in order, stops on
 # the first failure, and prints PASS/FAIL per command plus the overall result.
 # Counts are taken from the command output only; nothing is hardcoded.
 # The cargo commands carry `--features tray`: that is the shipped feature set

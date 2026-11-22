@@ -28,6 +28,7 @@ node scripts/check-instructions.mjs
 node scripts/check-comments.mjs -Fail
 node scripts/check-test-paths.mjs
 node scripts/check-engine-knobs.mjs
+node scripts/check-release-sums.test.mjs
 ```
 
 - `cargo test` includes the doc-test.
@@ -150,6 +151,7 @@ Rules:
 | Unit and integration | `cargo test` | cardless gate |
 | Doc-test | inside `cargo test` | cardless gate |
 | Web UI DOM stub | the node command above | cardless gate |
+| Release-sums falsifier | `scripts/check-release-sums.test.mjs` | cardless gate |
 | Card suite | operator-run package | operator-freed window only |
 
 The commands print their own counts.

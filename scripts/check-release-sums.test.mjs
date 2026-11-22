@@ -47,6 +47,21 @@ test("an exactly named asset passes", () => {
   }
 });
 
+test("an exactly named companion passes", () => {
+  const dir = tempDir();
+  try {
+    const bytes = "asset-bytes";
+    writeFileSync(join(dir, "pkg.tar.gz"), bytes);
+    writeFileSync(join(dir, "SHA256SUMS.txt"), `${sha("other")}  other.txt\n`);
+    writeFileSync(join(dir, "pkg.tar.gz.sha256"), `${sha(bytes)}  pkg.tar.gz\n`);
+    const result = run(dir);
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /PASS pkg\.tar\.gz digest matches/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a single-entry companion naming another file fails", () => {
   const dir = tempDir();
   try {
