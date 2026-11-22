@@ -285,9 +285,10 @@ struct ActorState {
     /// when it parks: its model, waiters and state all live on that
     /// row, and [`ActorState::start_pending`] arms the same row rather than creating
     /// a second one. Since the 2026-11-10 ruling a gate-parked row lives here too:
-    /// a load the gate found short only on in-flight bookings parks with state `Idle`
+    /// a load the gate found short only on in-flight bookings and/or an
+    /// in-progress release parks with state `Idle`
     /// on its (otherwise free) slot, and [`ActorState::finish`] re-gates it when any
-    /// booking terminalizes.
+    /// booking or release terminalizes.
     pending: HashMap<usize, JobId>,
     /// Slots whose occupant an operator's unload must still free once the in-flight
     /// job it cancelled terminalizes: unload = cancel *and* unload.
@@ -1077,6 +1078,67 @@ impl ActorState {
             .filter_map(|(_, job)| job.ram_need)
             .map(|need| need.0)
             .sum()
+    }
+
+    /// GiB projected to free through releases already **in progress** — the
+    /// release credit of the gate's park arm (operator 2026-11-22, park matrix
+    /// cell 1): a non-terminal [`JobKind::Unload`] row whose slot still holds
+    /// that model's GPU occupant. Per resident the credit is
+    /// `max(booked need, live folded footprint)` — the same max truth as the
+    /// same-slot release projection — summed over residents; the caller clamps
+    /// the sum to the occupied reading, so a stale row can never project more
+    /// than the card holds. A projection, never a booking: the unload row
+    /// itself books nothing (both in-flight sums count `Load` rows only), the
+    /// credit never enters `free` or the compared deficit, and every re-gate
+    /// remains physical (DOCTRINE 4).
+    ///
+    /// Skips, with the reason each protects the arithmetic:
+    /// - the unload on the admitting row's **own slot** — that release is
+    ///   already credited once as the same-slot victim release, and spending it
+    ///   twice would overcommit the gate;
+    /// - a CPU-resident occupant — it holds no card bytes;
+    /// - an occupant whose model or spawn ticket no longer matches the unload
+    ///   row's own victim — the departing resident is not this slot's present
+    ///   bytes, so its GiB are not waitable future free.
+    ///
+    /// The returned list names the releasing residents with their projected
+    /// GiB for the park log (cell 10: the wait names what it waits on).
+    fn releasing_vram_need(&self, except: JobId) -> (f64, Vec<String>) {
+        let own_slot = self.jobs.get(&except).and_then(|job| job.slot);
+        let mut total = 0.0;
+        let mut models = Vec::new();
+        for (id, job) in self.jobs.iter() {
+            if *id == except || job.kind != JobKind::Unload || job.terminal {
+                continue;
+            }
+            let Some(slot_index) = job.slot else { continue };
+            if own_slot == Some(slot_index) {
+                continue;
+            }
+            let Some(occupant) = self
+                .slots
+                .get(slot_index)
+                .and_then(|slot| slot.occupant.as_ref())
+            else {
+                continue;
+            };
+            if occupant.ram_need.is_some()
+                || occupant.model != job.model
+                || !job
+                    .victim
+                    .as_ref()
+                    .is_some_and(|v| v.ticket == occupant.ticket)
+            {
+                continue;
+            }
+            let credit = occupant
+                .need
+                .0
+                .max(occupant.live_measured_gb.unwrap_or(0.0));
+            total += credit;
+            models.push(format!("{} ({credit:.1} GiB)", occupant.model));
+        }
+        (total, models)
     }
 
     fn step(&mut self, job_id: JobId, to: SwapState) -> bool {

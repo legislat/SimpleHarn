@@ -25,9 +25,11 @@ impl ActorState {
     /// victim stays installed on purpose (G12) and a later swap or restart
     /// re-owns the ticket, so `Already` for it is the point-in-time truth.
     /// This predicate is also the single source of the `releasing` value of
-    /// the `/har/status` label below. `O(slots x live jobs)` against the
-    /// ledger; both counts are tiny.
-    fn is_committed_release_target(&self, ticket: &SpawnTicket) -> bool {
+    /// the `/har/status` label below, and the one the admission planner calls
+    /// to name a committed-release resident as a blocker (2026-11-22).
+    /// `O(slots x live jobs)` against
+    /// the ledger; both counts are tiny.
+    pub(super) fn is_committed_release_target(&self, ticket: &SpawnTicket) -> bool {
         self.jobs.iter().any(|(_, job)| {
             !job.terminal
                 && (job.victim.as_ref().is_some_and(|v| &v.ticket == ticket)

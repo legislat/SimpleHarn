@@ -129,10 +129,16 @@ impl SwapState {
 /// - any non-idle state may observe `CancelRequested`, and cancel always ends in
 ///   `Reap`, never in `Spawn`;
 /// - `AdmitFail`, `Failed`, and `Reap` return the slot to `Idle`;
-/// - the gate may also park instead of refusing (operator 2026-11-10): a
-///   load short only on another load's paper booking returns `Admit -> Idle` as a
-///   parked row (it lives in `pending`, books nothing, answers nothing) and
-///   re-enters through the ordinary `Idle -> Admit` edge when a booking clears.
+/// - the gate may also park instead of refusing (operator rulings
+///   2026-11-10 and 2026-11-22): a load short only on waitable sources —
+///   another load's paper booking and/or a release already in progress —
+///   returns `Admit -> Idle` as a parked row (it lives in `pending`, books
+///   nothing, answers nothing) and re-enters through the ordinary
+///   `Idle -> Admit` edge when a booking clears or a release terminalizes.
+///   The blocker gate — every named blocker must be a releasing resident —
+///   is release-park only; the booking park keeps its 2026-11-10 rule. The
+///   card ladder only: the RAM park matrix is deferred, so the RAM gate
+///   keeps refusing.
 pub fn transition_allowed(from: SwapState, to: SwapState) -> bool {
     use SwapState::*;
     let happy_or_fail = matches!(
@@ -141,10 +147,14 @@ pub fn transition_allowed(from: SwapState, to: SwapState) -> bool {
             | (Admit, Quiesce)
             | (Admit, AdmitFail)
             | (AdmitFail, Idle)
-            // Gate-short park (operator 2026-11-10): a deficit covered
-            // only by in-flight bookings waits in `pending` instead of
+            // Gate-short park (operator rulings 2026-11-10 and 2026-11-22): a
+            // deficit covered only by waitable sources — in-flight bookings
+            // (the 2026-11-10 rule) and/or a release already in progress,
+            // where the release park additionally requires every named blocker
+            // to be a releasing resident — waits in `pending` instead of
             // terminalizing; the row never spawned and owes no reap, so the
-            // return to `Idle` needs no `Reap` leg (same shape as a queued row).
+            // return to `Idle` needs no `Reap` leg (same shape as a queued
+            // row). The card ladder only; the RAM park matrix is deferred.
             | (Admit, Idle)
             | (Quiesce, Dispose)
             | (Quiesce, Failed)

@@ -29,6 +29,13 @@ pub struct VictimInfo {
     pub need_gib: f64,
 }
 
+/// The reason a blocker is a resident a live job has already committed to
+/// release (the 2026-11-22 park matrix). One constant, matched at the release
+/// park guard: a release wait clears only when every named blocker is such a
+/// resident, and the planner names it with this exact reason — the string is
+/// the contract between the two sites, so neither may reword it alone.
+pub(crate) const RELEASE_IN_PROGRESS_REASON: &str = "release in progress";
+
 /// A model that blocks the load and cannot be evicted (Step 6 hard filters).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockerInfo {
@@ -38,6 +45,16 @@ pub struct BlockerInfo {
     pub category: String,
     /// Why it is not evictable ("only WORK can evict WORK").
     pub reason: String,
+}
+
+impl BlockerInfo {
+    /// Whether this blocker is a resident whose release is already running —
+    /// the waitable kind the park arms accept. Matched through
+    /// [`RELEASE_IN_PROGRESS_REASON`], never by model name.
+    #[must_use]
+    pub(crate) fn is_release_in_progress(&self) -> bool {
+        self.reason == RELEASE_IN_PROGRESS_REASON
+    }
 }
 
 /// The budgets a refusal was measured against, carried so the message can name
@@ -53,7 +70,14 @@ pub struct BudgetFacts {
     pub observed_free: Option<Gibibytes>,
     /// R3 (operator GO 2026-11-01): the share of the card that no eviction the
     /// harness may perform can reclaim — foreign holders, non-evictable occupants
-    /// and the driver's own baseline. `None` when the witness was down.
+    /// and the driver's own baseline. On the card-ladder deficit leg, a resident
+    /// whose release is already in progress — the victim of a non-terminal
+    /// `Unload` row (another job's `Unload` included) — does NOT ride this
+    /// figure
+    /// (2026-11-22): it is leaving the card under command, so it is credited as
+    /// releasable like a candidate, and a refusal may not call its bytes a dead
+    /// end. The whole-machine and RAM accounts are unchanged and still count
+    /// such a resident. `None` when the witness was down.
     pub unreleasable: Option<Gibibytes>,
     /// R3: what the card physically held at decision time (the witness's own
     /// `used_gib`), quoted beside `unreleasable` so the split is checkable.

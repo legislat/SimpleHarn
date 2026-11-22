@@ -488,6 +488,15 @@ impl ActorState {
         let in_flight = self.in_flight_need(job_id);
         let free =
             Gibibytes(total_gib - self.cfg.vram_reserve_gb - occupied + victim_credit - in_flight);
+        // The in-progress release credit (operator 2026-11-22, park matrix
+        // cell 1): a non-terminal `Unload` row whose slot still holds its GPU
+        // resident projects the bytes that release will free. The projection
+        // rides neither `free` nor the compared deficit — an in-progress
+        // release is not yet physical free. It is the park arm's waitable
+        // fact and the floor guard's reach (cell 3), clamped to the occupied
+        // reading so a stale row cannot project more than the card holds.
+        let (releasing_projected, releasing_models) = self.releasing_vram_need(job_id);
+        let releasing_credit = releasing_projected.min(occupied).max(0.0);
         let facts = BudgetFacts {
             budget: Some(budget::free_gb(
                 Gibibytes(total_gib),
@@ -659,13 +668,18 @@ impl ActorState {
                     // "no releases allow for the VRAM floor - check foreign
                     // residents". Releasable = the same-slot victim (already
                     // credited in `free` at its projected release) plus every
-                    // evictable candidate; blockers and foreign holders never
-                    // count toward meeting a floor (R5's principle, same
-                    // arithmetic as R3's `unreleasable`). The guard precedes the
-                    // release-first arm: destroying the resident is an accepted
-                    // cost only for a deficit a release could actually fix,
-                    // never for a floor the card denies.
-                    let best_free = free.0 + considered.iter().map(|v| v.need_gib).sum::<f64>();
+                    // evictable candidate plus (2026-11-22, park matrix cell 3)
+                    // the projection of the release already in progress; blockers
+                    // and foreign holders never count toward meeting a floor
+                    // (R5's principle, same arithmetic as R3's `unreleasable`).
+                    // The guard precedes the release-first arm: destroying the
+                    // resident is an accepted cost only for a deficit a release
+                    // could actually fix, never for a floor the card denies —
+                    // and a floor the in-progress release cannot reach still
+                    // refuses, it does not park.
+                    let best_free = free.0
+                        + considered.iter().map(|v| v.need_gib).sum::<f64>()
+                        + releasing_credit;
                     let no_releases_reach =
                         floor.is_some_and(|f| f - self.cfg.witness_tolerance_gb > best_free);
                     // Ruling (operator 2026-11-01, REVISABLE): release-then-resample
@@ -697,6 +711,44 @@ impl ActorState {
                         );
                         return;
                     };
+                    // The blocker gate of the release park (operator
+                    // 2026-11-22, park matrix cell 2, release-only): a release
+                    // wait clears only when every named blocker clears with the
+                    // release. A non-releasing blocker - foreign, `min_turn`,
+                    // matrix-refused - survives the release, so the row refuses
+                    // with the named blocker instead of parking on a wait that
+                    // ends in the same refusal. The 2026-11-10 booking park
+                    // keeps no blocker gate (its wait source is the booking;
+                    // row 9 is that behavior, not an over-park). Matched through
+                    // the shared reason predicate, never a model name.
+                    let blockers_are_releasing =
+                        blockers.iter().all(|b| b.is_release_in_progress());
+                    // The release park (cell 1 + cell 4 option B): the
+                    // in-progress release plus the in-flight bookings cover the
+                    // whole deficit. `considered` MAY be non-empty here - the
+                    // candidate is not needed when the release covers, and the
+                    // park never plans or kills. `sum(considered)` never joins
+                    // this coverage: if the candidate IS needed (cell 4 case c),
+                    // the row refuses and the retry after the release plans it -
+                    // a wait is never a deferred eviction.
+                    let release_park = releasing_credit > 0.0
+                        && deficit <= in_flight + releasing_credit
+                        && !has_victim
+                        && blockers_are_releasing
+                        && !no_releases_reach
+                        && has_slot;
+                    // The 2026-11-10 booking park, rule unchanged (operator
+                    // 2026-11-22): the deficit covered only by other
+                    // loads' paper bookings, with no evictable candidate to
+                    // blame. Named blockers are NOT the wait source here and do
+                    // not gate this wait: the funnel re-gates the row the
+                    // moment a booking terminalizes.
+                    let booking_park = in_flight > 0.0
+                        && deficit <= in_flight
+                        && considered.is_empty()
+                        && !has_victim
+                        && !no_releases_reach
+                        && has_slot;
                     if !no_releases_reach && has_victim && !release_first {
                         if let Some(job) = self.jobs.get_mut(&job_id) {
                             job.release_first = true;
@@ -706,36 +758,47 @@ impl ActorState {
                             deficit_gib = deficit,
                             "admission short on the booked credit: releasing the same-slot victim first and re-gating on the physical card (release-first)"
                         );
-                    } else if in_flight > 0.0
-                        && deficit <= in_flight
-                        && !has_victim
-                        && considered.is_empty()
-                        && !no_releases_reach
-                        && has_slot
-                    {
-                        // Operator 2026-11-10: the deficit is covered
-                        // ONLY by other loads' paper bookings - no same-slot
-                        // victim, no evictable candidate, no unreachable floor -
-                        // so the row waits for those bookings and re-gates when
-                        // one terminalizes, instead of dying `AdmitFail` on a
-                        // double-counted card (witness bytes plus their own
-                        // bookings). Foreign/unreleasable memory and a floor no
-                        // release reaches still refuse: the guard legs above are
-                        // the whole difference between waiting and refusing.
-                        self.park_short_on_in_flight_bookings(job_id, deficit, in_flight);
+                    } else if release_park || booking_park {
+                        // Operator 2026-11-10 + 2026-11-22: the deficit is
+                        // covered ONLY by waitable sources - other loads' paper
+                        // bookings and/or a release already in progress - with
+                        // no same-slot victim (release-first keeps precedence)
+                        // and no unreachable floor; the release park further
+                        // requires every named blocker to be a releasing
+                        // resident, while the booking park keeps its 2026-11-10
+                        // rule. So the row waits for those sources and re-gates
+                        // when one terminalizes, instead of dying `AdmitFail`
+                        // while its memory is already on its way back.
+                        // Foreign/unreleasable memory and a floor no release
+                        // reaches still refuse: the guard legs above are the
+                        // whole difference between waiting and refusing.
+                        self.park_short_on_waitable_sources(
+                            job_id,
+                            deficit,
+                            in_flight,
+                            releasing_credit,
+                            &releasing_models,
+                        );
                         return;
                     } else {
                         self.step(job_id, SwapState::AdmitFail);
                         let reserve = Gibibytes(self.cfg.vram_reserve_gb);
                         // R3 (operator GO 2026-11-01): the refusal must name the
                         // memory no eviction can reclaim — the card minus the
-                        // same-slot replacement and every evictable candidate.
-                        // Blockers ride inside it (they are exactly the part the
-                        // harness may not release) and are named beside it.
+                        // same-slot replacement, every evictable candidate, and
+                        // (2026-11-22) the release already in progress: bytes
+                        // leaving under command are not a dead end, and the
+                        // projection is own-slot-skipped and occupied-clamped,
+                        // so it cannot double-count the same-slot credit.
+                        // What survives the three credits — foreign bytes,
+                        // matrix-refused and `min_turn` holders, the driver
+                        // baseline — is the figure itself; the named blockers
+                        // ride beside it.
                         let mut facts = facts;
                         if observed_free.is_some() {
-                            let releasable =
-                                victim_release + considered.iter().map(|v| v.need_gib).sum::<f64>();
+                            let releasable = victim_release
+                                + considered.iter().map(|v| v.need_gib).sum::<f64>()
+                                + releasing_credit;
                             facts.unreleasable = Some(Gibibytes((occupied - releasable).max(0.0)));
                             facts.used_gib = Some(Gibibytes(occupied));
                             facts.booked_total = Some(self.ledger_sum());
@@ -1104,22 +1167,36 @@ impl ActorState {
         self.finish_admit(job_id, Some(sample), None);
     }
 
-    /// Park a gate-short load instead of refusing it (operator ruling
-    /// 2026-11-10): when the whole deficit is covered by other loads' paper
-    /// bookings (`deficit <= in_flight`, no victim, no candidate, reachable
-    /// floor), the row returns to the parked shape the queue path already owns
-    /// — state `Idle`, no slot claim, one queue place in `pending`, waiters
-    /// still attached, no terminal row, no fault — and the terminal funnel
-    /// ([`super::ActorState::finish`]) re-gates it through the ordinary
-    /// `start_pending` arm path the moment any booking leaves the gate.
+    /// Park a gate-short load instead of refusing it (operator rulings
+    /// 2026-11-10 and 2026-11-22): when the whole deficit is covered by
+    /// waitable sources — other loads' paper bookings (`deficit <= in_flight`
+    /// with no candidate, the 2026-11-10 rule) and/or a release already in
+    /// progress (`deficit <= in_flight + releasing`, no candidate needed, the
+    /// 2026-11-22 extension) — with no same-slot victim and a reachable floor
+    /// (a release wait also requires no named non-releasing blocker; the
+    /// 2026-11-10 booking park has no blocker gate), the row returns to the
+    /// parked shape the queue path already owns — state `Idle`, no slot claim,
+    /// one queue place in `pending`, waiters still attached, no terminal row,
+    /// no fault — and the terminal funnel ([`super::ActorState::finish`])
+    /// re-gates it through the ordinary `start_pending` arm path the moment a
+    /// booking leaves the gate or a release terminalizes.
     ///
     /// Never a credit of paper with physical bytes: a parked row books nothing
     /// (`SwapState::reserves_vram` excludes `Idle`, so it never enters anyone's
-    /// `in_flight_need`), every re-gate re-reads the live witness (DOCTRINE 4),
-    /// and when the bookings are gone but the room is not there, the park guard
-    /// (`in_flight > 0`) fails and the ordinary named `AdmitFail` runs — the
-    /// wait therefore cannot swallow a real refusal or spin forever.
-    fn park_short_on_in_flight_bookings(&mut self, job_id: JobId, deficit: f64, in_flight: f64) {
+    /// `in_flight_need`), the in-progress release is a projection this row
+    /// never books, every re-gate re-reads the live witness (DOCTRINE 4), and
+    /// when the waitable sources are gone but the room is not there — the
+    /// release failed unconfirmed, the booking died without freeing — the park
+    /// guard fails and the ordinary named `AdmitFail` runs: the wait therefore
+    /// cannot swallow a real refusal or spin forever.
+    fn park_short_on_waitable_sources(
+        &mut self,
+        job_id: JobId,
+        deficit: f64,
+        in_flight: f64,
+        releasing: f64,
+        releasing_models: &[String],
+    ) {
         let Some(slot) = self.jobs.get(&job_id).and_then(|job| job.slot) else {
             self.finish(
                 job_id,
@@ -1178,7 +1255,9 @@ impl ActorState {
             deficit_gib = deficit,
             in_flight_gib = in_flight,
             in_flight_models = ?booked,
-            "admission short only on in-flight bookings: parking to wait for them and re-gate, not refusing"
+            releasing_gib = releasing,
+            releasing_models = ?releasing_models,
+            "admission short only on waitable sources (in-flight bookings, a release in progress): parking to wait for them and re-gate, not refusing"
         );
     }
 
@@ -1273,7 +1352,9 @@ impl ActorState {
     /// in the planned resource, pick the cheapest sufficient set (exhaustive
     /// over the ≤9 slots; tie-break: fewer victims). Hard filters first — a
     /// non-evictable occupant becomes a named blocker, never a candidate, and
-    /// so does a holder still inside its `min_turn` guard. The resource
+    /// so does a holder still inside its `min_turn` guard, and (2026-11-22) a
+    /// resident a live job has already committed to release — that release is
+    /// running and is never re-planned as a second victim. The resource
     /// filter is the first hard filter and is strict in both directions: a
     /// VRAM deficit never considers or blames a Ram resident (it holds no
     /// card bytes), and a RAM deficit never spends a GPU occupant — its host
@@ -1331,6 +1412,26 @@ impl ActorState {
                             .to_string(),
                     });
                 }
+                continue;
+            }
+            // A resident a live job has already committed to release is a
+            // blocker, never a victim (operator 2026-11-22, park matrix
+            // cell 2): its release is already running, a second plan would
+            // queue a double kill for one engine, and the park arm reads this
+            // exact named blocker as the waitable fact. This covers the
+            // operator-unload resident and any other resident another live job
+            // committed to release (a cross-slot drain victim), so the
+            // planner never re-plans a victim that is already being released.
+            // (The pre-existing arm path — `start_queued_load` books the
+            // same-slot occupant as the request's own victim regardless of a
+            // committed release — predates and is out of this rule's scope;
+            // the same-slot skip above covers that site.)
+            if self.is_committed_release_target(&occupant.ticket) {
+                blockers.push(crate::budget::BlockerInfo {
+                    model: occupant.model.clone(),
+                    category: slot.category.to_string(),
+                    reason: crate::budget::RELEASE_IN_PROGRESS_REASON.to_string(),
+                });
                 continue;
             }
             // The figure this occupant frees in the planned resource: its RAM

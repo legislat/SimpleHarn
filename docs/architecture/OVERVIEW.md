@@ -80,13 +80,18 @@ One harness process, one tokio runtime, plus OS-level children:
   `transition_allowed`):
   `Idle -> Admit -> Quiesce -> Dispose -> Spawn -> Ready -> Install ->
   Serving`, with `AdmitFail`, `Failed`, `Reap`, `CancelRequested` as the exit
-  paths, plus the gate-park edge `Admit -> Idle` (operator ruling
-  2026-11-10): a deficit covered only by another non-terminal load's booking
+  paths, plus the gate-park edge `Admit -> Idle` (operator rulings 2026-11-10
+  and 2026-11-22): a deficit covered only by waitable sources - another
+  non-terminal load's booking and/or a resident release already in progress -
   parks the row on its free slot (the `pending` place, state `Idle`, waiters
-  held, nothing booked), and the terminal funnel re-gates it when a slot
-  frees - a re-gate still short on bookings re-parks, and a gate now short on
-  foreign memory ends `AdmitFail`. No skips: a job may not jump to `Spawn`
-  (that is how double spawns happened, defect F-6).
+  held, nothing booked). A release wait also requires every named blocker to
+  be a releasing resident and the floor to be reachable with that release; the
+  in-flight booking park keeps its 2026-11-10 rule (its named blocker is not
+  the wait source). The terminal funnel re-gates the row when a booking clears
+  or a release terminalizes - a re-gate still short on waitable sources
+  re-parks, and a gate now short on foreign memory ends `AdmitFail`. No skips:
+  a job may not jump to `Spawn` (that is how double spawns happened, defect
+  F-6).
 - `Dispose -> Spawn` is a confirmation gate, not a delay: the edge is legal
   only once release is proven (handle signaled plus TCP-refused proof); an
   unproven release within `release_timeout_s` fails into `Reap` and refuses.
@@ -124,7 +129,10 @@ One harness process, one tokio runtime, plus OS-level children:
   answers `None`, and the gate then refuses rather than guess.
 - Budget arithmetic (`src/budget.rs`): admission computes free space as
   `total - reserve - observed_used`, credits the same-slot victim, and
-  debits in-flight bookings (`SwapState::reserves_vram`). `need_gb` costs a
+  debits in-flight bookings (`SwapState::reserves_vram`). A resident release
+  already in progress (a non-terminal `Unload`) is a waitable projection, not
+  a booking: it lets a park wait and counts toward the floor reach, but never
+  enters `free`. `need_gb` costs a
   load as declared `vram_gb`, else GGUF size x 1.15 + 2, else
   `AdmissionError::UnderSpecified`. The same-slot credit is the larger of the
   victim's booking and the VRAM footprint its own spawn folded: a release
@@ -396,8 +404,11 @@ One harness process, one tokio runtime, plus OS-level children:
    the load (cost ladder, section 4), and compares free VRAM minus reserve
    against the need plus in-flight bookings.
 3. If short, the planner selects victims through the `evictable_by` matrix;
-   a load short only on other loads' bookings parks for them (section 3); a
-   refusal names the blockers (`AdmissionError` -> `AdmitFail` -> `Idle`).
+   a load short only on waitable sources (other loads' bookings and/or a
+   release already in progress) parks for them (section 3); a release wait
+   also requires every named blocker to be releasing and the floor to be
+   reachable with that release; a refusal names the blockers
+   (`AdmissionError` -> `AdmitFail` -> `Idle`).
 4. `Quiesce -> Dispose`: victims release one at a time; each release needs
    the evidence pair (handle signaled, TCP refused); settle re-samples the
    card before the gate re-checks.

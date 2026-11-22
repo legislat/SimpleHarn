@@ -16,6 +16,8 @@ use tokio::sync::mpsc;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+mod park;
+
 /// Process-global warn capture for the persist-drift test: `tracing`'s default
 /// dispatcher is thread-local, and the persist warn fires on a blocking-pool
 /// thread, so the capturing layer goes in as the global default exactly once

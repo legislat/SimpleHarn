@@ -819,3 +819,15 @@ references still resolve. Every entry carries one status prefix:
   `C:\Strata`, and the separate `C:\Strata-nvfp4` fork keeps its own root. The
   updater's rewritten run configs are not a harness launch source; the row
   remains the source | 2026-11-22 | `this change`
+- **Accepted** In-progress-release park (operator 2026-11-22): a card load
+  whose deficit is covered by a resident release already in progress (a
+  non-terminal `Unload`) and/or in-flight bookings parks. For a release wait,
+  every named blocker must be a releasing resident and the floor must be
+  reachable with the release; the in-flight booking park keeps its 2026-11-10
+  rule (its named blocker is not the wait source). The release credit is a
+  projection - `max(booking, live_measured)` per resident, clamped to occupied -
+  never a booking; the planner treats a committed release as a blocker, never a
+  victim. A partial evictable set does not join the wait coverage: park only
+  when the release covers; a needed candidate refuses, and the retry after the
+  release plans it. Same-slot release-first, `whole`, and the RAM ladder are
+  unchanged; the RAM park matrix is deferred. | 2026-11-22 | `this task`
