@@ -13,8 +13,10 @@ review_trigger: behavior-change, release
 Up: `docs/DOCS_README.md`. This file owns autostart, file layout, upgrade,
 uninstall, backup, and log retention. The sections describe Windows, the
 tray-and-registry platform. On Linux the harness is headless: start it from a
-shell or your init system, stop it with SIGTERM (it closes the listeners and
-kills its engine group), and the single-instance lock lives at
+shell or your init system, stop it with Ctrl+C (SIGINT); it closes the
+listeners and kills its engine group, and the harness has no SIGTERM handler.
+A service unit needs `ExecStop=/bin/kill -INT $MAINPID` because systemd's
+default stop signal is SIGTERM. The single-instance lock lives at
 `/dev/shm/simpleharn-<uid>.lock`, or at `/tmp/simpleharn-<uid>.lock` on a host
 without a `/dev/shm` directory.
 

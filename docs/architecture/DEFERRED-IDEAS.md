@@ -104,7 +104,8 @@ Design note only. No implementation exists, and none is approved.
   kill-on-close. A harness death for any reason makes the kernel kill the
   tree. That is the crash-proof orphan guarantee. The spawn path seals the
   child into its job before it runs a first instruction, so no descendant
-  escapes.
+  escapes. On Linux there is no Win32 Job Object backstop: the crash path is
+  the boot sweep, which changes the option risk balance there.
 - A re-attach wants the opposite: the engine must outlive the harness. That
   means breaking it out of the job, which removes the kernel backstop. From
   then on, every guarantee that a crash leaves nothing running rests on the

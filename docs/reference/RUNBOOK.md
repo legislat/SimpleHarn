@@ -16,8 +16,11 @@ action, and a stop condition. Case-by-case diagnosis lives in
 `docs/reference/TROUBLESHOOTING.md`. Two rules apply to every procedure: the
 harness reaps only what it spawned, so never stop a process it does not own,
 and never start a second harness instance. The commands show Windows tools; on
-Linux use `ss -ltnp` for listeners, SIGTERM for the harness you started,
-`docker ps` for ninfer containers, and the log files beside the exe.
+Linux use `ss -ltnp` for listeners, Ctrl+C (SIGINT) for the harness you
+started (the harness has no SIGTERM handler), `docker ps` for ninfer
+containers, and the log files beside the exe. A service unit needs
+`ExecStop=/bin/kill -INT $MAINPID`, because systemd's default stop signal is
+SIGTERM.
 
 ## Boot refuses: open network bind without a control token
 
@@ -75,11 +78,11 @@ around that job.
 Safe action: wait for the configured deadline. An unproven release turns
 terminal at `release_timeout_s`, and the memory-settle wait then runs up to
 `settle_timeout_s`. A `POST /har/unload` `200` is an acceptance, not a
-release proof; read the ledger, not the reply code. `POST /har/cancel`
-cancels an in-flight load cooperatively: the current step completes, cleanup
-runs, then the job is reaped. When a release times out, the engine stays
-installed and the slot reads `serving` again: the harness claims no death it
-did not prove.
+release proof; read the ledger, not the reply code. `POST /har/unload` on the
+loading slot cancels an in-flight load cooperatively: the current step
+completes, cleanup runs, then the job is reaped. When a release times out,
+the engine stays installed and the slot reads `serving` again: the harness
+claims no death it did not prove.
 
 Stop condition: stop when the job row reaches a terminal outcome and the slot
 state matches the ledger. If a port or a container is still held after the

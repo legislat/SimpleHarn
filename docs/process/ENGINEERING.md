@@ -116,9 +116,9 @@ Verification:
 ## Concurrency
 
 - `tokio` for async; keep the reactor unblocked (never `sleep`, blocking I/O, or CPU work
-  on an async task; use `spawn_blocking`). `rayon` for CPU-bound parallelism.
-- Respect `Send`/`Sync`. Prefer `RwLock` or channels (`mpsc`, `crossbeam`) over a
-  contended `Mutex`.
+  on an async task; use `spawn_blocking`). Use an approved data-parallelism crate (add
+  via the dependency policy) for CPU-bound parallelism.
+- Respect `Send`/`Sync`. Prefer `RwLock` or channels (`mpsc`) over a contended `Mutex`.
 - The scheduler is single-writer: do not add a second writer to scheduler state.
 
 ## Memory and performance
@@ -148,8 +148,10 @@ Verification:
 ## Platform (Windows, PowerShell 5.1)
 
 - Command chains use `; if ($?) { ... }`; PowerShell 5.1 has no `&&`.
-- Write docs and source as UTF-8 without BOM; ASCII only in docs and scripts unless a test
-  intentionally exercises multibyte input.
+- Write docs and source as UTF-8 without BOM. Write new or edited text in docs and
+  scripts as ASCII only, unless a test intentionally exercises multibyte input.
+  Typographic characters that already exist in older files stay until that file is next
+  rewritten.
 - Invoke `curl` as `curl.exe` (the alias is not curl); `netsh` emits UTF-16LE, so decode
   explicitly.
 - Scripts must not assume `rg` is on PATH; use the editor search tools or `Select-String`.

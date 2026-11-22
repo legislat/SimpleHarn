@@ -4,14 +4,14 @@ owner: operator
 status: active
 audience: [contributor, agent, architect]
 source_of_truth_for: [current architecture]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-22
 review_trigger: behavior-change, release, new-decision
 ---
 
 # OVERVIEW.md
 
 Up: `docs/DOCS_README.md`. This file describes the architecture as shipped,
-last verified against `src/` and `Cargo.toml` on 2026-11-03 and editorially
+last verified against `src/` and `Cargo.toml` on 2026-11-22 and editorially
 reviewed on 2026-11-06. Binding rules live in
 `docs/architecture/DOCTRINE.md`; rulings and rationale live in
 `docs/architecture/DECISIONS.md`. This file summarizes and links; it does not
@@ -96,8 +96,9 @@ One harness process, one tokio runtime, plus OS-level children:
 - Same-slot policy is supersede: a same-category load of a different model
   cancels the running job - or takes a parked row's queue place when one
   waits on an otherwise-free slot, the lighter replacement (operator ruling
-  2026-11-10) - and starts when the slot returns to `Idle`. `UnloadAll` can
-  target a parked row's slot too. Other requests queue FIFO. Cancel is
+  2026-11-10) - and starts when the slot returns to `Idle`. A repeat load of
+  the parked model itself joins the queued row (ruling 2026-11-10).
+  `UnloadAll` can target a parked row's slot too. Other requests queue FIFO. Cancel is
   cooperative: the current step completes, cleanup runs, then `Reap`.
 - Eviction follows the `evictable_by` matrix from the config
   (`config::CategoryConfig`): WORK is evicted by nobody, RP only by WORK,
@@ -220,8 +221,9 @@ One harness process, one tokio runtime, plus OS-level children:
   on Windows) per GGUF. The
   flag map is data, parity-tested against the operator's start script. The
   harness forces `--host 127.0.0.1` (`LLAMA_ENGINE_HOST`) and the assigned
-  `--port`. `cpu_offload` forces `-ngl 0` (llama only). `extra_args` is a
-  closed allow-list, not a deny-list. The optional Fit probe is the R11
+  `--port`. `cpu_offload` forces `-ngl 0` (llama only). `extra_args` is an open,
+  policy-filtered passthrough; a reviewed record of harness-owned words is
+  refused by name (DOCTRINE item 19). The optional Fit probe is the R11
   booking source (section 4).
 - `strata` (`src/engine/strata.rs`): template mode is the current and only
   mode. The row yaml owns the profile fields (`strata_*` keys); the harness
@@ -247,8 +249,9 @@ One harness process, one tokio runtime, plus OS-level children:
   a command-line value for a key the config file sets. Readiness
   needs `/health` 200 with the JSON `loaded` flag not `false`, then
   `/v1/models` must report the `serve_model` alias. Cost is the declared
-  `vram_gb` with `cost: fixed`; no Fit, because the engine reports no
-  projection. Kill is the host tree guard (Job Object on Windows, the session group on
+  `vram_gb` with `cost: fixed` (or `cost: greedy` with the launch floor, per
+  the 2026-11-04 ruling); no Fit, because the engine reports no projection.
+  Kill is the host tree guard (Job Object on Windows, the session group on
   Linux); the engine child rides Basalt's own kill-on-close group.
 - `maya` (`src/engine/maya.rs`): Project Maya, a Python server in front of a
   native engine. The harness launches `python -m serve.server --engine maya`
@@ -306,8 +309,10 @@ One harness process, one tokio runtime, plus OS-level children:
   are copied in by an explicit operator verb, then forgotten. The one
   sanctioned reader is the import bridge (`src/import.rs`, `strata_yaml`;
   CLI in `src/main.rs`): `simpleharn import strata <profile.json>` emits a
-  yaml knob block and touches neither the row nor the profile. Harness-forced
-  fields found in L1 are reported as dropped; the serve path never reads an
+  yaml knob block and, without `--apply`, touches neither the row nor the
+  profile; `--apply <row.yaml>` merges the block into the live row (ruling
+  2026-11-03).
+  Harness-forced fields found in L1 are reported as dropped; the serve path never reads an
   L1 file.
 - L2 intent: the hand-authored per-model records in `ModelConf/*.yaml`.
   `src/model/scan.rs` builds the typed catalog (`model::ModelEntry`): only
@@ -347,8 +352,9 @@ One harness process, one tokio runtime, plus OS-level children:
 - Control listener: `/har/status`, `/har/events` (SSE), `/har/jobs`,
   `/har/log`, `/har/models`, `POST /har/load`, `/har/unload`, `/har/rescan`,
   and the config write endpoints (full table in `docs/reference/API.md`).
-- Request guards run in fixed order (DOCTRINE item 7): Host/Origin/content-
-  type refusals (`403`, `415`) precede the token check (`401`); only the
+- Request guards run in fixed order (DOCTRINE item 7): Host (400), cross-site
+  Origin (403), and content-type (415) refusals precede the token check
+  (`401`); only the
   page assets are unauthenticated; `GET /health` is token-gated. Error codes
   come from the `ApiError` type, never from message text.
 - Control page (`src/webui/mod.rs`): Pico CSS plus vanilla JavaScript

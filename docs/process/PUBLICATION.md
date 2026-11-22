@@ -46,7 +46,11 @@ Remove or replace every occurrence of:
 - Check the image for model names, file paths, tokens, hostnames, and local
   inventory before you commit it.
 - Replace `docs/assets/control-page.png` when the UI or the version changes.
-  The release package ships the current image.
+  The release package must ship the current image.
+- Release checklist: before you tag a release, re-shoot
+  `docs/assets/control-page.png` from a build of the release version, and
+  commit the image with the release. This step is a release gate, not a
+  description of the last release.
 
 ## Rules
 

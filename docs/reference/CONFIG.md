@@ -34,10 +34,11 @@ it never applies silent defaults.
 
 ## Environment variables
 
-The harness reads exactly three environment names: `SIMPLEHARN_CONFIG`,
-`SIMPLEHARN_TOKEN`, and `SIMPLEHARN_LOG`. No other spelling is read. The old
-`SIMPLEHAR_*` names are inert: they change nothing, warn nothing, and grant
-nothing.
+The harness reads exactly three environment names for configuration:
+`SIMPLEHARN_CONFIG`, `SIMPLEHARN_TOKEN`, and `SIMPLEHARN_LOG`. It also reads
+`PATH`, `HOME`, and `USERPROFILE` for file placement and child environments.
+No other `SIMPLEHARN_*` spelling is read. The old `SIMPLEHAR_*` names are
+inert: they change nothing, warn nothing, and grant nothing.
 
 | Name | Behavior |
 |---|---|

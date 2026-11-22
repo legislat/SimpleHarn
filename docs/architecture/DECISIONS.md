@@ -243,11 +243,14 @@ references still resolve. Every entry carries one status prefix:
   only, double-layer zero-stat proof on read paths) + `launched_at` ISO-8601 rendered
   verbatim; C (auto-free) rejected; profile-layer variant -> chunk 10 (custody shrinks
   it) | `270fd16`
-- **Implemented** `extra_args` = closed ALLOW-list (`EXTRA_ARGS_ALLOWED`, llama.rs; 11
+- **Superseded** `extra_args` = closed ALLOW-list (`EXTRA_ARGS_ALLOWED`, llama.rs; 11
   reviewed words: embedding/pooling/sampling/warmup family). The 10-name deny-list
   was a doctrine bypass (8/8 smuggles by review F2-0910; 13/13 blocked post-fix,
   28N). Full `EnginePolicy` custody enforcement owed to chunk 10 | 2026-10-28 |
   `7e99679`+engine round
+  SUPERSEDED 2026-11-15 in behavior by the Accepted adapter-completeness rows: the
+  shipped `extra_args` is an open, policy-filtered passthrough with a reviewed
+  harness-owned word record (`LLAMA_FORBIDDEN_EXTRA_WORDS`).
 - **Implemented** 15[4]/15[8]: tooltip error-first under truncation; `SIMPLEHAR_LOG`
   strict + reported fallback; shipped in the R2 batch | 2026-10-28 | `7e99679`
 - **Implemented** 13[10] typed errors: 8 thiserror variants, String-site 1:1, Display
@@ -655,11 +658,18 @@ references still resolve. Every entry carries one status prefix:
   own absolute `llama_server_exe`; the row value wins. If neither names a binary, the
   load refuses naming the key. The fit probe groups rows by effective binary and keys
   version and cache per tool | 2026-11-06 | `this change`
-- **Accepted** LAN bind without a token stays allowed, with a page warning: a
+- **Superseded** LAN bind without a token stays allowed, with a page warning: a
   non-loopback `internal_host` with no `control_token` or `SIMPLEHARN_TOKEN` remains
   a valid boot. `/har/status` carries a `config_warnings` entry; the control page
   shows a persistent warning banner. Boot does not refuse and adds no acknowledgement
   key | 2026-11-06 | `this change`
+  SUPERSEDED 2026-11-08 by the LAN opt-in row below (shipped `faaf9d6`).
+- **Implemented** LAN bind needs the explicit opt-in: a non-loopback `internal_host`
+  with no `control_token` or `SIMPLEHARN_TOKEN` is refused at boot unless
+  `allow_unauthenticated_network_bind: true` (default `false`); the refusal names both
+  remedies. With the opt-in set and still no token, the control page keeps a
+  persistent, no-dismiss warning banner on every read. The opt-in is a deliberate boot
+  gate, not an endorsement | 2026-11-08 | `faaf9d6`
 - **Accepted** Model rows stay hand-written: the catalog scans only
   `ModelConf/*.yaml`, not model directories. Engine-specific keys, category and cost
   decisions, split GGUF shards and mmproj files, and conservative admission require
@@ -716,7 +726,8 @@ references still resolve. Every entry carries one status prefix:
   Tray becomes optional; Linux boots headless on the same ports. Adapters declare
   platforms: llama, strata, basalt, maya, xolotl document Linux (research 2026-11-08;
   xolotl Linux-primary and source-built); ninfer ships native Linux but this adapter
-  is WSL-shaped, so Linux there is a separate adapter. Linux card evidence BLOCKED until a GPU Linux
+  is WSL-shaped, so Linux there is a separate adapter (that clause is superseded by
+  the v1.5.0 shipped row below). Linux card evidence BLOCKED until a GPU Linux
   machine exists. Open: commitment beyond the boundary phase, tray posture,
   first-release engine set, artifact source | 2026-11-08 | `this task`
 - **Accepted** Xolotl rows use a numeric floor on a GUI host:
@@ -738,7 +749,8 @@ references still resolve. Every entry carries one status prefix:
   the floor; `whole` stays for dedicated cards | 2026-11-08 | `this task`
 - **Accepted** Linux port committed; whole posture clarified: phases P0 boundary, unix
   implementations, engine set, release. Linux boots headless by default; tray is
-  optional, non-default. First Linux release covers llama and strata. Artifacts are
+  optional, non-default. First Linux release covers llama and strata (superseded by
+  the v1.5.0 shipped row below). Artifacts are
   built by CI. WSL2 is the Linux playground; card legs run there where GPU passthrough
   allows, else BLOCKED. `whole` and `vram_reserve_gb` are documented as the exclusive
   posture with a foreign-residency allowance: free when the witness reaches
@@ -747,6 +759,12 @@ references still resolve. Every entry carries one status prefix:
   numeric floor sized to measured footprint plus margin. A floor below real need
   admits and lets the engine abort - an operator promise, not a measurement |
   2026-11-08 | `this task`
+- **Implemented** Linux port shipped in v1.5.0 (D1-D5): headless default with an
+  optional tray; one adapter covers ninfer on Linux (empty `wsl_prefix`, same
+  canonical script, no `wsl.exe` hop); six engines serve on Linux in the same policy
+  table; artifacts are built by CI. Supersedes the "separate adapter" and "first
+  Linux release covers llama and strata" clauses in the two 2026-11-08 rows above |
+  2026-11-09 | `v1.5.0` (`8c20550`)
 - **Accepted** UI polish keeps both pinned accents: the bright serving dot
   (`--sh-dot-live: #22c55e`) and the matte olive selected-tab accent stay. The
   perceived loudness came from Pico's saturated `#0172ad` primary painting every idle

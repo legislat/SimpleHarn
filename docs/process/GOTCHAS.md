@@ -17,7 +17,7 @@ contributor can hit on any machine.
 
 - [test] **libtest hides the stdout of a PASSING test** - a test that prints
   a harness verdict and returns `Ok` passes; the classifier needs
-  `--nocapture`, as `scripts/gate.ps1` and the sweep scripts do.
+  `--nocapture`, as the sweep scripts do.
 - [test] **A test that asserts its own copy of a production list cannot catch
   drift** - iterate the production constant, never a duplicated literal.
 - [test] **Check that a branch is reachable before you call it a live bug** -

@@ -177,8 +177,9 @@ style.
 - Link only existing files; planned paths stay plain text until created.
 - A repo-relative path written as inline code must resolve (`check-docs` rule
   7). The exempt layer (`handoff/` and `HANDOFF.md` in the private repository,
-  `ModelConf/`, `archive/`, `base-archive/`, `.kilo/`) is exempt; a trailing
+  `ModelConf/`, `archive/`, `base-archive/`, `.kilo/`, `target/`,
+  `node_modules/`) is exempt; a trailing
   `:line` range keeps its base file. `src/`, `tests/` and `scripts/` are also
-  tried as roots.
+  tried as roots. `DESIGN.md` is exempt from this rule only.
 - Durable docs state commands and invariants, not volatile counts or file
   line numbers; dated numbers live in evidence.

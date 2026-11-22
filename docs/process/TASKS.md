@@ -138,8 +138,11 @@ Template rules:
 
 ## Schema grandfather list
 
-`node scripts/check-tasks.mjs` validates every `handoff/tasks/*.md` file against
-this schema. `handoff/tasks/.schema-grandfathered` names the legacy files that
+`node scripts/check-tasks.mjs` validates these fields and section headings in
+every `handoff/tasks/*.md` file: the Class, Priority, Readiness, and Owner
+table rows, and the Goal, Scope, Non-goals, Acceptance criteria, Dependencies,
+Evidence, and Next step sections. The remaining template rows and sections are
+not validated. `handoff/tasks/.schema-grandfathered` names the legacy files that
 predate the schema. The default run skips exactly the listed files. The list was
 frozen on 2026-11-10 by operator ruling: the legacy files keep their historical
 field values instead of invented ones.

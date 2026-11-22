@@ -385,11 +385,12 @@ other parent environment passes.
 
 The harness renders the config itself. It is the v2 shape the current
 server requires: `{"version": 2, "models": [<one model entry>]}`. The model
-entry carries the three launch figures: the `alias`, the absolute `.basalt`
-model path, and `parallel`. It also carries `vision` when `basalt_vision` is
-set, and every `basalt_sampling` default when set. The render is staged under
-`.simpleharn\basalt-profiles` beside the exe (content-addressed
-`<model>-<hash>.json`, atomic write, keep-N prune). The spawn rewrites
+entry carries the three always-present launch figures: the `alias`, the
+absolute `.basalt` model path, and `parallel`. It also carries `vision` when
+`basalt_vision` is set, and every `basalt_sampling` default when set. The
+render is staged under `.simpleharn\basalt-profiles` beside the exe
+(content-addressed `<model>-<hash>.json`, atomic write, keep-N prune). The
+spawn rewrites
 `--config` to exactly that file, so the child can never point at another
 profile. `serve_model` and `basalt_parallel` ride the model entry only: the
 current server refuses a command-line value for a key the config file sets,

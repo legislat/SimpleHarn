@@ -42,7 +42,7 @@ it. `CONFIG.md` owns the category listener port matrix.
 | `GET /health` | Liveness check. Once `control_token` is set, it requires the token like every other route. A probe that omits the token reads 401 and can look like a dead listener. |
 | `GET /har/status` | Full snapshot, including `mem`, `jobs`, `last_error`, and boot timings. |
 | `GET /har/events` | SSE state pushes. |
-| `GET /har/jobs`, `GET /har/jobs/{id}` | Job ledger. Each admitted load row names its admission rung in `path` (see "Job ledger rung field"). A row of a released resident leaves `Serving` at the confirmed release (see "Victim row terminalization"). The ledger keeps every live row, the load row of each installed occupant, and the newest 200 terminal rows; older terminal history ages out, so an aged id answers unknown on `GET /har/jobs/{id}` and on `POST /har/cancel`. |
+| `GET /har/jobs`, `GET /har/jobs/{id}` | Job ledger. Each admitted load row names its admission rung in `path` (see "Job ledger rung field"). A row of a released resident leaves `Serving` at the confirmed release (see "Victim row terminalization"). The ledger keeps every live row, the load row of each installed occupant, and the newest 200 terminal rows; older terminal history ages out, so an aged id answers unknown on `GET /har/jobs/{id}`. A load in flight is cancelled through `POST /har/unload` on its slot. |
 | `GET /har/log?limit=n` | Ring buffer of harness events. An absent `limit` uses the default; a whole number clamps to the ring capacity; a `limit` that is present but not a whole number answers `400 bad_request` in the project envelope naming the value. |
 | `GET /har/models` | Full catalog (the page view; includes paths). The `context` field is the **effective served context**, never a stale row key. For llama it is the row `context` knob. For strata it is the context figure in the row's `strata_args` argv (the `--max-context` token or the `--max-context=` spelling, digits only; anything else answers `null`). For ninfer it is the max-context of the profile its launcher resolves (the built-in table or the `ninfer_profile_<name>` line, the identical resolution the spawn uses). For maya it is the digits-only `--max-context` token in the L1 config's `args` (the `--max-context` or `--max-context=` spelling), captured at scan. Every other engine answers `null`, and so does any row whose effective context does not resolve. |
 | `POST /har/load` | `{model}`. Loads the model into its own category, from its yaml. |
@@ -118,9 +118,11 @@ clears, and the load row that produced that resident leaves `Serving` for
 and its `outcome` takes the word that names the release:
 
 - `evicted`: a cross-category eviction released the engine.
-- `unloaded`: an operator unload, an idle-timeout sweep, a same-slot
-  replacement, or a crash restart released the engine. No test pins the
-  crash-restart cause; that one line is a static read.
+- `unloaded`: an operator unload or a same-slot replacement released the
+  engine.
+- `idle timeout`: an idle-timeout sweep released the engine.
+- `engine died`: a crash restart released the engine. The word is pinned by
+  the API and scheduler tests.
 
 The row carries no error: a release is not a fault, and the row never turns
 the headline red. An unconfirmed release commits nothing: when a release
@@ -207,7 +209,7 @@ declaration (max truth). A declaration at or above the report stands.
 `/har/status` carries `scheduler_state: "up"` while the actor answers. When the
 actor has stopped, it still answers `200` with `scheduler_state: "down"`,
 `scheduler_reason` naming the restart remedy, and empty `slots`/`jobs` (the actor
-owns them). Load, unload, cancel, and reload answer `503` with
+owns them). Load, unload, and rescan answer `503` with
 `scheduler_unavailable`; the page shows a persistent banner. Restart the harness
 to recover. The detailed stop reason stays in the harness log. A scheduler
 invariant refusal is different: the actor stays up, the refused command answers

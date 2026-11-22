@@ -54,10 +54,13 @@ const MACHINE_PATH_BANS = JSON.parse(
   readFileSync(join(HERE, "machine-path-bans.json"), "utf8")
 ).bans.map((pattern) => new RegExp(pattern, "i"));
 // Documented product defaults: the strata install home and the model-root
-// example, both named in README/reference. Author-specific paths (for example
-// C:\Users\... or an F:\ model path) are not product defaults and still fail.
+// example, both named in README/reference. The match is boundary-anchored: the
+// default name must end at a path boundary, so a name continuation (for
+// example C:\Strata-nvfp4) is not a documented default and still fails.
+// Author-specific paths (for example C:\Users\... or an F:\ model path) are
+// not product defaults and still fail.
 const PRODUCT_DEFAULT_PATH =
-  /(?:C:\\Strata|D:\\Models)/i;
+  /(?:C:\\Strata|D:\\Models)(?![A-Za-z0-9_.\-])/i;
 
 function listFiles(relDir) {
   const abs = join(ROOT, relDir);

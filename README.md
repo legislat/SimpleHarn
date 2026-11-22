@@ -19,7 +19,7 @@ Current release: **v1.5.1.6**. Windows 10/11 and Linux x86-64 (headless; glibc
 binaries: see the GitHub Releases page of this repository. The release
 zip holds `simpleharn.exe`, `SimpleHarn.vbs`, `README.md`, `LICENSE`, and
 `docs/assets/control-page.png`. The Linux tar.gz from the same tag carries the
-headless binary and the same docs. Models and engine installs are yours.
+headless binary, README, and LICENSE. Models and engine installs are yours.
 
 A build made from a tagged, clean source tree embeds its exact tag as the
 release identity, and `/har/status` carries both identities: `version` stays
@@ -191,7 +191,8 @@ rescan re-reads the catalog; a failed action shows its reason once, in a
   dismissible banner between the tabs and the table, or as the job row when the
   server recorded one; a serving model keeps the launch it was spawned with, so an
 edit to a live model takes effect on its next load. The tray shows green loaded, yellow
-swap in flight, gray idle, or red listener down. The menu offers Open Web UI, the
+swap in flight, gray idle, amber when a reading has no
+verdict, or red listener down. The menu offers Open Web UI, the
 unload actions, and Exit.
 
 ## Configuration
@@ -265,7 +266,7 @@ same tag.
 | `strata` | Yes | Yes: source install |
 | `basalt` | Yes | Yes: source install, Blackwell cards only |
 | `maya` | Yes | Yes |
-| `ninfer` | Yes | Yes: the container runs inside the same WSL distro |
+| `ninfer` | Yes | Yes: the container runs inside the same distro |
 | `xolotl` | Yes | Yes: Linux source build, same 256K profile |
 
 ## Troubleshooting

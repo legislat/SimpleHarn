@@ -216,7 +216,8 @@ built 2026-11-10, SHA256
   maya and xolotl serve on Linux from the Windows stores through `/mnt`, and the
   Windows-authored card legs have a bash runner (release-card/run-linux.sh, private handoff repository).
   CI adds ubuntu check/test/clippy/fmt and Linux MSRV legs; the tag workflow
-  builds a Linux artifact.- New engine `xolotl`: the harness supervises the Xolotl DeepSeek-V4.1-Flash
+  builds a Linux artifact.
+- New engine `xolotl`: the harness supervises the Xolotl DeepSeek-V4.1-Flash
   GSQ serve (`ds41_generate.exe` behind the `serve_ds41.py` shim) as one 256K
   row. It launches `python -I <launcher> --engine strata --host 127.0.0.1
   --config <staged> --port <slot>`, renders and stages its own serve profile

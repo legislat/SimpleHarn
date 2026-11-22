@@ -115,7 +115,8 @@ non-ASCII punctuation in quotes is replaced with ASCII equivalents only.
     one." Consequence: forensic notes are for the operator; the harness never
     acts on them.
 17. **Tray red means a listener is down.** "Tray red = listener down, not
-    per-job errors." On Windows (the tray is optional and Windows-only): Consequence: a per-job error rides the tooltip; only a
+    per-job errors." The tray is an optional feature; the shipped Linux
+    artifact is headless. Consequence: a per-job error rides the tooltip; only a
     dead listener turns the icon red.
 18. **Scrapped by the operator, never re-opened.** "Scrapped by operator:
     bonsai class, engine adoption, preload at boot, parallel soak, state
