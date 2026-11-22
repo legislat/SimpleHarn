@@ -176,7 +176,7 @@ jobs:
               sha256sum "/dist/${root}.tar.gz" | sed "s#/dist/##" > "/dist/${root}.tar.gz.sha256"
             '
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: simpleharn-linux-x64
           path: dist/SimpleHarn-*.tar.gz*
@@ -287,7 +287,7 @@ jobs:
             "runner=$env:RUNNER_OS"
           ) | Set-Content -LiteralPath dist\build-provenance.txt -Encoding utf8
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: simpleharn-win-x64
           path: |
