@@ -100,6 +100,7 @@ the checked-in manifest the gate reads.
 | Key/flag | Support | Row key or forced reason |
 |---|---|---|
 | `python`, `cwd`, `config` | typed | `maya_python:` / `maya_cwd:` / `maya_config:` |
+| `vision` | typed | `maya_vision:` row overlay, closed set `exe`, `mmproj`, `model`, strict `gpu` (`gpu` default on); an engine-side `vision` object alongside it is a named conflict (ruling 2026-11-17) |
 | `all config JSON keys except forced fields` | passthrough | `maya_config:` external JSON (scrubbed) |
 | `host`, `port`, `api_key`, `idle_unload_s`, `cors_origins` | forced | Bind, key, residency, and CORS are harness-owned |
 | `model_management` | forced | Always false; the harness is the single writer |

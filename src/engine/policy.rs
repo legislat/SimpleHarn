@@ -904,7 +904,7 @@ const BASALT_KNOBS: &[&str] = &[
     "basalt_sampling",
 ];
 
-const MAYA_KNOBS: &[&str] = &["maya_python", "maya_cwd", "maya_config"];
+const MAYA_KNOBS: &[&str] = &["maya_python", "maya_cwd", "maya_config", "maya_vision"];
 
 /// The xolotl row's knob surface: the strata shape
 /// mirrored onto the `serve_ds41.py` shim's dialect — required launch paths,

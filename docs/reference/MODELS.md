@@ -117,6 +117,7 @@ in `ModelConf` beside the exe, then rescan or restart.
 | `maya_python` | **Required for maya**: the interpreter `.exe`. It must be an absolute path to an existing file, and it is the program the harness launches. |
 | `maya_cwd` | **Required for maya**: the Project Maya root directory. It must be an absolute path to an existing directory. The `-m serve.server` module resolves from this working directory. |
 | `maya_config` | **Required for maya**: the operator's Maya JSON config. It must be an absolute path to an existing file. The harness reads it at every load, validates every path it names, and launches only its own scrubbed, staged copy. `serve_model` must equal the config's `model_name`, and `load_timeout` is required with a floor of 300 seconds. See "Maya engines" below. |
+| `maya_vision` | Optional (operator ruling 2026-11-17). Whitespace-separated `k=v` vision overlay over the closed key set `exe`, `mmproj`, `model`, `gpu`. `exe`, `mmproj`, and `model` are absolute existing-file paths and are required together; their paths may not contain spaces (the token dialect splits on whitespace). `gpu` is a strict figure from `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off` (case-insensitive) and defaults on; any other value is refused by name. A key spelled twice is refused. The overlay renders the staged profile's `vision` object; `maya_vision` and an engine-side `vision` object are alternatives, one or the other, never both. Any key outside the closed set is refused by name. |
 | `xolotl_python` | **Required for xolotl**: the interpreter `.exe` the launch starts (`argv[0]`, run with `-I`). It must be an absolute path to an existing `.exe` file. |
 | `xolotl_launcher` | **Required for xolotl**: the absolute path to the existing `serve_ds41.py` shim the interpreter runs. |
 | `xolotl_cwd` | **Required for xolotl**: the engine tree root directory. It must be an absolute path to an existing directory. A relative `-m` in `xolotl_args` resolves against it (the weights-cache workaround), and a relative miss is refused naming the resolved path. |
@@ -502,6 +503,22 @@ on a managed resident, and the removed `cors_origins` lets no config grant
 CORS. The
 engine binary and the engine `cwd` stay in the staged copy: the server reads
 them from the config, not from argv.
+
+The row can also spell the vision block itself (operator ruling 2026-11-17).
+`maya_vision` is a whitespace-separated `k=v` overlay over the closed key set
+`exe`, `mmproj`, `model`, `gpu`. The three paths are absolute existing-file
+paths and are required together; an overlay path may not contain a space,
+because the token dialect splits on whitespace. A key spelled twice is
+refused. `gpu` is a strict figure from `true`, `false`, `1`, `0`, `yes`, `no`,
+`on`, `off` (case-insensitive) and defaults on; any other value is refused
+naming `maya_vision.gpu`. The harness checks the overlay's paths at the scan
+and at every load, then merges the block into the staged profile as its
+`vision` object. `maya_vision` and an engine-side `vision` object are
+alternatives: one or the other, never both. A row that spells the overlay
+while its config still carries a `vision` object is refused with a named
+conflict before the overlay's own paths are judged; the harness never picks a
+winner silently. A row that spells no overlay keeps the rule above: the
+engine-side block is existence-checked and never managed.
 
 Readiness is `GET /health` with status 200 whose `model` value is exactly
 the `serve_model`. The server probes the port once before the load and

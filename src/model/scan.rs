@@ -184,6 +184,7 @@ const CONSUMED_KEYS: &[&str] = &[
     "maya_python",
     "maya_cwd",
     "maya_config",
+    "maya_vision",
     "xolotl_python",
     "xolotl_launcher",
     "xolotl_cwd",
@@ -3501,6 +3502,110 @@ mod tests {
         assert_eq!(entry.vram_gate.floor(), Some(20.0));
     }
 
+    /// The typed `maya_vision` overlay over real temp
+    /// assets publishes through the scan side of the single door with zero
+    /// reports: the key is consumed, and every overlay path exists, so the
+    /// row earns neither `UnknownKey` nor a typed reject. Falsifier: dropping
+    /// the overlay from the consumed const warns the live row on its own key;
+    /// removing one asset then makes the same row a `ModelPathMissing` naming
+    /// `maya_vision.model`, so a door that never checks the paths fails here.
+    #[test]
+    fn a_maya_row_with_a_vision_overlay_publishes_with_no_reports() {
+        let dir = crate::testutil::temp_dir("scan-maya-vision");
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let config = maya_install(&dir);
+        for name in ["vision.exe", "mmproj.gguf", "vision.gguf"] {
+            std::fs::write(dir.join(name), b"v").expect("overlay asset");
+        }
+        let line = format!(
+            "exe={} mmproj={} model={}",
+            dir.join("vision.exe").to_string_lossy(),
+            dir.join("mmproj.gguf").to_string_lossy(),
+            dir.join("vision.gguf").to_string_lossy(),
+        );
+        std::fs::write(
+            dir.join("row.yaml"),
+            maya_yaml(&dir, &config, &[("maya_vision", Some(&line))]),
+        )
+        .expect("write");
+        let catalog = scan_dir(&dir);
+        assert_eq!(catalog.models.len(), 1, "{:?}", catalog.errors);
+        assert!(
+            catalog.errors.is_empty(),
+            "a live overlay on its own row earns no report: {:?}",
+            catalog.errors
+        );
+        std::fs::remove_file(dir.join("vision.gguf")).expect("remove overlay asset");
+        let catalog = scan_dir(&dir);
+        assert!(
+            catalog.models.is_empty(),
+            "a missing overlay asset must not publish: {:?}",
+            catalog.models
+        );
+        let error = catalog
+            .errors
+            .iter()
+            .find(|e| e.kind == ScanKind::ModelPathMissing)
+            .expect("the missing overlay asset travels the model-path door");
+        assert!(
+            error.reason.contains("maya_vision.model"),
+            "the reason names the overlay member: {}",
+            error.reason
+        );
+    }
+
+    /// A row that spells `maya_vision` while the engine-side config still
+    /// carries its own `vision` object is refused at rescan — before any load
+    /// could evict a resident for the conflicted spawn — and the sentence
+    /// names `maya_vision`. Falsifier: a silent precedence publishes the row
+    /// and the staged bytes answer to a different spelling than the row.
+    #[test]
+    fn a_maya_row_with_overlay_and_config_vision_is_refused_naming_the_overlay() {
+        let dir = crate::testutil::temp_dir("scan-maya-vision-conflict");
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let config = maya_install(&dir);
+        for name in ["vision.exe", "mmproj.gguf", "vision.gguf"] {
+            std::fs::write(dir.join(name), b"v").expect("overlay asset");
+        }
+        let mut value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&config).expect("read")).expect("json");
+        value["vision"] = serde_json::json!({
+            "exe": dir.join("vision.exe"),
+            "mmproj": dir.join("mmproj.gguf"),
+            "model": dir.join("vision.gguf"),
+            "gpu": true,
+        });
+        std::fs::write(&config, serde_json::to_string(&value).expect("serialize")).expect("write");
+        let line = format!(
+            "exe={} mmproj={} model={}",
+            dir.join("absent-overlay.exe").to_string_lossy(),
+            dir.join("mmproj.gguf").to_string_lossy(),
+            dir.join("vision.gguf").to_string_lossy(),
+        );
+        std::fs::write(
+            dir.join("row.yaml"),
+            maya_yaml(&dir, &config, &[("maya_vision", Some(&line))]),
+        )
+        .expect("write");
+        let catalog = scan_dir(&dir);
+        assert!(
+            catalog.models.is_empty(),
+            "the conflicted row must not publish: {:?}",
+            catalog.models
+        );
+        let error = catalog
+            .errors
+            .iter()
+            .find(|e| e.file == "row.yaml")
+            .expect("the conflict is reported on the row");
+        assert_eq!(error.kind, ScanKind::Other, "{error:?}");
+        assert!(
+            error.reason.contains("maya_vision") && error.reason.contains("conflicts"),
+            "the refusal names the overlay key and the conflict, before any path check: {}",
+            error.reason
+        );
+    }
+
     /// FR-08: the scan captures the config's `--max-context` figure once and
     /// carries it on the entry under the scan-derived key; the `/har/models`
     /// display home answers it end-to-end; a rescan re-derives the same figure;
@@ -3831,9 +3936,10 @@ mod tests {
              basalt_vision: dynamic\n\
              basalt_engine_args: --temp=0.7\n\
              basalt_sampling: {\"temperature\":0.7}\n\
-             maya_python: D:/Maya/.venv/Scripts/python.exe\n\
-             maya_cwd: D:/Maya\n\
-             maya_config: D:/Maya/maya-maya-m.json\n\
+              maya_python: D:/Maya/.venv/Scripts/python.exe\n\
+              maya_cwd: D:/Maya\n\
+              maya_config: D:/Maya/maya-maya-m.json\n\
+              maya_vision: exe=C:/Maya/vision/mmproj-exe.exe mmproj=D:/m/mmproj.gguf model=D:/m/m.gguf gpu=true\n\
              xolotl_python: C:/Xolotl/.venv/Scripts/python.exe\n\
              xolotl_launcher: C:/Xolotl/tools/v41/serve_ds41.py\n\
              xolotl_cwd: D:/Models/Xolotl\n\
@@ -4081,6 +4187,7 @@ mod tests {
             "maya_python",
             "maya_cwd",
             "maya_config",
+            "maya_vision",
             "xolotl_python",
             "xolotl_launcher",
             "xolotl_cwd",

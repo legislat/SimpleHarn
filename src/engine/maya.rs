@@ -19,6 +19,13 @@
 //! an Ollama-compat `keep_alive: 0` chat — so a resident
 //! the harness booked cannot quietly unload itself.
 //!
+//! The row may also spell the vision block itself: the typed `maya_vision`
+//! overlay is validated through the same path door
+//! and merged into the staged profile as the `vision` object, and a row whose
+//! config already carries a `vision` object is refused with a named conflict —
+//! never a silent precedence. Every other key keeps flowing from the generated
+//! JSON as L1, so a new upstream key still needs no adapter change.
+//!
 //! The config's `--max-context` figure is read exactly once, beside this
 //! validation door: the scan captures the digits-only token and carries it on
 //! the entry (the scan-derived `maya_max_context` raw key), so `/har/models`
@@ -322,10 +329,105 @@ fn check_env(
     Ok(())
 }
 
-/// The vision block, when present: every program and weights file it names must
-/// exist before the load gesture. The harness does not manage the block; it
-/// refuses a doomed launch instead of letting the server die after the manager
-/// has evicted a resident.
+/// The closed `maya_vision` key set, in refusal voice.
+const VISION_KEYS: &str = "exe, mmproj, model, gpu";
+
+/// The words that spell a `maya_vision` `gpu` figure, in refusal voice. The
+/// set is the harness truth table written out both ways: a value outside it
+/// is a named refusal, never a silent `false`.
+const GPU_WORDS: &str = "true, false, 1, 0, yes, no, on, off";
+
+/// The strict `gpu` reading of the overlay: one of the eight words (ASCII
+/// case-insensitive, trimmed), or a named `maya_vision.gpu` refusal. Unlike
+/// the loose [`crate::model::truthy`] table, an unknown or empty value here
+/// is refused: a typo must not silently move the encoder off-card.
+fn gpu_flag(model: &ModelEntry, value: &str) -> Result<bool, MayaRowError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(bad(
+            model,
+            "maya_vision.gpu",
+            format!("must be one of {GPU_WORDS}: {value}"),
+        )),
+    }
+}
+
+/// The `maya_vision` block: whitespace-separated `k=v` tokens over the closed
+/// key set — `exe`, `mmproj` and `model` are absolute file paths (required
+/// together, the strata and xolotl rule: the vision server cannot start
+/// without them), checked through [`checked_path`] like every other launch
+/// path; `gpu` is a strict figure from [`GPU_WORDS`] and DEFAULTS ON here (the
+/// operator's engine-side block carries `gpu: true`, so the overlay renders
+/// the same figure a hand-kept config spells); a key spelled twice is refused,
+/// never a silent last-wins. A declared-but-blank line never reaches this
+/// parser: [`knob`] trims it to absent. The block merges into the staged
+/// profile as its `vision` object; the conflict with a config-side `vision`
+/// object is refused by [`validate_row`] before this parser runs (ruling
+/// 2026-11-17), so the conflict always wins.
+fn vision_overlay(
+    model: &ModelEntry,
+    line: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, MayaRowError> {
+    let mut taken = serde_json::Map::new();
+    let mut gpu = true;
+    let mut gpu_spelled = false;
+    for token in line.split_whitespace() {
+        let Some((key, value)) = token.split_once('=') else {
+            return Err(bad(
+                model,
+                "maya_vision",
+                format!("tokens must be k=v over {VISION_KEYS}: {token}"),
+            ));
+        };
+        if !matches!(key, "exe" | "mmproj" | "model" | "gpu") {
+            return Err(bad(
+                model,
+                "maya_vision",
+                format!("key `{key}` is not one of {VISION_KEYS}"),
+            ));
+        }
+        let already = if key == "gpu" {
+            gpu_spelled
+        } else {
+            taken.contains_key(key)
+        };
+        if already {
+            return Err(bad(
+                model,
+                "maya_vision",
+                format!("sets `{key}` twice; the block spells each key once"),
+            ));
+        }
+        if key == "gpu" {
+            gpu_spelled = true;
+            gpu = gpu_flag(model, value)?;
+            continue;
+        }
+        checked_path(model, &format!("maya_vision.{key}"), value, false)?;
+        taken.insert(
+            key.to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
+    }
+    for required in ["exe", "mmproj", "model"] {
+        if !taken.contains_key(required) {
+            return Err(bad(
+                model,
+                "maya_vision",
+                format!("requires `{required}` when a vision block is declared"),
+            ));
+        }
+    }
+    taken.insert("gpu".to_string(), serde_json::Value::Bool(gpu));
+    Ok(taken)
+}
+
+/// The engine-side vision block, when present: every program and weights file
+/// it names must exist before the load gesture. The harness does not manage the
+/// block; it refuses a doomed launch instead of letting the server die after
+/// the manager has evicted a resident. Only [`validate_row`]'s no-overlay leg
+/// reads it: a row that spells `maya_vision` never reaches this door.
 fn check_vision(
     model: &ModelEntry,
     config: &serde_json::Map<String, serde_json::Value>,
@@ -497,7 +599,28 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<MayaRow, MayaRowError> 
     }
     check_gpu(model, &config)?;
     check_env(model, &config)?;
-    check_vision(model, &config)?;
+    // The vision door has two shapes: a row that spells
+    // `maya_vision` renders its `vision` object into the staged profile and is
+    // refused when the engine-side config already carries one — the conflict
+    // is judged FIRST, before any overlay path is touched, so it always wins
+    // and no silent precedence exists either way. A row that spells none
+    // keeps today's rule: the engine-side block is existence-checked, never
+    // managed. A declared-but-blank line is absent by [`knob`]'s trim.
+    match knob(model, "maya_vision") {
+        Some(line) => {
+            if config.contains_key("vision") {
+                return Err(bad(
+                    model,
+                    "maya_vision",
+                    "conflicts with the config's own `vision` object: remove one, \
+                     the harness refuses a silent precedence",
+                ));
+            }
+            let vision = vision_overlay(model, line)?;
+            config.insert("vision".to_string(), serde_json::Value::Object(vision));
+        }
+        None => check_vision(model, &config)?,
+    }
     // The harness owns these decisions: the bind and the port are forced
     // argv, the key is absent (loopback only), idle unload would break the
     // harness's residency, and CORS is harness-owned (loopback only). Remove
@@ -938,6 +1061,323 @@ mod tests {
         assert!(
             matches!(error, MayaRowError::MissingPath { .. }),
             "unexpected refusal: {error:?}"
+        );
+    }
+
+    /// The three real overlay assets under one temp dir, in the line order
+    /// `exe`, `mmproj`, `model`.
+    fn overlay_files(dir: &Path) -> [PathBuf; 3] {
+        let files = [
+            dir.join("vision.exe"),
+            dir.join("mmproj.gguf"),
+            dir.join("vision.gguf"),
+        ];
+        std::fs::create_dir_all(dir).expect("assets dir");
+        for file in &files {
+            std::fs::write(file, b"v").expect("overlay asset");
+        }
+        files
+    }
+
+    /// The full `k=v` line naming `overlay_files`, plus any extra tail.
+    fn overlay_line(files: &[PathBuf; 3], extra: &str) -> String {
+        let mut line = format!(
+            "exe={} mmproj={} model={}",
+            files[0].to_str().expect("utf-8"),
+            files[1].to_str().expect("utf-8"),
+            files[2].to_str().expect("utf-8"),
+        );
+        if !extra.is_empty() {
+            line.push(' ');
+            line.push_str(extra);
+        }
+        line
+    }
+
+    /// The typed `maya_vision` overlay: the row yaml alone
+    /// renders the staged `vision` object, the staged bytes stay byte-stable,
+    /// and a row without the overlay stages none. Falsifier: on the pre-fix
+    /// tree `maya_vision` was an ignored key — the staged profile carried no
+    /// `vision` object whatever the row spelled.
+    #[test]
+    fn the_row_overlay_renders_the_vision_object_from_the_row_alone() {
+        let assets = crate::testutil::temp_dir("maya-vision-overlay");
+        let files = overlay_files(&assets);
+        let line = overlay_line(&files, "");
+        let (_dir, _config, model) = fixture(&[("maya_vision", line.as_str())]);
+        let rendered = config_of(&model);
+        for (key, file) in [
+            ("exe", &files[0]),
+            ("mmproj", &files[1]),
+            ("model", &files[2]),
+        ] {
+            assert_eq!(
+                rendered["vision"][key],
+                serde_json::json!(file.to_str().expect("utf-8")),
+                "the overlay renders `{key}` as spelled"
+            );
+        }
+        assert_eq!(
+            rendered["vision"]["gpu"],
+            serde_json::json!(true),
+            "the operator's engine-side block carries `gpu: true`, so the overlay default matches"
+        );
+        let first = validate_row(&model).expect("overlay validates").text;
+        let second = validate_row(&model).expect("overlay revalidates").text;
+        assert_eq!(first, second, "the overlaid bytes stay byte-stable");
+        let without = config_of(&fixture(&[]).2);
+        assert!(
+            without.get("vision").is_none(),
+            "the row alone is what changes the vision object"
+        );
+    }
+
+    /// `exe`, `mmproj` and `model` are required together: a missing one is
+    /// refused before the load gesture, naming the overlay key, the missing
+    /// member and the row. Falsifier: accepting a half block lets the server
+    /// die on a vision spawn the scan could have refused.
+    #[test]
+    fn the_overlay_requires_every_path_key_naming_the_row_and_the_key() {
+        let assets = crate::testutil::temp_dir("maya-vision-required");
+        let files = overlay_files(&assets);
+        let names = ["exe", "mmproj", "model"];
+        for omit in 0..3 {
+            let tokens: Vec<String> = names
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != omit)
+                .map(|(i, name)| format!("{name}={}", files[i].to_str().expect("utf-8")))
+                .collect();
+            let (_dir, _config, model) = fixture(&[("maya_vision", tokens.join(" ").as_str())]);
+            let error = validate_row(&model)
+                .expect_err("half block")
+                .into_engine_error()
+                .to_string();
+            assert!(
+                error.contains("maya_vision") && error.contains(&format!("`{}`", names[omit])),
+                "the refusal must name `maya_vision` and the missing `{}`: {error}",
+                names[omit]
+            );
+            assert!(
+                error.contains("maya-test"),
+                "the refusal must name the row: {error}"
+            );
+        }
+    }
+
+    /// The overlay and an engine-side `vision` object refuse each other, and
+    /// the conflict is judged before any overlay path is touched: no silent
+    /// precedence either way. Falsifier: merging one over the other silently
+    /// changes what the operator sees on disk versus what serves.
+    #[test]
+    fn the_overlay_refuses_a_conflict_with_the_config_vision_object() {
+        let assets = crate::testutil::temp_dir("maya-vision-conflict");
+        let files = overlay_files(&assets);
+        let line = overlay_line(&files, "");
+        let (_dir, config, model) = fixture(&[("maya_vision", line.as_str())]);
+        let mut value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&config).expect("read")).expect("json");
+        value["vision"] = serde_json::json!({
+            "exe": files[0], "mmproj": files[1], "model": files[2], "gpu": true,
+        });
+        std::fs::write(&config, serde_json::to_string(&value).expect("serialize")).expect("write");
+        let error = validate_row(&model)
+            .expect_err("conflict")
+            .into_engine_error()
+            .to_string();
+        assert!(
+            error.contains("maya_vision") && error.contains("vision"),
+            "the conflict refusal names both spellings: {error}"
+        );
+        assert!(
+            error.contains("conflicts") && error.contains("precedence"),
+            "the refusal must read as the named conflict, not a generic reject: {error}"
+        );
+    }
+
+    /// The key set is closed: an unknown key is refused naming the set, and a
+    /// token that is not `k=v` is refused the same way. Falsifier: an open set
+    /// lets an unreported engine key ride the overlay.
+    #[test]
+    fn the_overlay_refuses_an_unknown_key_naming_the_closed_set() {
+        let assets = crate::testutil::temp_dir("maya-vision-closed");
+        let files = overlay_files(&assets);
+        for tail in ["threads=8", "gpu"] {
+            let line = overlay_line(&files, tail);
+            let (_dir, _config, model) = fixture(&[("maya_vision", line.as_str())]);
+            let error = validate_row(&model)
+                .expect_err(tail)
+                .into_engine_error()
+                .to_string();
+            assert!(
+                error.contains("exe, mmproj, model, gpu"),
+                "`{tail}` refusal must name the closed set: {error}"
+            );
+            assert!(
+                error.contains("maya_vision"),
+                "`{tail}` refusal must name `maya_vision`: {error}"
+            );
+        }
+    }
+
+    /// An overlay asset that is not on disk is the [`MayaRowError::MissingPath`]
+    /// door naming `maya_vision.<key>` (the same class as the config-side door);
+    /// a relative path is the named bad value, not a path miss. Falsifier:
+    /// checking only the shape lets a doomed vision spawn evict a resident.
+    #[test]
+    fn a_missing_overlay_asset_is_a_missing_path_naming_the_row_key() {
+        let assets = crate::testutil::temp_dir("maya-vision-missing");
+        std::fs::create_dir_all(&assets).expect("assets dir");
+        std::fs::write(assets.join("vision.exe"), b"v").expect("overlay exe");
+        let line = format!(
+            "exe={} mmproj={} model={}",
+            assets.join("vision.exe").to_str().expect("utf-8"),
+            assets.join("absent-mmproj.gguf").to_str().expect("utf-8"),
+            assets.join("absent.gguf").to_str().expect("utf-8"),
+        );
+        let (_dir, _config, model) = fixture(&[("maya_vision", line.as_str())]);
+        let error = validate_row(&model).expect_err("overlay path");
+        match error {
+            MayaRowError::MissingPath { key, path, .. } => {
+                assert_eq!(
+                    key, "maya_vision.mmproj",
+                    "the key names the overlay and the member"
+                );
+                assert!(path.to_string_lossy().contains("absent-mmproj"), "{path:?}");
+            }
+            other => panic!("unexpected refusal: {other:?}"),
+        }
+        let files = overlay_files(&assets);
+        let relative = format!(
+            "exe=vision.exe mmproj={} model={}",
+            files[1].to_str().expect("utf-8"),
+            files[2].to_str().expect("utf-8"),
+        );
+        let (_dir, _config, model) = fixture(&[("maya_vision", relative.as_str())]);
+        let error = validate_row(&model).expect_err("relative path");
+        match error {
+            MayaRowError::Bad { key, reason, .. } => {
+                assert_eq!(key, "maya_vision.exe");
+                assert!(reason.contains("absolute"), "{reason}");
+            }
+            other => panic!("a relative overlay path is a bad value: {other:?}"),
+        }
+    }
+
+    /// `gpu` is a strict figure with a default: `gpu=false` renders `false`,
+    /// a truthy word renders `true`, and an omitted `gpu` renders `true` —
+    /// the operator's engine-side block spells `gpu: true`, so the overlay
+    /// default keeps that figure. Falsifier: dropping the default insert (or
+    /// flipping it) silently moves the encoder off-card.
+    #[test]
+    fn the_overlay_gpu_flag_defaults_on_and_reads_the_spelled_figure() {
+        let assets = crate::testutil::temp_dir("maya-vision-gpu");
+        let files = overlay_files(&assets);
+        let off = overlay_line(&files, "gpu=false");
+        let (_dir, _config, model) = fixture(&[("maya_vision", off.as_str())]);
+        assert_eq!(
+            config_of(&model)["vision"]["gpu"],
+            serde_json::json!(false),
+            "`gpu=false` renders false"
+        );
+        let on = overlay_line(&files, "gpu=on");
+        let (_dir, _config, model) = fixture(&[("maya_vision", on.as_str())]);
+        assert_eq!(
+            config_of(&model)["vision"]["gpu"],
+            serde_json::json!(true),
+            "a truthy word renders true"
+        );
+        let omitted = overlay_line(&files, "");
+        let (_dir, _config, model) = fixture(&[("maya_vision", omitted.as_str())]);
+        assert_eq!(
+            config_of(&model)["vision"]["gpu"],
+            serde_json::json!(true),
+            "an omitted `gpu` renders true, the engine-side figure"
+        );
+    }
+
+    /// `gpu` accepts exactly the eight words: any other value — a typo, a
+    /// number outside the set, or the blank of `gpu=` — is a named
+    /// `maya_vision.gpu` refusal naming the accepted words, never a silent
+    /// `false`. Falsifier: the loose truthy table reads every unknown value
+    /// (and every blank) as false and moves the encoder off-card unseen.
+    #[test]
+    fn the_overlay_refuses_a_gpu_value_outside_the_accepted_words() {
+        let assets = crate::testutil::temp_dir("maya-vision-gpu-strict");
+        let files = overlay_files(&assets);
+        for value in ["maybe", "2", ""] {
+            let tail = format!("gpu={value}");
+            let line = overlay_line(&files, &tail);
+            let (_dir, _config, model) = fixture(&[("maya_vision", line.as_str())]);
+            let error = validate_row(&model)
+                .expect_err("gpu value")
+                .into_engine_error()
+                .to_string();
+            assert!(
+                error.contains("maya_vision.gpu")
+                    && error.contains("true, false, 1, 0, yes, no, on, off"),
+                "`{tail}` refusal must name `maya_vision.gpu` and the accepted words: {error}"
+            );
+        }
+    }
+
+    /// The block spells each key once: a duplicate of any of the four is
+    /// refused naming `maya_vision` and the key, never a silent last-wins.
+    /// Falsifier: a plain `insert` lets a tail token silently replace the
+    /// head path or flip the head figure.
+    #[test]
+    fn the_overlay_refuses_a_duplicate_key_naming_the_key() {
+        let assets = crate::testutil::temp_dir("maya-vision-duplicate");
+        let files = overlay_files(&assets);
+        let base = overlay_line(&files, "gpu=true");
+        for (key, value) in [
+            ("exe", files[0].to_str().expect("utf-8")),
+            ("mmproj", files[1].to_str().expect("utf-8")),
+            ("model", files[2].to_str().expect("utf-8")),
+            ("gpu", "false"),
+        ] {
+            let line = format!("{base} {key}={value}");
+            let (_dir, _config, model) = fixture(&[("maya_vision", line.as_str())]);
+            let error = validate_row(&model)
+                .expect_err("duplicate")
+                .into_engine_error()
+                .to_string();
+            assert!(
+                error.contains("maya_vision") && error.contains(&format!("`{key}`")),
+                "the duplicate refusal must name `maya_vision` and `{key}`: {error}"
+            );
+        }
+    }
+
+    /// Regression pin (not a falsifier — this leg passed before the overlay
+    /// and must pass after it): an engine-side `vision` block still flows
+    /// through the staged bytes as validated (a doomed one is refused by the
+    /// existing `check_vision` door), and a config without vision stages
+    /// none. A future change that runs the overlay conflict check
+    /// unconditionally would refuse the untouched engine-side shape here.
+    #[test]
+    fn an_absent_overlay_leaves_the_engine_side_vision_door_unchanged() {
+        let assets = crate::testutil::temp_dir("maya-vision-engine-side");
+        let files = overlay_files(&assets);
+        let (_dir, config, model) = fixture(&[]);
+        let mut value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&config).expect("read")).expect("json");
+        value["vision"] = serde_json::json!({
+            "exe": files[0], "mmproj": files[1], "model": files[2], "gpu": true,
+        });
+        std::fs::write(&config, serde_json::to_string(&value).expect("serialize")).expect("write");
+        let rendered = config_of(&model);
+        assert_eq!(
+            rendered["vision"]["exe"],
+            serde_json::json!(files[0].to_str().expect("utf-8")),
+            "the engine-side block still rides the staged bytes unmanaged"
+        );
+        value.as_object_mut().expect("object").remove("vision");
+        std::fs::write(&config, serde_json::to_string(&value).expect("serialize")).expect("write");
+        let rendered = config_of(&model);
+        assert!(
+            rendered.get("vision").is_none(),
+            "a config without vision stages none: {rendered}"
         );
     }
 
