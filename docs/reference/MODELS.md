@@ -502,8 +502,13 @@ validates every path it names before the load gesture: the engine `exe`, the
 engine `cwd`, the `tokenizer` directory with its `vocab.json`, and, when the
 config carries a `vision` block, its `exe`, `mmproj`, and `model` files. The
 config's `model_name` must equal the row's `serve_model`, or the scan
-refuses the row. The config's `env` may hold only `MAYA_*` names with scalar
-values; the scan refuses any other name by name. The harness then removes
+refuses the row. The config's `env` carries the engine's documented settings
+with scalar values: `MAYA_*` names, engine-specific names such as `HY4_*`,
+`DS4_*`, and `IK2_*`, and the older `STRATA_*` fallbacks. The scan refuses the
+names the harness owns by name (the process search path and scratch directory,
+the Python interpreter setup, the GPU selection the row's `gpu` key decides,
+and the loader-control namespace); every other legal name passes, so a new
+upstream setting needs no adapter change. The harness then removes
 `host`, `port`, `api_key`, `idle_unload_s`, and `cors_origins`, forces
 `model_management` to `false`, stages the scrubbed JSON content-addressed
 under `.simpleharn\maya-profiles` beside the exe, and rewrites `--config` to

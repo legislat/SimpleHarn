@@ -2343,6 +2343,37 @@ fn baseline_keeps_only_the_os_names_and_drops_every_secret() {
     }
 }
 
+/// The Maya config `env` door refuses every name the harness owns: the OS
+/// baseline the spawn keeps and the Python launch names the spawn adds.
+/// Falsifier: a Maya config could override `TMPDIR` (unix) or `VIRTUAL_ENV` and
+/// reintroduce the variable the scrub removed.
+#[test]
+fn the_maya_env_door_covers_the_os_baseline_and_the_python_launch_names() {
+    let owned = |name: &str| {
+        crate::engine::maya::HARNESS_OWNED_ENV
+            .iter()
+            .any(|entry| entry.eq_ignore_ascii_case(name))
+    };
+    for name in OS_ENV_BASELINE {
+        assert!(
+            owned(name),
+            "HARNESS_OWNED_ENV must cover the OS baseline name `{name}`"
+        );
+    }
+    for name in [
+        "PYTHONUTF8",
+        "USERPROFILE",
+        "HOME",
+        "PYTHONPATH",
+        "VIRTUAL_ENV",
+    ] {
+        assert!(
+            owned(name),
+            "HARNESS_OWNED_ENV must cover the Python launch name `{name}`"
+        );
+    }
+}
+
 #[cfg(windows)]
 #[test]
 fn baseline_falls_back_for_path_temp_tmp_and_omits_the_rest() {

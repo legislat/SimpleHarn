@@ -27,6 +27,13 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 - Basalt launches render the v2 config the current server requires, and the
   alias and pool size ride that config instead of argv, so updated Basalt
   servers launch again.
+- Maya configs pass the engine settings in their `env` block under the names
+  Maya documents (`MAYA_*`, `HY4_*`, `DS4_*`, `IK2_*`, and the older `STRATA_*`
+  fallbacks) instead of refusing everything outside `MAYA_*`. The harness-owned
+  process environment (path, scratch, interpreter setup, GPU selection, loader
+  control) is still refused by name, and an illegal env name or value is
+  refused at the scan. A Hy4-Flash config that sets `HY4_DENSE_MAX` now scans
+  and loads.
 
 ## v1.5.1.6 - 2026-11-16
 

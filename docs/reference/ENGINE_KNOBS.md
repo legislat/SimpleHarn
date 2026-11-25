@@ -102,6 +102,7 @@ the checked-in manifest the gate reads.
 | `python`, `cwd`, `config` | typed | `maya_python:` / `maya_cwd:` / `maya_config:` |
 | `vision` | typed | `maya_vision:` row overlay, closed set `exe`, `mmproj`, `model`, strict `gpu` (`gpu` default on); an engine-side `vision` object alongside it is a named conflict (ruling 2026-11-17) |
 | `all config JSON keys except forced fields` | passthrough | `maya_config:` external JSON (scrubbed) |
+| `env` | typed | engine settings with scalar values (`MAYA_*`, `HY4_*`, `DS4_*`, `IK2_*`, `STRATA_*`); the harness-owned process environment (path, scratch, interpreter setup, GPU selection, loader control) is refused by name |
 | `host`, `port`, `api_key`, `idle_unload_s`, `cors_origins` | forced | Bind, key, residency, and CORS are harness-owned |
 | `model_management` | forced | Always false; the harness is the single writer |
 | `--mcp-config`, `--script`, `--parent-pipe`, `--open` | forced | Tool execution, lifecycle pipe, script, and browser are refused |

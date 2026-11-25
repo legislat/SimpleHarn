@@ -291,10 +291,81 @@ fn check_gpu(
     Ok(())
 }
 
-/// The config's `env`: a map of engine settings. Only the documented user-facing
-/// names (`MAYA_*`) pass; a bare `PATH`, `CUDA_VISIBLE_DEVICES` or a legacy
-/// `STRATA_*` name is refused by name, because the harness owns the child
-/// environment and the settings surface. Values are scalars.
+/// The names the harness owns in the child environment, whatever an L1 config
+/// spells: the process search path, the interpreter's own setup, the Windows
+/// process basics, and the GPU selection the row's `gpu` key and the forced
+/// launch decide. Maya writes engine settings to the config's `env` under the
+/// names the engine reads (`MAYA_*`, `HY4_*`, `DS4_*`, `IK2_*`, and the older
+/// `STRATA_*` fallbacks), so only this owned set is refused; the comparison is
+/// ASCII case-insensitive because the Windows environment is. The loader-control
+/// namespaces (`LD_*`, `DYLD_*`) are refused by prefix as well, so a loader name
+/// missing from this list cannot slip through.
+pub(crate) const HARNESS_OWNED_ENV: &[&str] = &[
+    "PATH",
+    "PATHEXT",
+    "COMSPEC",
+    "SYSTEMROOT",
+    "WINDIR",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "USERPROFILE",
+    "HOME",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PROGRAMDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "COMMONPROGRAMFILES",
+    "COMMONPROGRAMFILES(X86)",
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "PYTHONSTARTUP",
+    "PYTHONEXECUTABLE",
+    "PYTHONUTF8",
+    "PYTHONIOENCODING",
+    "PYTHONNOUSERSITE",
+    "PYTHONUSERBASE",
+    "VIRTUAL_ENV",
+    "CUDA_VISIBLE_DEVICES",
+    "CUDA_DEVICE_ORDER",
+    "HIP_VISIBLE_DEVICES",
+    "ROCR_VISIBLE_DEVICES",
+    "GPU_DEVICE_ORDINAL",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "DYLD_INSERT_LIBRARIES",
+    "DYLD_LIBRARY_PATH",
+];
+
+/// Is `name` a harness-owned child-environment name? See [`HARNESS_OWNED_ENV`].
+/// The `LD_`/`DYLD_` loader-control namespaces are refused whole: the loader
+/// reads more names than this list spells, and every one of them can change what
+/// the engine child loads.
+fn harness_owned_env(name: &str) -> bool {
+    HARNESS_OWNED_ENV
+        .iter()
+        .any(|owned| name.eq_ignore_ascii_case(owned))
+        || name.get(..3).is_some_and(|p| p.eq_ignore_ascii_case("LD_"))
+        || name
+            .get(..5)
+            .is_some_and(|p| p.eq_ignore_ascii_case("DYLD_"))
+}
+
+/// Is `name` a legal environment variable name? An empty name, a name with `=`,
+/// or a name with NUL is not: Python raises `ValueError` when the server copies
+/// it into the engine child, after the harness has admitted the load.
+fn env_name_is_legal(name: &str) -> bool {
+    !name.is_empty() && !name.contains('=') && !name.contains('\0')
+}
+
+/// The config's `env`: the engine's settings, as the installer writes them and
+/// Maya documents them (`MAYA_*`, `HY4_*`, `DS4_*`, `IK2_*`, and the older
+/// `STRATA_*` fallbacks). A name the harness owns — the process search path,
+/// the interpreter setup, or the GPU selection — is refused by name, because
+/// the harness decides those; any other legal name is an engine setting and
+/// passes, so a new upstream setting still needs no adapter change. Names must
+/// be non-empty and free of `=` and NUL; values are scalars free of NUL.
 fn check_env(
     model: &ModelEntry,
     config: &serde_json::Map<String, serde_json::Value>,
@@ -310,12 +381,28 @@ fn check_env(
         ));
     };
     for (name, value) in entries {
-        if !name.starts_with("MAYA_") {
+        if !env_name_is_legal(name) {
+            return Err(bad(
+                model,
+                "env",
+                format!("`{name}` is not a legal environment name"),
+            ));
+        }
+        if let Some(text) = value.as_str() {
+            if text.contains('\0') {
+                return Err(bad(
+                    model,
+                    &format!("env.{name}"),
+                    "must not contain a NUL character",
+                ));
+            }
+        }
+        if harness_owned_env(name) {
             return Err(bad(
                 model,
                 &format!("env.{name}"),
-                "only `MAYA_*` engine settings pass; the harness owns the rest of the child \
-                 environment",
+                "is harness-owned: the launch forces the process path, the interpreter setup \
+                 and the GPU selection",
             ));
         }
         if !(value.is_string() || value.is_number() || value.is_boolean()) {
@@ -1032,18 +1119,117 @@ mod tests {
         assert!(error.contains("serve_model") && error.contains("other"));
     }
 
+    /// The documented engine settings in the L1 `env` ride the staged profile:
+    /// Maya writes them there under the engine's own names (`HY4_DENSE_MAX` on
+    /// Hy4-Flash; `DS4_*`, `IK2_*`, and the older `STRATA_*` fallbacks on the
+    /// others), so the scan must not refuse them. Falsifier: on the pre-fix
+    /// tree the `MAYA_*`-only door refused `HY4_DENSE_MAX`, so the Hy4-Flash
+    /// row could not scan or load.
     #[test]
-    fn a_config_env_key_outside_maya_is_refused_by_name() {
+    fn documented_engine_env_settings_ride_the_staged_profile() {
+        let settings = serde_json::json!({
+            "HY4_DENSE_MAX": "8192",
+            "DS4_KEEP_THINKING": 1,
+            "STRATA_GLM_CPU_LANE": true,
+            "SOME_FUTURE_SETTING": "1",
+        });
         let (_dir, config, model) = fixture(&[]);
         let mut value: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&config).expect("read")).expect("json");
-        value["env"] = serde_json::json!({"PATH": "C:/evil"});
+        value["env"] = settings.clone();
+        std::fs::write(&config, serde_json::to_string(&value).expect("serialize")).expect("write");
+        let rendered = config_of(&model);
+        assert_eq!(
+            rendered["env"], settings,
+            "the engine settings stay in the staged bytes as they were spelled"
+        );
+        value["env"] = serde_json::json!({"HY4_DENSE_MAX": {"nested": true}});
         std::fs::write(&config, serde_json::to_string(&value).expect("serialize")).expect("write");
         let error = validate_row(&model)
-            .expect_err("env")
+            .expect_err("non-scalar value")
             .into_engine_error()
             .to_string();
-        assert!(error.contains("env.PATH"));
+        assert!(
+            error.contains("env.HY4_DENSE_MAX"),
+            "a value that is not a scalar must be refused by name: {error}"
+        );
+    }
+
+    /// The names the harness owns are still refused by name, whatever their
+    /// case: the process search path, the interpreter setup, and the GPU
+    /// selection the row's `gpu` key decides. Falsifier: an open door would
+    /// let the engine-side file rewrite the child's `PATH`, `PYTHONPATH`, or
+    /// `CUDA_VISIBLE_DEVICES` outside the harness's decision.
+    #[test]
+    fn a_harness_owned_env_key_is_refused_by_name() {
+        for name in [
+            "PATH",
+            "cuda_visible_devices",
+            "PYTHONPATH",
+            "VIRTUAL_ENV",
+            "TMPDIR",
+            "LD_PRELOAD",
+            "LD_AUDIT",
+        ] {
+            let (_dir, config, model) = fixture(&[]);
+            let mut value: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&config).expect("read"))
+                    .expect("json");
+            value["env"] = serde_json::json!({name: "x"});
+            std::fs::write(&config, serde_json::to_string(&value).expect("serialize"))
+                .expect("write");
+            let error = validate_row(&model)
+                .expect_err(name)
+                .into_engine_error()
+                .to_string();
+            assert!(
+                error.contains(&format!("env.{name}")),
+                "`{name}` refusal must name it: {error}"
+            );
+            assert!(
+                error.contains("harness-owned"),
+                "`{name}` refusal must say why: {error}"
+            );
+        }
+    }
+
+    /// A name or value that cannot become an engine environment entry is refused
+    /// at the scan: the empty name, `=`, and NUL are not legal, and the Maya
+    /// server's `os.environ` copy raises `ValueError` after the harness has
+    /// already admitted the load. Falsifier: the old `MAYA_*` gate refused these
+    /// shapes; the open door must not lose that refusal.
+    #[test]
+    fn an_illegal_env_name_or_value_is_refused() {
+        for name in ["", "A=B", "A\u{0}B"] {
+            let (_dir, config, model) = fixture(&[]);
+            let mut value: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&config).expect("read"))
+                    .expect("json");
+            value["env"] = serde_json::json!({name: "x"});
+            std::fs::write(&config, serde_json::to_string(&value).expect("serialize"))
+                .expect("write");
+            let error = validate_row(&model)
+                .expect_err(name)
+                .into_engine_error()
+                .to_string();
+            assert!(
+                error.contains("legal environment name"),
+                "`{name:?}` must be refused as an illegal name: {error}"
+            );
+        }
+        let (_dir, config, model) = fixture(&[]);
+        let mut value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&config).expect("read")).expect("json");
+        value["env"] = serde_json::json!({"OK": "x\u{0}y"});
+        std::fs::write(&config, serde_json::to_string(&value).expect("serialize")).expect("write");
+        let error = validate_row(&model)
+            .expect_err("NUL value")
+            .into_engine_error()
+            .to_string();
+        assert!(
+            error.contains("env.OK") && error.contains("NUL"),
+            "a NUL value must be refused naming the key: {error}"
+        );
     }
 
     #[test]
