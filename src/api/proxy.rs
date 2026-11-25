@@ -39,7 +39,7 @@ pub(super) struct ListenerState {
 ///
 /// This is deliberately a separate entry point from [`ensure_target`]: `proxy` rewrites
 /// `body["model"]` to the engine's self-reported id, so anything re-resolving a
-/// request after that rewrite must pass the NAME it captured beforehand. The T10.1
+/// request after that rewrite must pass the NAME it captured beforehand. The
 /// crash-retry used to re-resolve from the rewritten body and therefore looked the
 /// engine's id up in the catalog, which 404s every llama engine (its id is the gguf
 /// path) - the restart succeeded and the request still failed.
@@ -336,9 +336,16 @@ async fn proxy(
     // reports `is_connect()` — means a live engine is still thinking, and reaping
     // it discards a healthy KV cache. A genuine upstream HTTP status is never
     // retried, and a death mid-stream surfaces in the body stream, past this
-    // loop. When even the crash-retry's successor refuses connections, the
+    // loop. The wire shape of both stream directions is pinned by
+    // `tests/stream_lifecycle.rs`: `an_engine_that_dies_mid_stream_truncates_the_stream_and_stays_serving`
+    // (the client gets the bytes sent before the failure, then the stream ends
+    // in an error — no silent completion, and no retry after the head) and
+    // `a_client_that_drops_the_stream_mid_body_is_observed_by_the_engine` (the
+    // engine observes the abort, the harness stays healthy, no retry).
+    // `docs/reference/COMPATIBILITY.md` section 4 owns that contract.
+    // When even the crash-retry's successor refuses connections, the
     // resident the request witnessed is gone by two independent refusals: the
-    // actor terminalizes its slot and owning load row (RC-02) so the page and
+    // actor terminalizes its slot and owning load row so the page and
     // the ledger stop claiming a dead resident, and the next load replaces it.
     // The request itself still answers an honest typed `502`.
     let mut port = port;
@@ -351,7 +358,7 @@ async fn proxy(
                 classify_send_failure(&error, port)?;
                 attempts += 1;
                 if attempts >= 2 {
-                    // RC-02: the death this request witnessed twice is not a
+                    // The death this request witnessed twice is not a
                     // resident `/har/status` may keep reporting as serving. The
                     // report names exactly this model, category and refused
                     // port — the actor's reap runs under that occupant's own

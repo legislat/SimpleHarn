@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent]
 source_of_truth_for: [OpenAI-compatible surface scope, known-good configurations]
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-25
 review_trigger: behavior-change, release
 ---
 
@@ -131,14 +131,14 @@ including the self-reported-id rewrite in `model`.
 
 - A body must be JSON. A non-JSON content type answers 415 before parsing:
   `posts_without_json_content_type_are_415`. A malformed JSON body answers 400
-  in the project envelope. Evidence: the proxy door in `proxy`
-  (`src/api/mod.rs`). The same envelope shape is tested on a control route by
+   in the project envelope. Evidence: the proxy door in `proxy`
+   (`src/api/proxy.rs`). The same envelope shape is tested on a control route by
   `malformed_logging_body_answers_the_project_envelope`. A wire test on a
   proxy route: untested.
 - The proxy parses the JSON and re-serializes it for the engine, so every
   field survives except `model`. Whitespace and key order may change. The
-  harness claims no byte-for-byte request pass-through. Evidence: `proxy`
-  (`src/api/mod.rs`) and the pass-through note in
+   harness claims no byte-for-byte request pass-through. Evidence: `proxy`
+   (`src/api/proxy.rs`) and the pass-through note in
   `proxy_passes_the_engines_content_encoding_through_verbatim`.
 - The `model` field is rewritten to the engine's self-reported id. When
   discovery reports nothing, the harness catalog name crosses instead. Tests
@@ -149,7 +149,7 @@ including the self-reported-id rewrite in `model`.
 - The query string crosses exactly as the client sent it, a bare `?`
   included. Test `proxy_forwards_the_query_string_the_client_sent`.
 - The proxy copies no client request header toward the engine. Evidence: the
-  forward call in `proxy` (`src/api/mod.rs`). A wire test that asserts the
+  forward call in `proxy` (`src/api/proxy.rs`). A wire test that asserts the
   absence: untested.
 
 ### Engine failure mid-request
@@ -176,8 +176,21 @@ including the self-reported-id rewrite in `model`.
   `a_readiness_deadline_answers_its_own_code_and_the_other_classes_keep_theirs`
   and `a_load_that_misses_its_readiness_deadline_answers_the_named_code`.
 - A death mid-stream surfaces inside the body stream, past the retry loop.
-  Evidence: the T10.1 note in `proxy` (`src/api/mod.rs`). A wire test for a
-  mid-stream death: untested.
+  Evidence: the T10.1 note in `proxy` (`src/api/proxy.rs`). The wire test is
+  `an_engine_that_dies_mid_stream_truncates_the_stream_and_stays_serving`:
+  the head and the engine's `text/event-stream` content-type cross untouched,
+  the client receives exactly the bytes the engine sent before the failure,
+  and the stream then terminates with an error — never a silent completion.
+  The crash-retry never fires after the head: the engine answers one request
+  and the runtime spawns one engine, the resident stays serving (no unload
+  row), and the next request on the same listener is answered by the same
+  instance.
+- A client that drops a live stream mid-body is observed by the engine side.
+  The wire test is `a_client_that_drops_the_stream_mid_body_is_observed_by_the_engine`:
+  when the client aborts, the harness ends the engine-side connection and the
+  engine's write side observes the end within a bounded time; the harness
+  neither hangs nor crashes, no retry and no restart fire, and the next
+  request on the same listener succeeds from the same serving resident.
 
 ## 5. tools, stop, seed, and other OpenAI parameters
 
