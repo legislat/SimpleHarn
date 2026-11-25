@@ -732,8 +732,9 @@ async fn an_in_flight_booking_debits_the_budget_so_the_second_load_parks_then_lo
         // The card frees: a1 finishes its window, the unload terminalizes its row,
         // and the funnel re-gates the parked row onto the released card.
         witness.set(total, 40.0);
-        let Reply::Loaded(receipt) = swapping
+        let Reply::Loaded(receipt) = tokio::time::timeout(Duration::from_secs(15), swapping)
             .await
+            .unwrap_or_else(|_| panic!("seed {stream}: a1 must swap within 15 s"))
             .expect("task alive")
             .expect("a1 loads once the card frees")
         else {
@@ -832,9 +833,16 @@ async fn a_same_slot_victim_is_credited_at_max_booking_measured_over_seeded_figu
         })
         .await;
         witness.set(total, after);
-        let Reply::Loaded(receipt) = loading.await.expect("task alive").unwrap_or_else(|_| {
-            panic!("seed {stream}: the replacement loads on the measured credit, not the booking")
-        }) else {
+        let Reply::Loaded(receipt) = tokio::time::timeout(Duration::from_secs(15), loading)
+            .await
+            .unwrap_or_else(|_| panic!("seed {stream}: repl must load within 15 s"))
+            .expect("task alive")
+            .unwrap_or_else(|_| {
+                panic!(
+                    "seed {stream}: the replacement loads on the measured credit, not the booking"
+                )
+            })
+        else {
             panic!("expected Loaded");
         };
         assert_eq!(receipt.model, "repl");
@@ -1029,8 +1037,11 @@ async fn the_planner_releases_exactly_the_cheapest_sufficient_victim_subset() {
                     .sum();
                 // The scripted card after every planned release: only the survivors.
                 witness.set(total, survivors_used);
-                let Reply::Loaded(receipt) =
-                    loaded.await.expect("task alive").unwrap_or_else(|_| {
+                let Reply::Loaded(receipt) = tokio::time::timeout(Duration::from_secs(15), loaded)
+                    .await
+                    .unwrap_or_else(|_| panic!("seed {stream}: work must load within 15 s"))
+                    .expect("task alive")
+                    .unwrap_or_else(|_| {
                         panic!("seed {stream}: the planned victims release and the load lands")
                     })
                 else {

@@ -852,9 +852,10 @@ pub fn scan_dir(dir: &Path) -> Catalog {
             catalog.errors.push(ScanError {
                 kind: ScanKind::InvalidYaml,
                 file: file_name.clone(),
-                reason: "yaml not loaded \u{2014} no `key: value` lines: an empty or \
-                         comment-only .yaml is not a model config"
-                    .to_string(),
+                reason: format!(
+                    "yaml not loaded \u{2014} no `key: value` lines: an empty or \
+                     comment-only file {file_name} is not a model config"
+                ),
             });
             continue;
         }
@@ -1902,12 +1903,15 @@ mod tests {
     }
 
     /// The zero-key hole, closed in the direction the doctrine
-    /// points: a `.yaml` the acceptance gate treats as a config but which yields no
-    /// keys at all publishes nothing **and is reported**, exactly as
-    /// `commit_verified` refuses to write it (`EmptyFile`). Before the gate these two
+    /// points: a `.yaml` or `.yml` the acceptance gate treats as a config but which
+    /// yields no keys at all publishes nothing **and is reported**, exactly as
+    /// `commit_verified` refuses to write it (`EmptyFile`). Before the gate these
     /// files entered the catalog as `engine: llama` rows named by their stems with
-    /// `errors` empty — spawnable-shaped phantoms. Falsifier: delete the
-    /// `map.is_empty()` gate and both rows come back while `errors` empties.
+    /// `errors` empty — spawnable-shaped phantoms. The report names the file it
+    /// refused, never a hard-coded extension: a comment-only `.yml` must not be
+    /// called a `.yaml`. Falsifier: delete the `map.is_empty()` gate and the rows
+    /// come back while `errors` empties; keep the pre-fix message and the
+    /// `reason.contains(name)` assertion on `notes.yml` goes red.
     #[test]
     fn an_empty_or_comment_only_yaml_is_reported_and_never_publishes() {
         let dir = crate::testutil::temp_dir("scan-zero-key");
@@ -1915,6 +1919,7 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("temp dir");
         std::fs::write(dir.join("blank.yaml"), "").expect("seed blank");
         std::fs::write(dir.join("notes.yaml"), "# only a comment\n\n").expect("seed notes");
+        std::fs::write(dir.join("notes.yml"), "# only a comment\n\n").expect("seed notes yml");
         std::fs::write(dir.join("real.yaml"), "engine: mock\nvram_gb: 4\n").expect("seed real");
 
         let catalog = scan_dir(&dir);
@@ -1927,8 +1932,8 @@ mod tests {
             vec!["real"],
             "a file with no keys must not publish a row, phantom or otherwise"
         );
-        assert_eq!(catalog.errors.len(), 2, "{:?}", catalog.errors);
-        for name in ["blank.yaml", "notes.yaml"] {
+        assert_eq!(catalog.errors.len(), 3, "{:?}", catalog.errors);
+        for name in ["blank.yaml", "notes.yaml", "notes.yml"] {
             let Some(report) = catalog.errors.iter().find(|e| e.file.contains(name)) else {
                 panic!(
                     "{name} was neither published nor reported: {:?}",
@@ -1939,6 +1944,11 @@ mod tests {
             assert!(
                 report.reason.contains("no `key: value` lines"),
                 "the reason must say which zero-key shape this is: {:?}",
+                report.reason
+            );
+            assert!(
+                report.reason.contains(name),
+                "the reason must name the refused file, not a fixed extension: {:?}",
                 report.reason
             );
             assert!(
