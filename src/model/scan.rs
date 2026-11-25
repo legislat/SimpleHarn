@@ -4835,7 +4835,7 @@ mod tests {
     fn seeded_fuzz_flat_yaml_never_panics_never_goes_silent_and_stays_deterministic() {
         use std::collections::BTreeSet;
         const SEEDS: [u64; 6] = [
-            0x5DEE_CE66_D,
+            0x0005_DEEC_E66D,
             0xDEAD_BEEF_CAFE_BABE,
             0x0123_4567_89AB_CDEF,
             0xA5A5_A5A5_A5A5_A5A5,

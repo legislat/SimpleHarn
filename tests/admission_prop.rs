@@ -272,7 +272,7 @@ fn the_free_gb_formula_and_the_clamp_hold_over_seeded_quarter_gib_triples() {
         let total = rng.quarters(1, 288);
         let reserve = rng.quarters(0, 16);
         let occupied = rng.quarters(0, 400);
-        let expected = (total * 4.0 - reserve * 4.0 - occupied * 4.0) as f64 / 4.0;
+        let expected = (total * 4.0 - reserve * 4.0 - occupied * 4.0) / 4.0;
         let got = free_gb(Gibibytes(total), Gibibytes(reserve), Gibibytes(occupied));
         assert_eq!(
             got.0, expected,
@@ -832,9 +832,9 @@ async fn a_same_slot_victim_is_credited_at_max_booking_measured_over_seeded_figu
         })
         .await;
         witness.set(total, after);
-        let Reply::Loaded(receipt) = loading.await.expect("task alive").expect(&format!(
-            "seed {stream}: the replacement loads on the measured credit, not the booking"
-        )) else {
+        let Reply::Loaded(receipt) = loading.await.expect("task alive").unwrap_or_else(|_| {
+            panic!("seed {stream}: the replacement loads on the measured credit, not the booking")
+        }) else {
             panic!("expected Loaded");
         };
         assert_eq!(receipt.model, "repl");
@@ -1029,9 +1029,11 @@ async fn the_planner_releases_exactly_the_cheapest_sufficient_victim_subset() {
                     .sum();
                 // The scripted card after every planned release: only the survivors.
                 witness.set(total, survivors_used);
-                let Reply::Loaded(receipt) = loaded.await.expect("task alive").expect(&format!(
-                    "seed {stream}: the planned victims release and the load lands"
-                )) else {
+                let Reply::Loaded(receipt) =
+                    loaded.await.expect("task alive").unwrap_or_else(|_| {
+                        panic!("seed {stream}: the planned victims release and the load lands")
+                    })
+                else {
                     panic!("expected Loaded");
                 };
                 assert_eq!(receipt.model, "work");

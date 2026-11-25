@@ -3039,7 +3039,7 @@ mod tests {
         const SEEDS: [u64; 4] = [
             0xC0FF_EE00_1234_5678,
             0x0F0F_0F0F_0F0F_0F0F,
-            0xDE_C0DE_AA_BB_CC_DD,
+            0x00DE_C0DE_AABB_CCDD,
             0x9E37_79B9_7F4A_7C15,
         ];
         const APPENDS_PER_DOC: usize = 8;
