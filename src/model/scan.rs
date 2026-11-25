@@ -1,4 +1,4 @@
-//! ModelConf scan (DESIGN Step 9): flat `key: value` yaml files -> typed catalog,
+//! ModelConf scan: flat `key: value` yaml files -> typed catalog,
 //! with per-file error reports.
 //!
 //! v3.3 lessons encoded here: quotes and inline comments are handled (D2 — `name:
@@ -55,8 +55,8 @@ pub enum ScanKind {
     /// here the key is live config for a *different* engine, so it is not a
     /// typo and cannot be silenced by `CONSUMED_KEYS` membership alone.
     /// Warn-only, exactly the retired `host:`/`port:` policy-hint posture: the
-    /// entry still publishes. The mechanism is the knob table (slice 10c
-    /// generalization of the 2026-10-28 `cpu_offload` ruling): every
+    /// entry still publishes. The mechanism is the knob table (the
+    /// generalization of the `cpu_offload` scoping rule): every
     /// engine-scoped key — `cpu_offload` and its llama siblings, the strata,
     /// basalt, maya and ninfer key families — is scoped the same data-driven
     /// way, so a new row knob needs no new scan code.
@@ -77,9 +77,10 @@ pub enum ScanKind {
     /// an operator-extra word (`extra_args`, `ninfer_serve_args`) outside the engine
     /// row's closed word surface, a policy field (`host`, `port`, key) inside the
     /// strata profile it points at, or a ninfer row still declaring the removed
-    /// `ninfer_autostart` launch key (ruling 18b removal). Engine-side files
+    /// `ninfer_autostart` launch key (the legacy-removal ruling). Engine-side
+    /// files
     /// decide nothing (22\[1]), so the refusal names the word/field and the
-    /// mechanism that owns the decision (chunk 10 slice 10c).
+    /// mechanism that owns the decision.
     PolicyRefused,
     /// Every pre-existing report shape: unreadable files or dirs, typed field
     /// rejects, duplicate containers, unresolved `default_model`s.
@@ -220,7 +221,7 @@ const CONSUMED_KEYS: &[&str] = &[
 
 /// Reserved forensic keys the operator hand-writes into a yaml: one-shot snapshot
 /// notes and relevant comments, for the forensic manual only (operator ruling,
-/// 2026-10-28, on the `bak:` node). The harness never reads them, never warns
+/// on the `bak:` node). The harness never reads them, never warns
 /// about them, never logs them, and never surfaces them: they are stripped from
 /// the parsed raw map in [`crate::model::ModelEntry::from_flat`] exactly like the
 /// retired `external`, so the value can neither reach the page nor be re-emitted
@@ -240,7 +241,7 @@ const PORT_POLICY_HINT: &str =
 
 /// Builds the [`ScanKind::InertKey`] sentence for one engine-scoped key: the
 /// same named-policy-hint posture as [`HOST_POLICY_HINT`]/[`PORT_POLICY_HINT`]
-/// (§20-9 Fork C knob table — slice 10c: the owners come from the table itself,
+/// (the Fork C knob table: the owners come from the table itself,
 /// so every row knob is scoped by the same mechanism, not by a key list here).
 /// `pub(crate)` because the API's refusal to WRITE an inert key quotes the
 /// identical sentence (the scan hint and the 400 must never diverge).
@@ -516,23 +517,198 @@ pub(crate) fn adversarial_docs() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The 13[5] Fork B acceptance gate: a config is exactly a **regular file** whose
-/// final extension is `.yaml`, case-insensitively. Never a symlink — the caller
-/// passes `DirEntry::file_type()`, which does not follow the link, so a symlink
-/// (to a file, a directory, a pipe or a linked tree) is judged as itself: inert,
-/// never opened, never stat'd. `.yml` is **deliberately not a config extension**
-/// (repo convention): `foo.yml` is inert-not-broken — it earns no error, and
-/// renaming it to `.yaml` is the operator's call, not the harness's. Everything
-/// else in ModelConf (`README.md`, the single-slot `.yaml.bak` incident copies,
-/// `x.yaml.bak`, `Thumbs.db`, even a directory named `x.yaml`) is silently inert:
-/// non-candidates are not configs, so they produce **no catalog_error** — the
-/// Fork C InvalidYaml voice stays reserved for actual `*.yaml` files.
+/// xorshift64* — the hand-rolled seeded PRNG behind the seeded property
+/// tests (algorithm: Vigna's xorshift64*: `x ^= x >> 12; x ^= x << 25;
+/// x ^= x >> 27;` then multiply by `0x2545F4914F6CDD1D`). Pure wrapping integer
+/// math, so every run on every platform replays the identical case sequence; a
+/// zero state is illegal for xorshift, so seed `0` is replaced by the golden
+/// ratio constant. This replaces a generating fuzz dependency the policy
+/// refuses: fixed seeds in, deterministic cases out, asserted reproducible.
+#[cfg(test)]
+pub(crate) struct FuzzRng {
+    state: u64,
+}
+
+#[cfg(test)]
+impl FuzzRng {
+    pub(crate) fn new(seed: u64) -> Self {
+        Self {
+            state: if seed == 0 {
+                0x9E37_79B9_7F4A_7C15
+            } else {
+                seed
+            },
+        }
+    }
+
+    pub(crate) fn next_u64(&mut self) -> u64 {
+        let mut x = self.state;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.state = x;
+        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+
+    pub(crate) fn below(&mut self, bound: usize) -> usize {
+        (self.next_u64() % bound as u64) as usize
+    }
+
+    pub(crate) fn chance(&mut self, percent: u64) -> bool {
+        self.next_u64() % 100 < percent
+    }
+}
+
+/// The fixed nasty-value corpus for the property tests: empty and blank values,
+/// tabs, NUL and control characters, unicode (including astral), quotes and
+/// quote-parity traps, backslashes (including a trailing one), `#` in every
+/// position that matters, inline comments, leading/trailing whitespace, a
+/// ride-along BOM, huge integers and very long payloads. No value carries `\n`
+/// (the reader splits the document on `\n` and the writer refuses such a word
+/// outright — that refusal is pinned separately in `writeback`).
+#[cfg(test)]
+pub(crate) fn fuzz_value_pool() -> Vec<String> {
+    let mut pool: Vec<String> = [
+        "",
+        "   ",
+        "\t",
+        "4096",
+        "4096 # 32k",
+        "4096 #32k",
+        "4096#c",
+        " # tail",
+        "\"a # b\"",
+        "'a # b'",
+        "\"unclosed",
+        "unclosed\"",
+        "\"\"",
+        "''",
+        "a \\ b",
+        "C:\\str\\ing",
+        "trail\\",
+        "F:/a#b.gguf",
+        "a b ",
+        " a",
+        "a\tb",
+        "\ta\t",
+        "a\u{0}b",
+        "a\u{1}b\u{7}",
+        "\u{7f}",
+        "\u{feff}",
+        "caf\u{e9} \u{540d}\u{524d} \u{2192}",
+        "\u{1F600}",
+        "99999999999999999999999999999999999999",
+        "-0.0",
+        "1e400",
+        "a=b",
+        "key: inside",
+    ]
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect();
+    pool.push("x".repeat(5_000));
+    pool.push(format!("preamble {} trailer", "#".repeat(200)));
+    pool.push(" ".repeat(40));
+    pool.push("\u{feff}x".to_string());
+    pool
+}
+
+/// Builds one generated document from `rng`: a run of 1..=24 lines drawn from
+/// the nasty shapes — valid pairs (sometimes repeating a key to drive the
+/// duplicate class, sometimes carrying a pool value), invalid-key pairs, colon
+/// lines, bare junk, comments, blanks, and tab/whitespace variants — joined by
+/// `\n` or CRLF at random, sometimes BOM-led. Every case is a pure function of
+/// the seed.
+#[cfg(test)]
+pub(crate) fn fuzz_document(rng: &mut FuzzRng) -> String {
+    const KEYS: [&str; 8] = [
+        "alpha",
+        "Z9_k",
+        "x-y",
+        "_lead",
+        "kebab-case-key",
+        "engine",
+        "vram_gb",
+        "q_1",
+    ];
+    const BAD_KEYS: [&str; 6] = ["9bad", "bad key", "bad.key", "-lead", "9", "dot.dot"];
+    let values = fuzz_value_pool();
+    let mut seen: Vec<&'static str> = Vec::new();
+    let mut lines: Vec<String> = Vec::new();
+    let count = 1 + rng.below(24);
+    for _ in 0..count {
+        let shape = rng.below(6);
+        let line = match shape {
+            0 => {
+                let key = if !seen.is_empty() && rng.chance(25) {
+                    seen[rng.below(seen.len())]
+                } else {
+                    KEYS[rng.below(KEYS.len())]
+                };
+                seen.push(key);
+                format!("{key}: {}", values[rng.below(values.len())])
+            }
+            1 => {
+                let key = BAD_KEYS[rng.below(BAD_KEYS.len())];
+                format!("{key}: {}", values[rng.below(values.len())])
+            }
+            2 => match rng.below(4) {
+                0 => "just text".to_string(),
+                1 => "!! bang".to_string(),
+                2 => String::new(),
+                _ => "   ".to_string(),
+            },
+            3 => match rng.below(3) {
+                0 => "# note".to_string(),
+                1 => "   # indented note".to_string(),
+                _ => "\t# tabbed note".to_string(),
+            },
+            4 => match rng.below(4) {
+                0 => ":".to_string(),
+                1 => ":::".to_string(),
+                2 => "engine:".to_string(),
+                _ => "alpha: \t value \t ".to_string(),
+            },
+            _ => {
+                let key = if !seen.is_empty() && rng.chance(25) {
+                    seen[rng.below(seen.len())]
+                } else {
+                    KEYS[rng.below(KEYS.len())]
+                };
+                seen.push(key);
+                format!("  {key}: {}  ", values[rng.below(values.len())])
+            }
+        };
+        lines.push(line);
+    }
+    let joiner = if rng.chance(40) { "\r\n" } else { "\n" };
+    let mut doc = lines.join(joiner);
+    if rng.chance(60) {
+        doc.push_str(joiner);
+    }
+    if rng.chance(20) {
+        doc.insert(0, '\u{feff}');
+    }
+    doc
+}
+
+/// The 13[5] Fork B acceptance gate, `.yml`-extended by Doctrine 10's override:
+/// a config is exactly
+/// a **regular file** whose final extension is `.yaml` or `.yml`,
+/// case-insensitively. Never a symlink — the caller passes `DirEntry::file_type()`,
+/// which does not follow the link, so a symlink (to a file, a directory, a pipe or
+/// a linked tree) is judged as itself: inert, never opened, never stat'd.
+/// Everything else in ModelConf (`README.md`, the single-slot `.yaml.bak` incident
+/// copies, `x.yaml.bak`, `Thumbs.db`, `notes.txt`, a name with no extension, even
+/// a directory named `x.yaml`) is silently inert: non-candidates are not configs,
+/// so they produce **no catalog_error** — the Fork C InvalidYaml voice stays
+/// reserved for actual accepted config files.
 fn is_accepted_config(file_type: &std::fs::FileType, path: &Path) -> bool {
     file_type.is_file()
         && path
             .extension()
             .and_then(|e| e.to_str())
-            .is_some_and(|e| e.eq_ignore_ascii_case("yaml"))
+            .is_some_and(|e| e.eq_ignore_ascii_case("yaml") || e.eq_ignore_ascii_case("yml"))
 }
 
 /// The existence-trace file-type predicate: the traces accept
@@ -559,10 +735,11 @@ fn trace_under_yaml_dir(dir: &Path, raw: &str) -> std::path::PathBuf {
     }
 }
 
-/// Scans a ModelConf directory: every regular (non-symlink) `*.yaml` file becomes
-/// an entry or an error; `.yml` and every other name is **silently inert** (the
-/// 13\[5] Fork B acceptance gate, `is_accepted_config`); a missing directory is
-/// one error, not a panic.
+/// Scans a ModelConf directory: every regular (non-symlink) `*.yaml` or `*.yml`
+/// file becomes an entry or an error; every other name is **silently inert** (the
+/// 13\[5] Fork B acceptance gate, `is_accepted_config` — `.yml` accepted by
+/// Doctrine 10's override); a missing directory is one error, not a
+/// panic.
 pub fn scan_dir(dir: &Path) -> Catalog {
     let mut catalog = Catalog::empty();
     // Test-only hang seam: parks this scan (and only a scan of the armed directory)
@@ -618,9 +795,11 @@ pub fn scan_dir(dir: &Path) -> Catalog {
         // Identity is the file stem: the stem is the only
         // name-shaped value that reaches a `File::create` path as `log_name`. Tying
         // identity to the file is what makes a `name:`-key twin unconstructable; it
-        // does NOT stop a whitespace-suffixed stem (`qwen3.yaml` beside `qwen3 .yaml`,
-        // which `from_flat` trims to one name) from collapsing, and that case is what
-        // the `DuplicateName` post-pass below reports.
+        // does NOT stop same-stem files from collapsing — a whitespace-suffixed
+        // stem (`qwen3.yaml` beside `qwen3 .yaml`, which `from_flat` trims to one
+        // name) or, since `.yml` joined the acceptance gate (Doctrine 10's
+        // override), an `m.yaml` beside its `m.yml` twin — and those cases are
+        // what the `DuplicateName` post-pass below reports.
         let stem = path
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
@@ -694,7 +873,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
         }
         match ModelEntry::from_flat(&map, &stem) {
             Ok(mut entry) => {
-                // Ruling 18b removal (green Wave C): the legacy `ninfer_autostart`
+                // The legacy-removal ruling: the legacy `ninfer_autostart`
                 // launch path is gone. A ninfer row still declaring it is refused
                 // outright with the adapter's migration sentence (the strata
                 // `strata_config` precedent) and never published. The row must
@@ -713,7 +892,8 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                         continue;
                     }
                 }
-                // FR-13 (scan half): a llama row may override the global
+                // The row-binary rule, scan half: a llama row may override the
+                // global
                 // binary per row, but a value that cannot launch — blank or
                 // relative — is refused here with the key named, before
                 // admission can evict a resident for a doomed spawn. The
@@ -770,8 +950,8 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                     .filter(|r| !r.contains("://"))
                     .map(|raw| trace_under_yaml_dir(dir, raw));
                 let stat = local.as_ref().and_then(|p| regular_file_metadata(p));
-                // FR-02: the trace's stat IS the fingerprint reading — carry it.
-                // The R11 fit-cache guard compares against this scan-carried
+                // The trace's stat IS the fingerprint reading — carry it.
+                // The fit-cache guard compares against this scan-carried
                 // value on the admit turn instead of re-statting the GGUF on
                 // the actor. Keyed by `(yaml, trimmed model:)` from the shared
                 // rule; rows refused below this line keep only an inert
@@ -798,7 +978,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                 // `model:`: same yaml-dir join, same regular-file predicate,
                 // same `ModelPathMissing`. The raw map is not resolved or
                 // rewritten — relative values resolve at launch in the engine
-                // worker (chunk 9); the scan only refuses here.
+                // worker; the scan only refuses here.
                 if entry.engine == "llama" {
                     let mmproj_missing = map
                         .get("mmproj")
@@ -827,12 +1007,12 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                 // profile's fields and the harness renders the JSON, so the
                 // scan renders the same bytes and refuses a referenced path
                 // the disk lacks before any load gesture (row 19) — or still
-                // declares `strata_config`, the mode SUPERSEDED by ruling
-                // 2026-11-02 row 19: such a row is refused outright with the
+                // declares `strata_config`, the mode SUPERSEDED by
+                // DECISIONS.md row 19: such a row is refused outright with the
                 // migration sentence, and the live manual profile it points at
                 // stays the operator's own file, read by nothing on the serve
                 // path. Relative rendered paths are exempt (the engine
-                // resolves them against the profile dir — chunk 10 backlog);
+                // resolves them against the profile dir — the custody backlog);
                 // the `log` key is exempt entirely (a log target's existence
                 // is not a load precondition).
                 if entry.engine == "strata" {
@@ -922,7 +1102,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                 // word in `basalt_engine_args` meets the policy surface — the
                 // row's `extra_words` contract already refuses it in
                 // `from_flat`, and this leg keeps the direct door consistent
-                // (slice 10c voice). The `vram_gb`/`cost` booking requirements
+                // (the refusal voice). The `vram_gb`/`cost` booking requirements
                 // are `validate_row`'s, mapped through unchanged.
                 if entry.engine == "basalt" {
                     if let Err(problem) = crate::engine::basalt::validate_row(&entry) {
@@ -959,7 +1139,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                 if entry.engine == "maya" {
                     match crate::engine::maya::validate_row(&entry) {
                         Ok(row) => {
-                            // FR-08: capture the effective context once, here,
+                            // Capture the effective context once, here,
                             // beside the door that already read and validated
                             // the config. The display home reads this carry and
                             // never the file; the derived figure REPLACES any
@@ -1067,8 +1247,8 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                 // silent class is [`SILENT_KEYS`] — reserved forensic keys
                 // ("forensic manual only", operator ruling), which are neither
                 // warned nor logged nor surfaced. The same walk also scopes
-                // every engine knob (slice 10c generalization of the
-                // `cpu_offload` ruling): a consumed key the row's engine never
+                // every engine knob (the generalization of the
+                // `cpu_offload` scoping rule): a consumed key the row's engine never
                 // reads is live config for a *different* row — not a typo, so
                 // not `UnknownKey`; a policy hint, so not silent: `InertKey`
                 // warns and the entry publishes (ruling D stands).
@@ -1151,7 +1331,7 @@ pub fn scan_dir(dir: &Path) -> Catalog {
                 catalog.models.push(entry);
             }
             Err(error) => {
-                // The extra-words refusal is the policy surface (slice 10c),
+                // The extra-words refusal is the policy surface,
                 // not a typed-field reject: triage must be able to tell a
                 // harness-owned-surface claim from a bad number.
                 let kind = match &error {
@@ -1950,32 +2130,40 @@ mod tests {
         assert!(catalog.errors[0].reason.contains("cannot read"));
     }
 
-    /// 13[5] Fork B acceptance matrix: `.yaml` (any case) is the only config
-    /// shape; `.yml`, `README.md`, `.yaml.bak`, `.YAML.bak` and even a directory
-    /// named `dir.yaml` are INERT with ZERO catalog errors (the anti-noise pin —
-    /// a stray junk file must not start talking).
+    /// Fork B acceptance matrix (`.yml` joined the gate by Doctrine 10's
+    /// override): `*.yaml` and `*.yml` regular files (any case) are the only
+    /// config shape; `README.md`, a `.txt`, a name with no extension, `.yaml.bak`,
+    /// `.YAML.bak` and even a directory named `dir.yaml` are INERT with ZERO
+    /// catalog errors (the anti-noise pin — a stray junk file must not start
+    /// talking). Falsifier for the override: with only `.yaml` accepted the
+    /// `*.yml` rows vanish and the expected-name list can never match.
     #[test]
-    fn only_regular_dot_yaml_files_are_configs_and_everything_else_is_silent() {
+    fn only_regular_dot_yaml_and_dot_yml_files_are_configs_and_the_rest_is_silent() {
         let dir = crate::testutil::temp_dir("scan-gate");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
         std::fs::write(dir.join("good.yaml"), "engine: mock\nvram_gb: 2\n").expect("write");
         std::fs::write(dir.join("CAPS.YAML"), "engine: mock\nvram_gb: 2\n").expect("write");
-        // A perfectly valid model document that is NOT accepted: inert, not broken.
-        std::fs::write(dir.join("nope.yml"), "engine: mock\nvram_gb: 2\n").expect("write");
+        std::fs::write(dir.join("mixed.YmL"), "engine: mock\nvram_gb: 2\n").expect("write");
+        std::fs::write(dir.join("fine.yml"), "engine: mock\nvram_gb: 2\n").expect("write");
+        std::fs::write(dir.join("TALL.YML"), "engine: mock\nvram_gb: 2\n").expect("write");
         std::fs::write(dir.join("README.md"), "# ModelConf notes\n").expect("write");
         // Junk inside a non-candidate: if the filter ever parsed it, an
         // InvalidYaml report would appear and the errors-empty assert would bite.
         std::fs::write(dir.join("x.yaml.bak"), "oops no colon\n").expect("write");
+        std::fs::write(dir.join("x.yml.bak"), "oops no colon\n").expect("write");
         std::fs::write(dir.join("UPPER.YAML.bak"), "oops no colon\n").expect("write");
+        std::fs::write(dir.join("notes.txt"), "oops no colon\n").expect("write");
+        std::fs::write(dir.join("noext"), "oops no colon\n").expect("write");
         std::fs::create_dir_all(dir.join("dir.yaml")).expect("dir named yaml");
+        std::fs::create_dir_all(dir.join("dir.yml")).expect("dir named yml");
 
         let catalog = scan_dir(&dir);
         let names: Vec<&str> = catalog.models.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(
             names,
-            ["CAPS", "good"],
-            "exactly the *.yaml regular files: {names:?}"
+            ["CAPS", "TALL", "fine", "good", "mixed"],
+            "exactly the *.yaml and *.yml regular files: {names:?}"
         );
         assert!(
             catalog.errors.is_empty(),
@@ -1987,9 +2175,10 @@ mod tests {
 
     /// The predicate pinned as a unit, both directions, using real `FileType`s
     /// (a regular file's and a directory's) so the `is_file` half is not
-    /// decorative either.
+    /// decorative either. `.yml` joins the accepted set case-insensitively by
+    /// Doctrine 10's override; every other shape stays rejected.
     #[test]
-    fn the_extension_gate_accepts_only_dot_yaml_case_insensitively() {
+    fn the_extension_gate_accepts_dot_yaml_and_dot_yml_case_insensitively() {
         let dir = crate::testutil::temp_dir("scan-gate-predicate");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
@@ -2006,26 +2195,39 @@ mod tests {
         }
         let file_type = file_type.expect("probe file");
         let dir_type = dir_type.expect("probe dir");
-        for name in ["m.yaml", "m.YAML", "m.YaMl", "model.yaml"] {
+        for name in [
+            "m.yaml",
+            "m.YAML",
+            "m.YaMl",
+            "model.yaml",
+            "m.yml",
+            "m.YML",
+            "m.YmL",
+            "model.yml",
+        ] {
             assert!(is_accepted_config(&file_type, Path::new(name)), "{name}");
         }
         for name in [
-            "m.yml",
-            "m.YML",
             "x.yaml.bak",
+            "x.yml.bak",
             "UPPER.YAML.bak",
             "README.md",
+            "notes.txt",
             "noext",
             ".yaml",
+            ".yml",
             "m.yamlx",
+            "m.ymlx",
             // The write-back temp shape: a killed
             // write can never leave a scannable file behind.
             "qwen3.yaml.4242.7.sh.tmp",
+            "qwen3.yml.4242.7.sh.tmp",
         ] {
             assert!(!is_accepted_config(&file_type, Path::new(name)), "{name}");
         }
         // Right name, wrong shape: a directory named like a config is inert.
         assert!(!is_accepted_config(&dir_type, Path::new("d.yaml")));
+        assert!(!is_accepted_config(&dir_type, Path::new("d.yml")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2061,6 +2263,160 @@ mod tests {
                 );
                 assert!(!link.exists() || link.is_symlink());
             }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The `.yml` acceptance falsifier (Doctrine 10's override): a valid
+    /// `foo.yml` publishes exactly like a `.yaml` row — stem identity, own file
+    /// path, zero reports — and the uppercase `.YML` shape publishes too
+    /// (case-insensitive). Falsifier: on the pre-change gate both files were
+    /// inert, so `catalog.models` came back empty and this assert could never
+    /// match.
+    #[test]
+    fn a_valid_yml_row_publishes_exactly_like_a_yaml_row() {
+        let dir = crate::testutil::temp_dir("scan-yml-publish");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        std::fs::write(dir.join("foo.yml"), "engine: mock\nvram_gb: 2\n").expect("write");
+        std::fs::write(dir.join("BAR.YML"), "engine: mock\nvram_gb: 3\n").expect("write");
+
+        let catalog = scan_dir(&dir);
+        let names: Vec<&str> = catalog.models.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names, ["BAR", "foo"], "{:?}", catalog.errors);
+        assert!(catalog.errors.is_empty(), "{:?}", catalog.errors);
+        for (name, own) in [("BAR", "BAR.YML"), ("foo", "foo.yml")] {
+            let entry = catalog
+                .models
+                .iter()
+                .find(|m| m.name == name)
+                .expect("published row");
+            assert_eq!(
+                entry
+                    .file
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy().into_owned()),
+                Some(own.to_string()),
+                "the row keeps its own file, not a renamed twin"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Fork C doctrine travels to `.yml` unchanged: a broken `foo.yml` is a
+    /// config with problem lines, so it NEVER publishes and one named InvalidYaml
+    /// report says so (the same voice `.yaml` has always used). Falsifier: on the
+    /// pre-change gate the file was inert — zero errors and zero rows — and the
+    /// InvalidYaml report this assert requires did not exist.
+    #[test]
+    fn a_broken_yml_is_never_published_and_its_problem_lines_are_named() {
+        let dir = crate::testutil::temp_dir("scan-yml-broken");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        std::fs::write(
+            dir.join("broken.yml"),
+            "engine: mock\nvram_gb: 2\njust text\nbad key: 1\n",
+        )
+        .expect("write");
+
+        let catalog = scan_dir(&dir);
+        assert!(
+            catalog.models.is_empty(),
+            "nothing is published blindly: a problem line drops the whole file"
+        );
+        let errors: Vec<&ScanError> = catalog
+            .errors
+            .iter()
+            .filter(|e| e.kind == ScanKind::InvalidYaml)
+            .collect();
+        assert_eq!(errors.len(), 1, "exactly ONE report: {:?}", catalog.errors);
+        assert!(errors[0].file.contains("broken.yml"), "{:?}", errors[0]);
+        assert!(
+            errors[0]
+                .reason
+                .starts_with("yaml not loaded \u{2014} problem lines: "),
+            "{}",
+            errors[0].reason
+        );
+        assert!(
+            errors[0].reason.contains("just text"),
+            "{}",
+            errors[0].reason
+        );
+        assert!(errors[0].reason.contains("bad key"), "{}", errors[0].reason);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The anti-overreach pin beside the new `.yml` acceptance: everything that
+    /// was silently inert before stays silently inert now — `.txt`, a name with
+    /// no extension, an empty `.yml` twin class stays honest only for accepted
+    /// files — and non-candidates still produce ZERO reports.
+    #[test]
+    fn txt_extensionless_and_backup_names_stay_silent_next_to_an_accepted_yml() {
+        let dir = crate::testutil::temp_dir("scan-yml-inert-neighbours");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        std::fs::write(dir.join("ok.yml"), "engine: mock\nvram_gb: 2\n").expect("write");
+        std::fs::write(dir.join("notes.txt"), "engine: mock\nvram_gb: 2\n").expect("write");
+        std::fs::write(dir.join("noext"), "oops no colon\n").expect("write");
+        std::fs::write(dir.join("ok.yml.bak"), "oops no colon\n").expect("write");
+
+        let catalog = scan_dir(&dir);
+        let names: Vec<&str> = catalog.models.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names, ["ok"], "only the accepted file publishes: {names:?}");
+        assert!(catalog.errors.is_empty(), "{:?}", catalog.errors);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Identity stays the file stem, so `m.yaml` beside `m.yml` collapses to one
+    /// harness identity and must surface the EXISTING `DuplicateName` post-pass
+    /// refusal — both rows publish, **both** files are reported, each naming
+    /// every claimant (the same posture as the whitespace-suffix twins pinned in
+    /// `two_files_claiming_one_name_are_both_reported_and_both_publish`; no new
+    /// rule). Falsifier: pre-change `m.yml` was inert — one row, zero
+    /// `DuplicateName` reports — so neither assert could match.
+    #[test]
+    fn a_yaml_and_yml_pair_on_one_stem_reports_the_existing_duplicate_name() {
+        let dir = crate::testutil::temp_dir("scan-yml-dupname");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        std::fs::write(dir.join("m.yaml"), "engine: mock\nvram_gb: 2\n").expect("write");
+        std::fs::write(dir.join("m.yml"), "engine: mock\nvram_gb: 3\n").expect("write");
+
+        let catalog = scan_dir(&dir);
+        assert_eq!(
+            catalog.models.len(),
+            2,
+            "the pair collapses to one identity and both rows still publish: {:?}",
+            catalog.errors
+        );
+        assert!(
+            catalog.models.iter().all(|m| m.name == "m"),
+            "both rows really share one identity"
+        );
+        let offenders: Vec<&ScanError> = catalog
+            .errors
+            .iter()
+            .filter(|e| e.kind == ScanKind::DuplicateName)
+            .collect();
+        assert_eq!(
+            offenders.len(),
+            2,
+            "every claimant is reported: {offenders:?}"
+        );
+        for (error, own) in offenders.iter().zip(["m.yaml", "m.yml"]) {
+            assert_eq!(error.file, own, "one line per claiming file");
+            assert!(
+                error.reason.contains("m.yaml") && error.reason.contains("m.yml"),
+                "the line names every claimant, not only the other one: {}",
+                error.reason
+            );
+            assert!(
+                error.reason.contains("name `m`"),
+                "the identity the two files collided on is named: {}",
+                error.reason
+            );
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2322,7 +2678,7 @@ mod tests {
         );
     }
 
-    /// FR-02 producer leg: the scan's existence-trace stat doubles as the
+    /// Producer leg: the scan's existence-trace stat doubles as the
     /// carried fingerprint the fit cache invalidates with, keyed by the row's
     /// own identity rule. Falsifier: drop the `note_scan_fingerprint` call at
     /// the stat and the lookup answers `None`, turning this pin red; a silent
@@ -2388,7 +2744,7 @@ mod tests {
         );
     }
 
-    /// Other engines keep their own existence rules (chunk 10 [2]'s adapter
+    /// Other engines keep their own existence rules (the adapter
     /// checks); the scan only polices llama here.
     #[test]
     fn a_non_llama_engine_is_exempt_from_the_model_existence_check() {
@@ -2564,7 +2920,7 @@ mod tests {
 
     #[test]
     fn a_strata_entry_without_a_profile_source_defers_to_the_adapter() {
-        // The chunk 10 [2] preflight pin (`required field` refuses before the
+        // The preflight pin (`required field` refuses before the
         // victim dies) needs this entry published, so an absent source key is
         // the adapter's refusal to name (row 19: `strata_exe`), not the scan's.
         let dir = crate::testutil::temp_dir("scan-strata-nokey");
@@ -2892,7 +3248,7 @@ mod tests {
         assert_eq!(catalog.models[1].engine, "llama");
     }
 
-    /// Slice 10c (sibling-knob scoping): the mechanism that scoped
+    /// Sibling-knob scoping: the mechanism that scoped
     /// `cpu_offload` now covers every row knob — a llama key on a ninfer row
     /// warns `InertKey` and publishes exactly like its offload sibling, and
     /// the key stays silent on its own row. This is the live catalog's shape:
@@ -2941,7 +3297,8 @@ mod tests {
         );
     }
 
-    /// FR-13 (scan half): a llama row override that cannot launch — blank or
+    /// The row-binary rule, scan half: a llama row override that cannot launch —
+    /// blank or
     /// relative — is refused with the key named and never published; an
     /// absolute value publishes silently (existence stays the adapter's
     /// floor). On a foreign row the key is the usual `InertKey` hint, never a
@@ -3018,7 +3375,7 @@ mod tests {
         );
     }
 
-    /// Ruling 18b removal (green Wave C): a row that still declares the removed
+    /// The legacy-removal ruling: a row that still declares the removed
     /// legacy `ninfer_autostart` path is **refused** at scan and never published,
     /// with the migration sentence naming every template key the row must adopt;
     /// the pair with `ninfer_image` is refused too, and a modern template row
@@ -3090,7 +3447,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Slice 10c (full `extra_args` enforcement): a hostile extra word refuses
+    /// Full `extra_args` enforcement: a hostile extra word refuses
     /// the FILE at rescan — never published, never reaching a spawn that could
     /// evict a resident for the doomed launch — and the refusal names both the
     /// word and the mechanism that owns the decision. The benign family the
@@ -3150,7 +3507,7 @@ mod tests {
         );
     }
 
-    /// Slice 10c (22[1]) doctrine, row 19 shape: policy fields are harness-forced
+    /// The 22[1] doctrine, row 19 shape: policy fields are harness-forced
     /// and never obeyed from engine-side files — and the render makes claiming
     /// them structurally impossible: a rendered profile carries no `host`, no
     /// `port`, no key (the bind and port ride the forced argv), while the
@@ -3343,7 +3700,7 @@ mod tests {
 
     /// A server-owned flag smuggled through `basalt_engine_args` meets the
     /// policy surface (`PolicyRefused`), naming the flag and its owner, exactly
-    /// like the `extra_args`/`ninfer_serve_args` family (slice 10c). The row's
+    /// like the `extra_args`/`ninfer_serve_args` family. The row's
     /// `extra_words` contract in `from_flat` is the first door; the scan's
     /// direct `validate_row` leg keeps the mapping consistent.
     #[test]
@@ -3606,7 +3963,7 @@ mod tests {
         );
     }
 
-    /// FR-08: the scan captures the config's `--max-context` figure once and
+    /// The scan captures the config's `--max-context` figure once and
     /// carries it on the entry under the scan-derived key; the `/har/models`
     /// display home answers it end-to-end; a rescan re-derives the same figure;
     /// the carry follows the config's bytes (the `=` spelling, and no figure
@@ -3867,7 +4224,7 @@ mod tests {
     /// The golden fixture pins the const from the front: every consumed key appears
     /// in a real file, and the whole file scans with ZERO unknown-key errors.
     /// Every engine knob rides the `engine: mock` file deliberately: mock reads
-    /// none of them, so (slice 10c) the fixture's complete set of reports is the
+    /// none of them, so the fixture's complete set of reports is the
     /// `InertKey` hints — one per foreign knob, naming its owning row — and the
     /// const-coverage claim stays honest without pretending any knob is live on
     /// mock. Harness-blind keys (`name`, `model`, the `measured_*`...) stay
@@ -4292,13 +4649,13 @@ mod tests {
     }
 
     /// Fork C gate: the strict acceptance must not blind-side the live catalog.
-    /// Since slice 10c "fully clean" is stated as a closed debt ledger: the
+    /// "Fully clean" is stated as a closed debt ledger: the
     /// live dir publishes every file whose bytes carry no harness-owned claim,
     /// and the report ledger is exactly the ruled one — empty since the three
-    /// strata rows adopted their rendered template blocks 2026-11-02 (row 19;
+    /// strata rows adopted their rendered template blocks (row 19;
     /// the `strata_config` refusal is gone, `strata_exe` etc. carry the profile
     /// the harness renders at load). The `context` inert hints that
-    /// once sat on the ninfer rows landed their cleanup 2026-11-02: the key is
+    /// once sat on the ninfer rows are cleaned up: the key is
     /// live llama config and the ninfer context rides its `ninfer_profile`
     /// line, so the rows no longer carry it. Every entry is pinned by file and
     /// kind: a live file growing any other report, or an unplanned new file,
@@ -4458,5 +4815,129 @@ mod tests {
             .expect("serializable");
             assert_eq!(value["kind"], name, "{kind:?}");
         }
+    }
+
+    /// Seeded property test, reader half: generated nasty
+    /// documents. Invariants, every generated document: (a) `parse_flat_yaml`
+    /// never panics (catch_unwind); (b) never silent and never a phantom — the
+    /// independently computed line-by-line oracle (documented rules only: BOM +
+    /// trim normalization, comment/blank skip, first-colon split, key charset
+    /// `[A-Za-z_][A-Za-z0-9_-]*`, first-value-kept duplicates) must match the
+    /// problems vector exactly, line number and kind, and the published key set
+    /// exactly; (c) every published key stays inside the documented charset; (d)
+    /// parsing the same input twice answers identically (the reproducibility a
+    /// fuzzer owes). Deterministic by construction: fixed seeds, pure integer
+    /// PRNG. The value half of the split is not re-oracled here — its boundary
+    /// rule belongs to `split_value_comment` and is pinned by the torture
+    /// corpus; this test pins line classification and the never-silent
+    /// contract.
+    #[test]
+    fn seeded_fuzz_flat_yaml_never_panics_never_goes_silent_and_stays_deterministic() {
+        use std::collections::BTreeSet;
+        const SEEDS: [u64; 6] = [
+            0x5DEE_CE66_D,
+            0xDEAD_BEEF_CAFE_BABE,
+            0x0123_4567_89AB_CDEF,
+            0xA5A5_A5A5_A5A5_A5A5,
+            0,
+            u64::MAX,
+        ];
+        const DOCS_PER_SEED: usize = 40;
+        let mut total = 0usize;
+        for seed in SEEDS {
+            let mut rng = FuzzRng::new(seed);
+            for doc_index in 0..DOCS_PER_SEED {
+                let doc = fuzz_document(&mut rng);
+                total += 1;
+                let where_ = format!("seed {seed} doc {doc_index}");
+                let parsed = std::panic::catch_unwind(|| parse_flat_yaml(&doc))
+                    .unwrap_or_else(|_| panic!("{where_}: parse_flat_yaml panicked on {doc:?}"));
+                let (map, problems) = &parsed;
+
+                let mut expected: Vec<(usize, &'static str)> = Vec::new();
+                let mut expected_keys: BTreeSet<String> = BTreeSet::new();
+                for (index, raw_line) in doc.lines().enumerate() {
+                    let line = normalized_line(raw_line);
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    let Some(colon) = line.find(':') else {
+                        expected.push((index + 1, "junk"));
+                        continue;
+                    };
+                    let key = line[..colon].trim();
+                    let valid = !key.is_empty()
+                        && key
+                            .chars()
+                            .next()
+                            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                        && key
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+                    if !valid {
+                        expected.push((index + 1, "badkey"));
+                        continue;
+                    }
+                    if expected_keys.contains(key) {
+                        expected.push((index + 1, "dup"));
+                        continue;
+                    }
+                    expected_keys.insert(key.to_string());
+                }
+                let got: Vec<(usize, &'static str)> = problems
+                    .iter()
+                    .map(|problem| {
+                        let rest = problem.strip_prefix("line ").unwrap_or_else(|| {
+                            panic!("{where_}: a problem names no line: {problem}")
+                        });
+                        let (number, text) = rest.split_once(':').unwrap_or_else(|| {
+                            panic!("{where_}: unparsable problem header: {problem}")
+                        });
+                        let number: usize = number.parse().unwrap_or_else(|_| {
+                            panic!("{where_}: unparsable line number: {problem}")
+                        });
+                        let text = text.trim_start();
+                        let kind = if text.starts_with("not a `key: value` line") {
+                            "junk"
+                        } else if text.starts_with("invalid key") {
+                            "badkey"
+                        } else if text.starts_with("duplicate key") {
+                            "dup"
+                        } else {
+                            panic!("{where_}: an unknown problem shape: {problem}");
+                        };
+                        (number, kind)
+                    })
+                    .collect();
+                assert_eq!(
+                    got, expected,
+                    "{where_}: the problems vector disagrees with the line-by-line oracle; document: {doc:?}"
+                );
+                assert_eq!(
+                    map.keys().cloned().collect::<Vec<_>>(),
+                    expected_keys.into_iter().collect::<Vec<_>>(),
+                    "{where_}: the published key set disagrees with the oracle; document: {doc:?}"
+                );
+                for key in map.keys() {
+                    assert!(
+                        !key.is_empty()
+                            && key
+                                .chars()
+                                .next()
+                                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                            && key
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+                        "{where_}: published key outside the documented charset: `{key}`"
+                    );
+                }
+                assert_eq!(
+                    parsed,
+                    parse_flat_yaml(&doc),
+                    "{where_}: parsing the same input twice disagreed"
+                );
+            }
+        }
+        assert_eq!(total, SEEDS.len() * DOCS_PER_SEED, "every seed ran");
     }
 }

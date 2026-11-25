@@ -1,4 +1,4 @@
-//! Typed per-model configuration from `ModelConf/*.yaml` (DESIGN Steps 9-10).
+//! Typed per-model configuration from `ModelConf/*.yaml` and `ModelConf/*.yml`.
 //!
 //! The v3.3 files are flat `key: value` documents. This module owns the typed entry and
 //! the documented alias rules; the flat parser lives in [`scan`] and the byte-preserving
@@ -60,8 +60,8 @@ pub enum ModelError {
         value: String,
     },
     /// An operator-extra word (`extra_args`, `ninfer_serve_args`) outside the
-    /// engine row's closed word surface — refused at validate time (slice 10c,
-    /// full `extra_args` enforcement) so the file is reported at rescan instead
+    /// engine row's closed word surface — refused at validate time (full
+    /// `extra_args` enforcement) so the file is reported at rescan instead
     /// of failing at spawn, after admission may have evicted a resident for the
     /// doomed launch. `reason` is the engine's own refusal voice naming the
     /// word and the mechanism that owns the decision.
@@ -72,8 +72,8 @@ pub enum ModelError {
     },
 }
 
-/// How a model's declared size participates in admission (operator design note,
-/// 2026-10-26: engines grade differently — some load everything into VRAM,
+/// How a model's declared size participates in admission (operator design
+/// note: engines grade differently — some load everything into VRAM,
 /// some offload shards to RAM/SSD greedily).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -153,8 +153,8 @@ impl VramGate {
     }
 }
 
-/// The admission resource one row reserves against (operator ruling
-/// 2026-11-05: RAM is its own resource ladder, never a card booking).
+/// The admission resource one row reserves against (operator ruling:
+/// RAM is its own resource ladder, never a card booking).
 /// A `cpu_offload`-truthy row on an engine whose policy row reads the knob
 /// serves from host RAM and gates on RAM; every other row gates on VRAM.
 /// The tag is **derived** from the row's keys and the engine knob table
@@ -169,7 +169,7 @@ pub enum Resource {
 }
 
 /// How a measured footprint figure was obtained, and therefore whether it may book
-/// (R1, DECISIONS LOCKED 2026-10-30). Written by `on_measured` as the
+/// (docs/architecture/DECISIONS.md, LOCKED). Written by `on_measured` as the
 /// `measured_attribution:` stamp and read back at scan; never upgraded post-hoc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -193,7 +193,7 @@ impl MeasuredAttribution {
     /// Whether a figure stamped with this provenance may be booked for admission.
     /// A `TotalDiff` never books; an absent stamp (a legacy `measured_gb` written
     /// before provenance existed) is grandfathered bookable and is corrected the
-    /// next time the model serves (the sampler always stamps from R9 on).
+    /// next time the model serves (the sampler always stamps now).
     #[must_use]
     pub fn bookable(self) -> bool {
         !matches!(self, MeasuredAttribution::TotalDiff)
@@ -201,8 +201,9 @@ impl MeasuredAttribution {
 
     /// Whether this provenance comes from the engine speaking about itself — its own
     /// reserved budget, the footprint its own status endpoint printed, or concrete
-    /// bytes the driver named as its pids. `exact` rows accept only these (ruling 15
-    /// (ii), extended to `engine_status` by the 2026-11-04 ruling): a grandfathered
+    /// bytes the driver named as its pids. `exact` rows accept only these
+    /// (self-report is the only source a class that forbids guessing may
+    /// charge; `engine_status` counts as self-report): a grandfathered
     /// stamp-less pair is not a source for a class that forbids guessing, even though
     /// `fixed` may still charge it.
     #[must_use]
@@ -251,7 +252,7 @@ pub struct ModelEntry {
     pub ram_gb: Option<f64>,
     /// GiB size of the backing GGUF file, recorded by the scanner (None for
     /// sentinels, missing files, and synthetic entries) — the estimate input at
-    /// admission (DESIGN Step 4 rule 1).
+    /// admission (the GGUF estimate rule).
     pub gguf_size_gb: Option<f64>,
     /// How `vram_gb` participates in admission (`cost:` key, default `fixed`).
     pub cost: CostClass,
@@ -277,7 +278,7 @@ pub struct ModelEntry {
     /// [`ModelEntry::measured_min_gb`] for the low end). The page shows the range as
     /// truth for every cost class; admission consults it when the provenance stamp
     /// says it may book (`fixed` without a declared `vram_gb`, or a guarded
-    /// `engine_report` figure — above the declared floor too, per the 2026-11-01
+    /// `engine_report` figure — above the declared floor too, per the
     /// amendment of ruling 15 (ii); `exact` only on a self-reported figure); a
     /// `total_diff` displays but never books (greedy keeps nominal semantics;
     /// exact refuses without a source).
@@ -310,8 +311,8 @@ pub struct ModelEntry {
     /// `per_process` VRAM footprint (`per_process` by construction: the
     /// process-tree sum attributes concrete bytes, and a `total_diff` host delta
     /// is refused at the fold, so nothing this field can hold ever came from one).
-    /// RAM admission books `max(ram_gb, this)` (W2 step 3, operator ruling
-    /// 2026-11-05); a `cpu_offload` flip voids the pair exactly as it voids the
+    /// RAM admission books `max(ram_gb, this)`;
+    /// a `cpu_offload` flip voids the pair exactly as it voids the
     /// VRAM pair (same `measured_offload` stamp), and on a GPU row it stays inert:
     /// the RAM ladder is never consulted there, and it never changes a VRAM figure.
     pub measured_ram_gb: Option<f64>,
@@ -324,8 +325,8 @@ pub struct ModelEntry {
     /// The id the yaml claims the engine reports (`serve_model:`); verified by
     /// discovery at readiness — a mismatch is a recorded warning, never trusted.
     pub serve_model: Option<String>,
-    /// The R11 Fit projection in GiB — the engine's own pre-spawn word from
-    /// `llama-fit-params --fit-print on` (rule 2026-11-01). **In-process
+    /// The Fit projection in GiB — the engine's own pre-spawn word from
+    /// `llama-fit-params --fit-print on`. **In-process
     /// only**: the scanner never fills it, no writer persists it, and it is
     /// absent from `raw`, so a Fit computation can never reach the yaml. The
     /// scheduler patches the current value in after each probe; a stale one
@@ -366,7 +367,7 @@ pub struct FileFingerprint {
 impl FileFingerprint {
     /// The fingerprint of an **already-held** metadata read — the same pair
     /// [`fingerprint`] would stat for, from bytes the caller is holding. The
-    /// FR-02 scan carrier uses it: the model-file existence stat the scan
+    /// scan carrier uses it: the model-file existence stat the scan
     /// already makes is the one reading that yields the fingerprint, so no
     /// second syscall rides any path that takes it.
     #[must_use]
@@ -378,7 +379,7 @@ impl FileFingerprint {
     }
 }
 
-// FR-02 counting seam (test-only): how many sync stats [`fingerprint`] has
+// Fingerprint counting seam (test-only): how many sync stats [`fingerprint`] has
 // performed on **this thread**. The fit-admit falsifier arms it, runs the
 // admit refresh, and requires zero — the module promise is no synchronous fs
 // on the actor turn, and a thread-local count says exactly that about the
@@ -389,14 +390,14 @@ thread_local! {
     static FINGERPRINT_STATS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// FR-02 (test-only): sync stats by [`fingerprint`] on the current thread.
+/// Test-only: sync stats by [`fingerprint`] on the current thread.
 #[cfg(test)]
 #[must_use]
 pub fn fingerprint_stat_calls() -> usize {
     FINGERPRINT_STATS.with(std::cell::Cell::get)
 }
 
-/// FR-02 (test-only): zero the current thread's counter before a falsifier leg.
+/// Test-only: zero the current thread's counter before a falsifier leg.
 #[cfg(test)]
 pub fn reset_fingerprint_stat_calls() {
     FINGERPRINT_STATS.with(|count| count.set(0));
@@ -413,10 +414,10 @@ pub fn fingerprint(path: &Path) -> Option<FileFingerprint> {
     FileFingerprint::from_metadata(&meta)
 }
 
-/// The scan-carried fingerprint table (FR-02, in-process only): the model-file
+/// The scan-carried fingerprint table (in-process only): the model-file
 /// fingerprints the last scans actually read, keyed by `(yaml path, trimmed
 /// `model:` value)` — the pair that identifies one row's model file without
-/// duplicating the launch-side path resolution. The R11 fit cache guard used to
+/// duplicating the launch-side path resolution. The fit cache guard used to
 /// re-stat the GGUF on every admit turn, breaking the module's no-sync-fs
 /// promise; it now compares the cached fingerprint against **this carried
 /// value**, so the actor turn only reads a map.
@@ -628,7 +629,7 @@ fn read_measured(engine: &str, keys: &BTreeMap<String, String>) -> Result<Measur
     // through a status endpoint (`EngineReport` => !ninfer
     // keeps, `EngineStatus` => ninfer voids — it is a process-engine source).
     // The profile-comparability leg above never fires for an `engine_status`
-    // figure: the profile identity is ninfer's alone (ORCHESTRATION §2), so a
+    // figure: the profile identity is ninfer's alone, so a
     // process-engine figure is valid WITHOUT a profile stamp.
     let ninfer = engine == crate::ownership::NINFER_ENGINE;
     let stamp_describes_the_wrong_engine = match measured.attribution {
@@ -781,13 +782,13 @@ pub enum CostSource {
     /// The harness-measured footprint of an earlier run: the booking basis for
     /// `fixed`/`exact` rows without a binding declaration, and the override of a
     /// declared value a guarded `engine_report`/`engine_status` figure exceeds
-    /// (the amended-15(ii) max truth, extended to the process engines' status
-    /// figures by the 2026-11-04 ruling).
+    /// (the amended max truth: the larger of declared and measured wins,
+    /// and the process engines' status figures count too).
     Measured,
-    /// The engine's own pre-spawn projection (`llama-fit-params --fit-print`,
-    /// R11): books for `fixed`/`exact` rows without a binding declaration and
-    /// overshadows a declared `vram_gb` it exceeds — the same amended-15(ii)
-    /// max truth as the container's word. `greedy` never books it as a class
+    /// The engine's own pre-spawn projection (`llama-fit-params --fit-print`):
+    /// books for `fixed`/`exact` rows without a binding declaration and
+    /// overshadows a declared `vram_gb` it exceeds — the same max truth as the
+    /// container's word. `greedy` never books it as a class
     /// (its launch-floor input does read it); never persisted.
     Fit,
     /// GGUF size × 1.15 + 2.
@@ -797,10 +798,9 @@ pub enum CostSource {
     Undeclared,
 }
 
-/// Which rung of the RAM ladder a CPU-resident row charges (operator ruling
-/// 2026-11-05: RAM is its own resource ladder, so its basis vocabulary is
-/// the `cost_basis` words that apply to it — no card rung can answer for a
-/// row that books no card bytes).
+/// Which rung of the RAM ladder a CPU-resident row charges: RAM is its own
+/// resource ladder, so its basis vocabulary is the `cost_basis` words that
+/// apply to it — no card rung can answer for a row that books no card bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RamCostBasis {
     /// The declared `ram_gb` floor stands: the measured pair is absent or
@@ -860,7 +860,7 @@ impl ModelEntry {
     /// size (the class exists to take the whole card). `exact` is the mirror image —
     /// it demands a real *source*, so only a figure the engine produced about itself
     /// qualifies (`engine_report`/`engine_status`/`per_process`, the middle form
-    /// admitted by the 2026-11-04 ruling: a status endpoint is the process engine
+    /// admitted because a status endpoint is the process engine
     /// speaking, not a witness stand-in); a grandfathered stamp-less pair and a
     /// `total_diff` stand-in are both refused, since the GGUF-size fallback would be
     /// a precision claim with no source. `fixed` accepts any bookable provenance.
@@ -904,7 +904,7 @@ impl ModelEntry {
             && reported > declared
     }
 
-    /// Whether this row's in-process Fit projection (R11) may book at all:
+    /// Whether this row's in-process Fit projection may book at all:
     /// the figure is present, the row's engine policy row is the fit-capable
     /// one (the llama row alone — never an engine-name match), and the cost
     /// class may charge a projected figure. `greedy` is excluded from the
@@ -922,7 +922,7 @@ impl ModelEntry {
 
     /// The trimmed `model:` value the fit cache guards, or `None` when the row
     /// has nothing local to have changed (key absent, blank, or a `scheme://`
-    /// sentinel) — the one rule the scan's fingerprint carrier (FR-02) and the
+    /// sentinel) — the one rule the scan's fingerprint carrier and the
     /// scheduler's `fit_model_file`/carried-lookup share, so the record site
     /// and the lookup site can never disagree about which row has a guard file.
     #[must_use]
@@ -962,12 +962,12 @@ impl ModelEntry {
     }
 
     /// The booking precedence: declared → measured (only where the cost class may
-    /// book it, per `Self::may_book_measured`) → the R11 Fit projection → GGUF
+    /// book it, per `Self::may_book_measured`) → the Fit projection → GGUF
     /// estimate, with `exact`-without-`vram_gb`-and-without-a-real-source refused.
     /// A guarded engine-spoken report (`engine_report`, or a process engine's
-    /// `engine_status` since the 2026-11-04 ruling) ABOVE the declared value books
-    /// instead of it (`Self::engine_report_outranks_declared`), and so does a Fit projection
-    /// above it (rule 2026-11-01, the same amended-15(ii) max truth): the booking
+    /// `engine_status`) ABOVE the declared value books
+    /// instead of it (`Self::engine_report_outranks_declared`), and so does a Fit
+    /// projection above it (the same max truth): the booking
     /// is what the engine itself will take, the declared number is a floor, never
     /// a ceiling.
     #[must_use]
@@ -1000,8 +1000,8 @@ impl ModelEntry {
         CostSource::Estimate
     }
 
-    /// The CPU-resident booking ladder in ONE derivation (operator ruling
-    /// 2026-11-05; the gate, `/har/models`, and the `/har/status` slot row
+    /// The CPU-resident booking ladder in ONE derivation (operator ruling):
+    /// the gate, `/har/models`, and the `/har/status` slot row
     /// all read this — a second derivation is how a page would show a number
     /// the gate ignores). The floor first — declared `ram_gb`, else the GGUF
     /// estimate `size x 1.0 + 2` — then the max truth (DOCTRINE 12 amended
@@ -1076,7 +1076,7 @@ impl ModelEntry {
             Some(raw) => {
                 let v = parse_gib("vram_gb", raw)?;
                 // A declared 0 is not a declared cost: the declared number books at
-                // admission (`cost_source` → Declared; since the 2026-11-01 amendment
+                // admission (`cost_source` → Declared; since the amendment
                 // a guarded report may stand above it, never a zero below it), so
                 // `vram_gb: 0` books any model free — gate deficit 0, ledger 0, and
                 // the next load spends the same bytes. Zero stays
@@ -1152,7 +1152,7 @@ impl ModelEntry {
             }
             None => None,
         };
-        // Same bounds as `load_timeout` (2026-11-04 ruling): `min_turn: 0` means
+        // Same bounds as `load_timeout`: `min_turn: 0` means
         // "no guard" and is written by omitting the key, so an explicit 0 is a
         // typo the parse must name, and the one-day ceiling guards a mistyped
         // value that would hold the row unevictable for years.
@@ -1182,7 +1182,7 @@ impl ModelEntry {
             .get("engine")
             .cloned()
             .unwrap_or_else(|| "llama".to_string());
-        // Full `extra_args` enforcement (slice 10c): a word outside the row's
+        // Full `extra_args` enforcement: a word outside the row's
         // closed operator-word surface refuses the file here, with the engine's
         // own refusal voice (word + owning mechanism) — the adapter keeps the
         // same check at render, so the scan is the early report, not the only
@@ -1233,16 +1233,17 @@ impl ModelEntry {
             // the scheduler's probe, never read from disk.
             fit_gb: None,
             file: None,
-            // v3.3's `external: true` is scrapped (operator 2026-10-26): skipped here
-            // so a copied-back v3.3 yaml cannot keep advertising a meaning nothing has,
+            // v3.3's `external: true` is scrapped: skipped here
+            // so a copied-back v3.3 yaml cannot keep advertising a meaning nothing
+            // has,
             // and cannot resurrect it through the raw passthrough on write-back. The
             // forensic `bak:` key joins `external` in never reaching the raw map
             // (forensic-manual-only): its value can
             // neither surface on the page nor be re-emitted by write-back. The
             // operator's file bytes are left alone — only the parsed entry drops it.
-            // R11's `fit_gb:` drops for the same reason run deeper: the figure is
+            // `fit_gb:` drops for the same reason run deeper: the figure is
             // the engine's live in-process word, and a stale one carried into the
-            // write-back source could persist what the ruling forbids persisting.
+            // write-back source must never be persisted.
             raw: keys
                 .iter()
                 .filter(|(key, _)| {
@@ -1363,7 +1364,7 @@ mod tests {
         );
     }
 
-    /// Full `extra_args` enforcement (slice 10c): a hostile operator-extra
+    /// Full `extra_args` enforcement: a hostile operator-extra
     /// word is refused by `from_flat` itself — the scan therefore reports the
     /// file at rescan, before any load could evict a resident for the doomed
     /// spawn — with the engine's own refusal voice naming the word and the
@@ -1420,7 +1421,7 @@ mod tests {
         .expect("the benign family stays admitted");
     }
 
-    /// The Axis 1 primitive of the 2026-10-29 reload-drift ruling: still with the
+    /// The reload-drift primitive: still with the
     /// file, moved with its bytes, and `None` when unreadable — the absence of
     /// evidence every caller must read as "change not proven". Falsifier: a
     /// fingerprint that survives an edit (stale KEEP) or flakes while the file
@@ -1586,7 +1587,7 @@ mod tests {
     fn only_total_diff_is_unbookable() {
         assert!(!MeasuredAttribution::TotalDiff.bookable());
         assert!(MeasuredAttribution::EngineReport.bookable());
-        // The 2026-11-04 ruling: the process engines' status figure books, and it
+        // The process engines' status figure books, and it
         // is a figure the engine produced about itself, so `exact` may charge it.
         assert!(MeasuredAttribution::EngineStatus.bookable());
         assert!(MeasuredAttribution::EngineStatus.self_reported());
@@ -1918,7 +1919,7 @@ mod tests {
         );
         assert_eq!(entry.cost_source(), CostSource::Estimate);
         // A flip is judged with the engine's truth set, so `on` is `true` here too —
-        // a third reading of the token would let a flip hide (HANDOFF §6).
+        // a third reading of the token would let a flip hide.
         let agreed = ModelEntry::from_flat(
             &flat(&[
                 ("name", "m"),
@@ -2150,7 +2151,7 @@ mod tests {
         assert_eq!(exact.cost_source(), CostSource::Undeclared);
     }
 
-    /// R11 (rule 2026-11-01): the fit projection books with the SAME max truth
+    /// The fit projection books with the SAME max truth
     /// as the guarded engine_report — declared is a floor, never a ceiling —
     /// it verifies `exact` rows (a real source, not an estimate), it never
     /// labels a `greedy` booking, and it is scoped to the fit-capable engine
@@ -2244,7 +2245,7 @@ mod tests {
         );
     }
 
-    /// R1/F1(b) + ruling 15 (ii): the provenance stamp, not the bare presence of a
+    /// The provenance stamp, not the bare presence of a
     /// measured pair, decides what books. `total_diff` displays but never books —
     /// neither for `fixed` (no resurrecting the GGUF estimate either: it stays the
     /// estimate) nor for `exact` (a stand-in is not a source). `engine_report` books
@@ -2467,8 +2468,8 @@ mod tests {
         }
     }
 
-    /// `min_turn` rides the same chain as `load_timeout` (operator ruling
-    /// 2026-11-04): seconds, 1..=86_400, and an explicit 0 is refused because
+    /// `min_turn` rides the same chain as `load_timeout` (operator ruling):
+    /// seconds, 1..=86_400, and an explicit 0 is refused because
     /// "no guard" is written by omitting the key. The raw map must keep the
     /// verbatim value so write-back never drops the operator's line.
     /// Falsifier: drop the `v == 0` leg and the "0" case parses to Some(0).

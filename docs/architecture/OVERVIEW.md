@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [contributor, agent, architect]
 source_of_truth_for: [current architecture]
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-25
 review_trigger: behavior-change, release, new-decision
 ---
 
@@ -322,9 +322,11 @@ One harness process, one tokio runtime, plus OS-level children:
   2026-11-03).
   Harness-forced fields found in L1 are reported as dropped; the serve path never reads an
   L1 file.
-- L2 intent: the hand-authored per-model records in `ModelConf/*.yaml`.
-  `src/model/scan.rs` builds the typed catalog (`model::ModelEntry`): only
-  regular non-symlink `*.yaml` files, identity is the file stem, a problem
+- L2 intent: the hand-authored per-model records in `ModelConf/*.yaml` and
+  `ModelConf/*.yml`. `src/model/scan.rs` builds the typed catalog
+  (`model::ModelEntry`): only regular non-symlink `*.yaml` and `*.yml` files
+  (operator override 2026-11-25: `.yml` behaves exactly like `.yaml`; every
+  other extension stays silently inert), identity is the file stem, a problem
   line never publishes. `src/catalog.rs` resolves names and v3.3 aliases.
   `src/model/writeback.rs` writes page edits back byte-preserving: ordering,
   comments, and unknown keys survive.

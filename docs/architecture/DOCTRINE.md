@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: agent
 source_of_truth_for: [binding product invariants]
-last_reviewed: 2026-11-05
+last_reviewed: 2026-11-25
 review_trigger: new-decision, release
 ---
 
@@ -65,10 +65,11 @@ non-ASCII punctuation in quotes is replaced with ASCII equivalents only.
    launch floors (currently 60/65 in `ModelConf/`, not code); ninfer defaults
    to `fixed` at declared vram." Consequence: a cost policy change rides the
    model rows, not a code constant.
-10. **Scan accepts only `*.yaml`.** "Scan accepts only `*.yaml` (regular,
-    non-symlink, case-insensitive; `.yml` and everything else silently inert;
-    a problem line never publishes)." Consequence: a broken row cannot publish
-    into the catalog; unrecognized files stay inert and silent.
+10. **Scan accepts `*.yaml` and `*.yml`.** "Scan accepts `*.yaml` and `*.yml`
+    (regular, non-symlink, case-insensitive); every other extension silently
+    inert; a problem line never publishes" (operator override 2026-11-25).
+    Consequence: a broken row cannot publish into the catalog; unrecognized
+    files stay inert and silent.
 11. **Config layers are L1/L2/L3, and the harness launches only from L3.**
     Imported L1 artifacts are copies "then forgotten - after import the
     harness never reads or writes the original"; the L3 launch spec is

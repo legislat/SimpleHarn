@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent]
 source_of_truth_for: [ModelConf schema, engine-specific model keys]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-25
 review_trigger: behavior-change, release
 ---
 
@@ -15,7 +15,7 @@ engine-specific model keys.
 
 ## Contents
 
-- [Model files: `ModelConf/*.yaml`](#model-files-modelconfyaml)
+- [Model files: `ModelConf/*.yaml` and `*.yml`](#model-files-modelconfyaml-and-yml)
 - [Rows are hand-written (operator ruling 2026-11-06)](#rows-are-hand-written-operator-ruling-2026-11-06)
 - [Llama engines](#llama-engines)
 - [Strata engines](#strata-engines)
@@ -25,23 +25,24 @@ engine-specific model keys.
 - [Ninfer engines](#ninfer-engines)
   - [autostart.sh template](#autostartsh-template)
 
-## Model files: `ModelConf/*.yaml`
+## Model files: `ModelConf/*.yaml` and `*.yml`
 
 Write one flat `key: value` file per model. The harness keeps `#` comments
 when it rewrites a file. An unchanged value passes through byte-for-byte.
 
 **What counts as a model file:** a regular file whose extension is `.yaml`
-(case-insensitive). The harness does not recognize `.yml`; such a file is
-inert, silently and without an error. The harness also ignores everything
-else in `ModelConf`, with zero errors: readme files, thumbnails, and backup
-copies. The harness skips symlinks and never follows them. Only real
-`*.yaml` files are parsed, and only they can report parse errors.
+or `.yml` (case-insensitive). The harness parses both the same way (operator
+ruling 2026-11-25). The harness ignores every other name in `ModelConf`,
+with zero errors: readme files, text files, thumbnails, and backup copies.
+The harness skips symlinks and never follows them. Only real `*.yaml` and
+`*.yml` files are parsed, and only they can report parse errors.
 
 When an atomic write fails its own validation, the harness restores the
 original bytes. The error names exactly where every byte ended up. A failed
 edit never leaves a half-written model file in use.
 
-The harness never scans a model directory. It reads only `ModelConf/*.yaml`.
+The harness never scans a model directory. It reads only `ModelConf/*.yaml`
+and `ModelConf/*.yml`.
 See "Rows are hand-written" below.
 
 ## Rows are hand-written (operator ruling 2026-11-06)

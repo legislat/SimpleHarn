@@ -1,4 +1,4 @@
-//! Byte-preserving write-back of per-model yaml flags (DESIGN Step 9, choice B).
+//! Byte-preserving write-back of per-model yaml flags.
 //!
 //! The yaml file stays the single source of truth (the operator edits these files
 //! by hand), so page edits are read-modify-write of the *raw lines*: ordering,
@@ -596,8 +596,8 @@ pub(crate) fn commit_verified(
 /// Unique temp path beside `path`, carrying the file's own final extension:
 /// `<name>.<ext>.<pid>.<seq>.sh.tmp`. The pid+seq pair makes collisions
 /// impossible process-wide (shared with the config writer's counter), and the
-/// `.sh.tmp` ending keeps the temp outside the scan's `.yaml` acceptance gate —
-/// a killed write can never leave a scannable file behind.
+/// `.sh.tmp` ending keeps the temp outside the scan's `.yaml`/`.yml` acceptance
+/// gate — a killed write can never leave a scannable file behind.
 fn temp_beside(path: &Path) -> PathBuf {
     let extension = format!(
         "{}.{}.{}.sh.tmp",
@@ -616,7 +616,7 @@ fn temp_beside(path: &Path) -> PathBuf {
 /// together are every byte this module ever puts on disk; none of them calls
 /// `std::fs::write` directly, and the source-tripwire pin
 /// (`the_publish_writes_all_go_through_write_synced_tripwire`) holds that shape.
-/// Since the first-start ruling (2026-10-29) it is also `pub(crate)` and serves as
+/// Since the first-start ruling it is also `pub(crate)` and serves as
 /// the flushed temp write for `config::firstrun::ensure_created`.
 ///
 /// `File` is unbuffered, so `write_all` has already reached the kernel by the time
@@ -1403,8 +1403,7 @@ mod tests {
     /// quotes is VALUE, not comment. An identical (post-unquote) write passes
     /// the line through byte-verbatim — and the line still RESCANS to the quoted
     /// value, not its pre-`#` prefix; a different value drops the comment and is
-    /// itself quoted, so the new value rescans whole too (operator ruling
-    /// 2026-10-28). A
+    /// itself quoted, so the new value rescans whole too (operator ruling). A
     /// writeback-local split at the first `#` would compute the old value as
     /// `"a` and fail the keep direction here. Falsifies any keep-side reformat:
     /// reconstructing `{key}: {value}` from the parts strips the protective
@@ -1444,7 +1443,7 @@ mod tests {
         );
     }
 
-    /// PIN 1 of the auto-quote ruling (operator 2026-10-28): a plain value still
+    /// PIN 1 of the auto-quote rule: a plain value still
     /// goes out **unquoted**, byte-identical to the pre-ruling emit, in both the
     /// change and the append arm — this is what makes the ruling zero-impact for
     /// every current caller. Falsifier: delete step 1 (always quote) and every
@@ -2176,6 +2175,65 @@ mod tests {
         // before it existed.
         // Temp-name uniqueness is operator-ruled vacuous (ledger 13[11], single dir + gate).
         assert_no_temp_leftovers(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Writer half of the `.yml` acceptance falsifier: the measured-fields write-back targets the
+    /// row's OWN file — a `.yml` row stays `.yml`, and no `.yaml` twin is ever
+    /// created beside it. The path comes from the scan-carried `entry.file` and
+    /// every entry point reads and renames that same path (`temp_beside` carries
+    /// the file's own extension, so the `model.yaml`/`model.yml` collapse the
+    /// module comment warns about stays foreclosed). Falsifier (pre-change):
+    /// `scan_dir` did not publish `m.yml` at all, so the first asserts — one row
+    /// named `m`, its file is `m.yml` — could never pass; and a
+    /// `with_extension("yaml")`-style target would create `m.yaml` beside the
+    /// row, tripping the twin assert.
+    #[test]
+    fn a_writeback_targets_the_yml_rows_own_file_never_a_yaml_twin() {
+        let dir = crate::testutil::temp_dir("writeback-yml-target");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("m.yml");
+        std::fs::write(&path, "name: m\nengine: mock\nvram_gb: 2\n").expect("seed");
+
+        let catalog = crate::model::scan::scan_dir(&dir);
+        assert!(catalog.errors.is_empty(), "{:?}", catalog.errors);
+        assert_eq!(catalog.models.len(), 1, "{:?}", catalog.errors);
+        assert_eq!(catalog.models[0].name, "m");
+        assert_eq!(catalog.models[0].file.as_deref(), Some(path.as_path()));
+
+        // The install-time persist shape (the `MeasuredData::edits` form): the
+        // full stamp in ONE rewrite. `per_process` without a profile stamp: the
+        // row is a process engine, and the profile identity belongs to ninfer
+        // alone (an `engine_report` or profile stamp would void the pair at
+        // scan — a different rule, pinned in `src/model/mod.rs`).
+        set_flags_on_file(
+            &path,
+            &[
+                ("measured_gb", Some("20.0")),
+                ("measured_gb_min", Some("10.0")),
+                ("measured_offload", Some("false")),
+                ("measured_attribution", Some("per_process")),
+            ],
+        )
+        .expect("batch persist");
+
+        let text = std::fs::read_to_string(&path).expect("read back the yml");
+        assert!(text.contains("measured_gb: 20.0"), "{text}");
+        assert!(text.starts_with("name: m\n"), "operator bytes lost: {text}");
+        assert!(
+            !dir.join("m.yaml").exists(),
+            "the write-back must never create a .yaml twin beside the .yml row"
+        );
+        assert_no_temp_leftovers(&dir);
+
+        // The written bytes rescan clean, on the same `.yml` file, with the
+        // new figure booked on the same row.
+        let catalog = crate::model::scan::scan_dir(&dir);
+        assert!(catalog.errors.is_empty(), "{:?}", catalog.errors);
+        assert_eq!(catalog.models.len(), 1);
+        assert_eq!(catalog.models[0].measured_gb, Some(20.0));
+        assert_eq!(catalog.models[0].file.as_deref(), Some(path.as_path()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2956,5 +3014,94 @@ mod tests {
         assert_eq!(civil_from_days(19_782), (2024, 2, 29));
         assert_eq!(civil_from_days(19_783), (2024, 3, 1));
         assert_eq!(civil_from_days(47_541), (2100, 3, 1));
+    }
+
+    /// Writer half, seeded property test of the render rule. For
+    /// every generated nasty value and every clean base document shape (LF, CRLF,
+    /// comment, BOM), `set_key_in_text` must answer in exactly one of two honest
+    /// ways: a refusal that is *only ever* `UnrepresentableValue`, or a document
+    /// in which (a) the reader sees zero problem lines, (b) the value reads back
+    /// **byte-exactly**, and (c) a second write of the same value is a byte-
+    /// identical no-op. Finally the whole appended set round-trips: the canonical
+    /// map (render -> parse) equals the intended map, and removing every appended
+    /// key returns the document byte-identically to its base. Deterministic by
+    /// construction: fixed seeds, the same pure xorshift64* PRNG as the scan-side
+    /// fuzz (shared so the case streams cannot drift apart).
+    #[test]
+    fn seeded_fuzz_set_key_round_trip_never_lands_on_a_line_that_misreads() {
+        use crate::model::scan::{fuzz_value_pool, FuzzRng};
+        const BASES: [&str; 4] = [
+            "",
+            "engine: mock\n",
+            "# operator header\nengine: mock\ncategory: WORK\n",
+            "\u{feff}engine: mock\r\nname: bom-crlf\r\n",
+        ];
+        const SEEDS: [u64; 4] = [
+            0xC0FF_EE00_1234_5678,
+            0x0F0F_0F0F_0F0F_0F0F,
+            0xDE_C0DE_AA_BB_CC_DD,
+            0x9E37_79B9_7F4A_7C15,
+        ];
+        const APPENDS_PER_DOC: usize = 8;
+        let pool = fuzz_value_pool();
+        for seed in SEEDS {
+            let mut rng = FuzzRng::new(seed);
+            for round in 0..12 {
+                let base = BASES[rng.below(BASES.len())];
+                let mut doc = base.to_string();
+                let mut rendered: std::collections::BTreeMap<String, String> =
+                    std::collections::BTreeMap::new();
+                for index in 0..APPENDS_PER_DOC {
+                    let key = format!("fz_{seed:x}_{index}");
+                    let value = pool[rng.below(pool.len())].clone();
+                    let where_ = format!("seed {seed:x} round {round} key {key} value {value:?}");
+                    match set_key_in_text(&doc, &key, Some(&value)) {
+                        Ok(text) => {
+                            let (map, problems) = parse_flat_yaml(&text);
+                            assert!(
+                                problems.is_empty(),
+                                "{where_}: the rendered document stopped parsing: {problems:?} in {text:?}"
+                            );
+                            assert_eq!(
+                                map.get(&key).map(String::as_str),
+                                Some(value.as_str()),
+                                "{where_}: the value did not read back byte-exactly: {text:?}"
+                            );
+                            assert_eq!(
+                                set_key_in_text(&text, &key, Some(&value)).expect("identical rewrite"),
+                                text,
+                                "{where_}: a write of the published value is not a byte-identical no-op"
+                            );
+                            doc = text;
+                            rendered.insert(key, value);
+                        }
+                        Err(WritebackError::UnrepresentableValue { .. }) => {
+                            // The honest refusal: no line form reads back, so
+                            // nothing was written — the only failure this
+                            // property allows.
+                        }
+                        Err(other) => {
+                            panic!("{where_}: a set refused with a foreign error: {other:?}")
+                        }
+                    }
+                }
+                let (map, problems) = parse_flat_yaml(&doc);
+                assert!(problems.is_empty(), "seed {seed:x} round {round}: appended document gained problem lines: {problems:?} in {doc:?}");
+                for (key, value) in &rendered {
+                    assert_eq!(
+                        map.get(key).map(String::as_str),
+                        Some(value.as_str()),
+                        "seed {seed:x} round {round}: canonical map lost a rendered key"
+                    );
+                }
+                for key in rendered.keys().rev() {
+                    doc = set_key_in_text(&doc, key, None).expect("removal of a key just appended");
+                }
+                assert_eq!(
+                    doc, base,
+                    "seed {seed:x} round {round}: append-then-remove did not restore the base bytes"
+                );
+            }
+        }
     }
 }

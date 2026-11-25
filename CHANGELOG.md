@@ -34,6 +34,11 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   control) is still refused by name, and an illegal env name or value is
   refused at the scan. A Hy4-Flash config that sets `HY4_DENSE_MAX` now scans
   and loads.
+- Model scans now accept `.yml` rows the same way they accept `.yaml` rows
+  (operator override 2026-11-25): a regular, non-symlink `.yml` file publishes
+  as an entry or a named scan problem, case-insensitive; an `m.yaml`/`m.yml`
+  pair on one stem reports the existing duplicate-name refusal; and write-back
+  keeps the row's own extension. Every other extension stays silently inert.
 
 ## v1.5.1.6 - 2026-11-16
 

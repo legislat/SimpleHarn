@@ -831,3 +831,10 @@ references still resolve. Every entry carries one status prefix:
   when the release covers; a needed candidate refuses, and the retry after the
   release plans it. Same-slot release-first, `whole`, and the RAM ladder are
   unchanged; the RAM park matrix is deferred. | 2026-11-22 | `this task`
+- **Accepted** Scan accepts `*.yml` like `*.yaml` (operator override of
+  Doctrine 10's inertness clause; review 2026-11-25 item 1): a regular
+  non-symlink `.yml` file publishes as an entry or a named problem exactly as
+  `.yaml` does, case-insensitive; every other extension stays silently inert;
+  identity stays the file stem, so an `m.yaml`/`m.yml` pair reports the
+  existing `DuplicateName` refusal; write-back keeps the row's own extension |
+  2026-11-25 | operator session 2026-11-25
