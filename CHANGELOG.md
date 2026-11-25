@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, maintainer]
 source_of_truth_for: [release history]
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-25
 review_trigger: release
 ---
 

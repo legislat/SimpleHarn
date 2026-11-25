@@ -56,8 +56,9 @@ One harness process, one tokio runtime, plus OS-level children:
   a load. The actor loop, command channel, and state owner stay in `mod.rs`;
   the method clusters live in child modules (`admission`, `catalog`,
   `commands`, `events`, `fit`, `measured`, `occupant`, `spawn`, `status`).
-- HTTP tasks - per-category public listeners plus one control listener, all
-  served from `src/api/mod.rs` over axum routers (`api::ApiState`).
+- HTTP tasks - four category listeners, all served from `src/api/mod.rs`
+  over axum routers (`api::ApiState`). The control-category listener also
+  serves the `/har/*` control surface (section 7).
 - Engine children - spawned by `src/process.rs` (`ProcessRuntime`) through the
   `src/platform/` seam. On Windows each owned tree lives in a Job Object with
   `KILL_ON_JOB_CLOSE`; on Linux the child leads its own session
@@ -75,7 +76,8 @@ One harness process, one tokio runtime, plus OS-level children:
 ## 3. Scheduler and job lifecycle
 
 - Commands (`src/scheduler/vocab.rs`, `Command`): `Swap`, `Restart`,
-  `Cancel`, `Unload`, `UnloadModel`, `UnloadAll`, `Reload`.
+  `ReportDeadEngine`, `Cancel`, `Unload`, `UnloadModel`, `UnloadAll`,
+  `Reload`.
 - Job state machine (`vocab::SwapState`, LOCKED graph, checked by
   `transition_allowed`):
   `Idle -> Admit -> Quiesce -> Dispose -> Spawn -> Ready -> Install ->
@@ -235,8 +237,9 @@ One harness process, one tokio runtime, plus OS-level children:
   booking source (section 4).
 - `strata` (`src/engine/strata.rs`): template mode is the current and only
   mode. The row yaml owns the profile fields (`strata_*` keys); the harness
-  renders the full profile JSON at every load under `.simpleharn\
-  strata-profiles` (`process::strata_profiles_dir`, content-addressed,
+  renders the full profile JSON at every load under
+  `.simpleharn\strata-profiles` (`process::strata_profiles_dir`,
+  content-addressed,
   atomic, keep-N prune) and launches only its own staged copy
   (`python -m serve.server --engine strata` with forced `--host 127.0.0.1`
   and `--port`). The external `strata_config` mode is superseded: a row that

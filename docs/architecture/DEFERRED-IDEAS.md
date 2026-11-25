@@ -225,8 +225,8 @@ below. No ruling exists on keeping, removing, or changing its default.
   the warm cost it paid to buy that.
 - Only llama and basalt rows can warm at all. A strata or ninfer row shows
   no `prefetch` line: never credit the knob with a change on those rows.
-- Expect a per-model split. Files of 25 to 44 GiB approach the box's 95 GiB
-  of RAM, so a warm can evict cache the running engine still wants and make
+- Expect a per-model split. Files of 25 to 44 GiB approach the host's full
+  RAM, so a warm can evict cache the running engine still wants and make
   the next swap slower, not faster.
 - A WSL drive-letter path may defeat the warm entirely: the bytes live behind
   the WSL filesystem layer, and the harness-side read may not warm the path

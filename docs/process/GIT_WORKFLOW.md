@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [agent, reviewer, release-operator]
 source_of_truth_for: [git, release]
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-25
 review_trigger: behavior-change, release
 ---
 
@@ -128,20 +128,20 @@ A release is a task with acceptance criteria. Run the steps in this order:
    changelog, README claim, known stale phrases, `cargo doc` warnings, the webui fixture
    pin, and that public docs carry no machine paths. In `-Prepare`
    mode the README claim must name the version being prepared.
- 6. Create the annotated tag (`v<major>.<minor>.<patch>` or the hotfix form
-    `v<major>.<minor>.<patch>.<hotfix>`).
- 7. Run `scripts/release-check.ps1` without `-Prepare` and require PASS. It confirms the
-    tag names the crate version: the tag is `v<Cargo version>`, or its first three
-    segments equal the crate version and the fourth segment is the hotfix counter.
-7b. Feature release (`x.y.0`) only: run the release card suite in a freed window
+6. Create the annotated tag (`v<major>.<minor>.<patch>` or the hotfix form
+   `v<major>.<minor>.<patch>.<hotfix>`).
+7. Run `scripts/release-check.ps1` without `-Prepare` and require PASS. It confirms the
+   tag names the crate version: the tag is `v<Cargo version>`, or its first three
+   segments equal the crate version and the fourth segment is the hotfix counter.
+8. Feature release (`x.y.0`) only: run the release card suite in a freed window
     (`release-card/run.ps1 -Version <tag>` from the private handoff repository) and
     require every leg to PASS or be named BLOCKED with its reason. Patch releases are
     exempt. The suite never substitutes for the cardless gate; it proves hardware
     behavior that CI cannot. On Linux or WSL the same legs run with
     release-card/run-linux.sh (private handoff repository) (bash, curl, python3; same report shape); it also
     refuses to start while a protected port or a harness is present.
-8. Push the commits and the tag. Each push needs operator approval.
-9. Download the Windows (`simpleharn-win-x64`) and Linux (`simpleharn-linux-x64`)
+9. Push the commits and the tag. Each push needs operator approval.
+10. Download the Windows (`simpleharn-win-x64`) and Linux (`simpleharn-linux-x64`)
    workflow artifacts from the tag run. Render the release notes with
    `scripts/render-release-notes.ps1`, then publish with
    `scripts/publish-release.ps1` (the only supported publish path). The manual
@@ -152,7 +152,7 @@ A release is a task with acceptance criteria. Run the steps in this order:
    and never claim a rebuild hash. Deploy the verified Windows artifact, verify the boot,
    and keep the Linux verdict honest: the CI build proves compilation and packaging,
    not a Linux GPU load.
-10. Keep and name the rollback artifact: the previous release stays in the fallback
+11. Keep and name the rollback artifact: the previous release stays in the fallback
     directory named below.
 
 ### Tag and version naming
@@ -236,7 +236,7 @@ The operator ruling (2026-11-13):
 - A security emergency inside the 24-hour window requires the explicit
   `-ForceCadence` switch plus the reason; without it, the wrapper refuses.
 - The rule starts at the next release after 2026-11-13. It does not reclassify the
-  2026-11-10 history or the pending `v1.5.1.6` fix.
+  2026-11-10 history or the `v1.5.1.6` hotfix (released 2026-11-16).
 
 ### Build and release directories
 

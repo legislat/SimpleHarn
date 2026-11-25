@@ -19,7 +19,8 @@ pointer stub and was deleted 2026-11-03.
 - **DATED RULINGS**: active and closed rulings with explicit status (decision, date,
   commit; detail lives in the commit body or the named file).
 
-Unresolved questions live ONLY in `DECISIONS-PENDING.md`. This file only ever *gains*
+Unresolved questions live ONLY in `DECISIONS-PENDING.md` (a private handoff
+repository file, absent from a public clone). This file only ever *gains*
 lines, with two operator-ruled exceptions: the 2026-11-03 status-annotation pass may
 change lifecycle labels, the section title, and reference qualifiers only; and the
 2026-11-22 hygiene pass may compress prose to decision data while preserving every

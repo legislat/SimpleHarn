@@ -24,8 +24,9 @@ dated rename record.
 
 ## 1. Listeners and routes
 
-The harness runs four category listeners, one per category. `README.md`
-(Categories and ports) owns the port matrix. Each category listener answers:
+The harness runs four category listeners, one per category. The category
+listener port matrix lives in `docs/reference/CONFIG.md`. The `README.md`
+Categories and ports table is a summary. Each category listener answers:
 
 | Route | Behavior | Evidence |
 |---|---|---|

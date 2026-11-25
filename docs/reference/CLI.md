@@ -32,11 +32,12 @@ Autostart and the file layout live in `docs/reference/OPERATIONS.md`.
 
 ```text
 version 1.5.1
-release 1.5.1.5
+release 1.5.1.6
 ```
 
 `version` is the crate semver. `release` is the exact tag embedded by the
-tagged clean build, or `none` for an untagged or dirty tree. The flag reads no
+tagged clean build, or `none` for an untagged or dirty tree. `-V` is accepted
+as an alias of `--version` and prints the same two lines. The flag reads no
 config, writes no file, and binds no listener; release packaging uses it to
 prove the artifact's identity.
 
