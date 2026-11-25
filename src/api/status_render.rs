@@ -67,7 +67,7 @@ pub(super) async fn status_document(state: &ApiState) -> Result<Value, ApiError>
 /// on install, the reload turn, and harness write-backs — pinned by
 /// `the_status_and_models_render_paths_never_touch_the_filesystem` (structural, this
 /// file), `the_snapshot_reads_the_cached_verdict_and_never_stats` (scheduler), and
-/// the api_surface hidden-file leg of
+/// the `api_surface::config_writeback` hidden-file leg of
 /// `a_flag_edit_never_ambers_its_own_loaded_model_and_status_never_stats`).
 pub(super) async fn render_status_document(state: &ApiState, scheduler: &SchedulerStatus) -> Value {
     let categories: Vec<Value> = state

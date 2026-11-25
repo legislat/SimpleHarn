@@ -196,7 +196,8 @@ pub async fn guard(
     // pinned by `structural_refusals_are_answered_before_the_token_is_consulted`, which
     // is what makes swapping the two blocks below a red suite instead of a green one
     // (the two refusals are also individually pinned in
-    // `tests/api_surface.rs`, but only on a token-less app, which cannot see the order).
+    // `tests/api_surface/control_plane.rs`, but only on a token-less app,
+    // which cannot see the order).
     if let Some(reason) = reject_reason(&state, &request) {
         state.note_guard_refusal(&reason, &method, &path, &request_id);
         let response = (reason.status(), Json(error_body(&reason))).into_response();

@@ -279,7 +279,7 @@ impl ApiError {
     /// Pinned class-by-class (including the prefix/non-prefix split) by
     /// `writeback_errors_map_to_their_http_class_without_rewording` (all eight, in
     /// crate) and, for the classes the endpoint can genuinely reach, by the
-    /// `/har/config/model` tests in `tests/api_surface.rs`.
+    /// `/har/config/model` tests in `tests/api_surface/config_writeback.rs`.
     ///
     /// `reason` is what the *variant* carries and what the ring receives; the
     /// `500 internal` sentence reaches the client body only through `error_body`,
@@ -428,8 +428,8 @@ impl From<SchedulerError> for ApiError {
             },
             SchedulerError::Admission(admission) => {
                 // The message keeps carrying every number (the pins below and in
-                // `tests/api_surface.rs` prove it); the structured wait hint rides
-                // beside it on the memory refusals that compute one.
+                // `tests/api_surface/proxy_admission.rs` prove it); the structured
+                // wait hint rides beside it on the memory refusals that compute one.
                 let reason = admission.to_string();
                 match admission {
                     crate::budget::AdmissionError::BelowLaunchFloor { wait_hint, .. } => {

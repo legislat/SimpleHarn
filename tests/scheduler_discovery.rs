@@ -3,8 +3,9 @@
 //! mismatch; a dead engine's restart installs a fresh, correctly-identified
 //! engine; a genuine upstream error is never retried. The end-to-end mid-request
 //! retry (proxy send → connect failure → restart → retry) is asserted in
-//! `tests/api_surface.rs` (`dead_engine_connect_failure_restarts_exactly_once`),
-//! where the request is really made.
+//! `tests/api_surface/proxy_admission.rs`
+//! (`dead_engine_connect_failure_restarts_exactly_once`), where the request
+//! is really made.
 
 mod mock_runtime;
 
@@ -140,9 +141,9 @@ async fn restart_after_death_installs_a_new_engine() {
     // request — a test named for the retry contract that cannot see a retry. The
     // end-to-end mid-request retry (send → connect failure → restart → retry) is
     // asserted where the request is really made, in
-    // `api_surface::dead_engine_connect_failure_restarts_exactly_once`; the name and
-    // header here now say what THIS test proves: the dead engine is replaced by a
-    // fresh one that is correctly re-identified.
+    // `api_surface::proxy_admission::dead_engine_connect_failure_restarts_exactly_once`;
+    // the name and header here now say what THIS test proves: the dead engine
+    // is replaced by a fresh one that is correctly re-identified.
     let (handle, runtime) = harness(
         config(),
         &[("dies", "mock-dies", CategoryId::Work, 4.0, None)],

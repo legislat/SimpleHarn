@@ -1059,8 +1059,9 @@ fn model_json_marks_loaded_rows_and_nobody_else() {
 /// verdict — and a stat behind a helper not on the heads list. Anything whose
 /// result REACHES the published verdict is convicted by the behavioural tier
 /// too, regardless of spelling: the cache-probe in `scheduler`'s
-/// `the_snapshot_reads_the_cached_verdict_and_never_stats` and the api_surface
-/// hidden-file leg of `a_flag_edit_never_ambers_its_own_loaded_model_and_status_never_stats`.
+/// `the_snapshot_reads_the_cached_verdict_and_never_stats` and the
+/// `api_surface::config_writeback` hidden-file leg of
+/// `a_flag_edit_never_ambers_its_own_loaded_model_and_status_never_stats`.
 /// Tail sentinels assert each slice covers its body's end.
 ///
 /// Falsifier: a `fs::`/`metadata(`/`fingerprint(`/`SystemTime::now` token
@@ -1116,8 +1117,8 @@ fn the_status_and_models_render_paths_never_touch_the_filesystem() {
 /// blocking leg, so a reactor thread can never park behind the yaml/config
 /// read-patch-rename. Response honesty is a behavioural matter and stays
 /// pinned where it lives (`config_persistence_is_answered_only_after_the_bytes_read_back`
-/// and the api_surface `persisted` legs) — the handler still awaits the leg's
-/// verdict before answering.
+/// and the `api_surface::config_writeback` `persisted` legs) — the handler
+/// still awaits the leg's verdict before answering.
 ///
 /// Falsifier: lift any of the three fs calls back out of its `spawn_blocking`
 /// closure and the order assert fires first; delete the offload entirely and
@@ -2970,8 +2971,9 @@ async fn the_old_token_name_grants_nothing_to_a_gated_route() {
 /// legible (`code` and message prefix unchanged, both envelope shapes equal),
 /// but the client body must not carry the detail; `error_body` sends it to
 /// `tracing::error!` instead (the live 500 with a capturing subscriber is
-/// pinned in `tests/api_surface.rs`). The request-side classes still state
-/// their own numbers verbatim: the withholding is scoped, not a mute.
+/// pinned in `tests/api_surface/control_plane.rs`). The request-side classes
+/// still state their own numbers verbatim: the withholding is scoped, not a
+/// mute.
 #[test]
 fn harness_failure_bodies_hide_the_os_detail_but_keep_the_class() {
     let leaked = "cannot read C:\\ModelConf\\qwen3.yaml: Access is denied. (os error 5)";

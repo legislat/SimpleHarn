@@ -7,7 +7,7 @@
 //! under-delivered `Content-Length`, an endless chunked body) and needs to
 //! observe the engine's write side, so it answers the harness on a real
 //! loopback socket with hand-written responses. The harness side is the real
-//! in-process router (the pattern of `tests/api_surface.rs`), so every
+//! in-process router (the pattern of `tests/api_surface/main.rs`), so every
 //! assertion is about served bytes, never internal actor state: the fake
 //! engine's own request/spawn counters stand in for "no retry happened", and
 //! anything the outside cannot see stays out of the assertions.
@@ -54,7 +54,7 @@ const TICK_GAP: Duration = Duration::from_millis(40);
 const STREAM_CAP: Duration = Duration::from_secs(30);
 
 /// `tower::ServiceExt::oneshot` carries no `Host`; the rebinding guard wants a
-/// loopback one (the same stand-in `tests/api_surface.rs` uses).
+/// loopback one (the same stand-in `tests/api_surface/main.rs` uses).
 const HOST: &str = "127.0.0.1:8708";
 
 /// The exact bytes the dying engine sends before it closes the connection.
@@ -422,8 +422,9 @@ async fn handle_conn(mut socket: TcpStream, engine: Arc<WireEngine>) {
     let _ = respond(&mut socket, "application/json", echo.as_bytes()).await;
 }
 
-/// Control and WORK routers over one wire-engine model: the `tests/api_surface.rs`
-/// stand-in, but with the scripted wire runtime instead of the echo mock.
+/// Control and WORK routers over one wire-engine model: the
+/// `tests/api_surface/main.rs` stand-in, but with the scripted wire runtime
+/// instead of the echo mock.
 #[allow(clippy::type_complexity)]
 fn wire_app(model: &str, engine: &str) -> (Router, Router, Arc<WireRuntime>, PathBuf) {
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();

@@ -29,7 +29,7 @@ The harness runs four category listeners, one per category. `README.md`
 
 | Route | Behavior | Evidence |
 |---|---|---|
-| `GET /health` | Liveness. | `category_router`, `src/api/mod.rs` |
+| `GET /health` | Liveness. | `category_router`, `src/api/proxy.rs` |
 | `GET /v1/models` | Category catalog. Never admits. | `v1_models`; `polling_an_empty_slot_never_loads_a_model` |
 | `POST /v1/chat/completions` | Proxy plus admission. | `proxy`; `the_wake_set_is_exactly_the_proxy_routes` |
 | `POST /v1/completions` | Proxy plus admission. | same |
@@ -50,7 +50,7 @@ The harness runs four category listeners, one per category. `README.md`
 ## 2. GET /v1/models
 
 Each listener lists only its own category. No cross-category disclosure
-happens. Evidence: `v1_models` (`src/api/mod.rs`), tests
+happens. Evidence: `v1_models` (`src/api/status_render.rs`), tests
 `models_are_filtered_per_listener`, and `wrong_category_is_404_before_any_load`.
 
 The reply is `{"object": "list", "data": [...]}`. Each row carries `id`,
@@ -65,12 +65,12 @@ inside `models_are_filtered_per_listener` and the naming pins in
 
 This answer carries no loaded stamp. The loaded facts `launched_at` and
 `stale_config` ride only the control-side `/har/models` and the SSE `har_state`
-document. Evidence: `model_json` (`src/api/mod.rs`), test
+document. Evidence: `model_json` (`src/api/status_render.rs`), test
 `model_json_marks_loaded_rows_and_nobody_else`. The listing is deliberately
 minimal, so local file paths stay off the published surface.
 
 This GET never admits and never spawns an engine. Evidence: `wakes_slot`
-(`src/api/mod.rs`) and `polling_an_empty_slot_never_loads_a_model`.
+(`src/api/proxy.rs`) and `polling_an_empty_slot_never_loads_a_model`.
 
 ## 3. Model selection on the inference routes
 
@@ -131,14 +131,14 @@ including the self-reported-id rewrite in `model`.
 
 - A body must be JSON. A non-JSON content type answers 415 before parsing:
   `posts_without_json_content_type_are_415`. A malformed JSON body answers 400
-   in the project envelope. Evidence: the proxy door in `proxy`
-   (`src/api/proxy.rs`). The same envelope shape is tested on a control route by
+  in the project envelope. Evidence: the proxy door in `proxy`
+  (`src/api/proxy.rs`). The same envelope shape is tested on a control route by
   `malformed_logging_body_answers_the_project_envelope`. A wire test on a
   proxy route: untested.
 - The proxy parses the JSON and re-serializes it for the engine, so every
   field survives except `model`. Whitespace and key order may change. The
-   harness claims no byte-for-byte request pass-through. Evidence: `proxy`
-   (`src/api/proxy.rs`) and the pass-through note in
+  harness claims no byte-for-byte request pass-through. Evidence: `proxy`
+  (`src/api/proxy.rs`) and the pass-through note in
   `proxy_passes_the_engines_content_encoding_through_verbatim`.
 - The `model` field is rewritten to the engine's self-reported id. When
   discovery reports nothing, the harness catalog name crosses instead. Tests
@@ -176,11 +176,12 @@ including the self-reported-id rewrite in `model`.
   `a_readiness_deadline_answers_its_own_code_and_the_other_classes_keep_theirs`
   and `a_load_that_misses_its_readiness_deadline_answers_the_named_code`.
 - A death mid-stream surfaces inside the body stream, past the retry loop.
-  Evidence: the T10.1 note in `proxy` (`src/api/proxy.rs`). The wire test is
+  Evidence: the crash-retry note in `proxy` (`src/api/proxy.rs`). The wire test is
   `an_engine_that_dies_mid_stream_truncates_the_stream_and_stays_serving`:
-  the head and the engine's `text/event-stream` content-type cross untouched,
-  the client receives exactly the bytes the engine sent before the failure,
-  and the stream then terminates with an error — never a silent completion.
+  the head crosses and the client-side `content-type` starts with
+  `text/event-stream`, the client receives exactly the bytes the engine sent
+  before the failure, and the stream then terminates with an error — never a
+  silent completion.
   The crash-retry never fires after the head: the engine answers one request
   and the runtime spawns one engine, the resident stays serving (no unload
   row), and the next request on the same listener is answered by the same
@@ -188,15 +189,16 @@ including the self-reported-id rewrite in `model`.
 - A client that drops a live stream mid-body is observed by the engine side.
   The wire test is `a_client_that_drops_the_stream_mid_body_is_observed_by_the_engine`:
   when the client aborts, the harness ends the engine-side connection and the
-  engine's write side observes the end within a bounded time; the harness
-  neither hangs nor crashes, no retry and no restart fire, and the next
-  request on the same listener succeeds from the same serving resident.
+  engine observes the end within a bounded time (reader EOF or a broken
+  write); the harness neither hangs nor crashes, no retry and no restart
+  fire, and the next request on the same listener succeeds from the same
+  serving resident.
 
 ## 5. tools, stop, seed, and other OpenAI parameters
 
 The proxy validates no OpenAI request parameter and rewrites no parameter.
 Every field except `model` crosses unchanged. Evidence: `proxy`
-(`src/api/mod.rs`). The `stream` field crosses and drives the engine's SSE
+(`src/api/proxy.rs`). The `stream` field crosses and drives the engine's SSE
 answer, proven by `proxy_forwards_with_model_rewrite_and_streams_the_response`.
 No per-field test exists for `tools`, `stop`, `seed`, or the sampling knobs:
 untested. What those fields do depends on the engine behind the slot. This
@@ -254,7 +256,7 @@ page claims no full OpenAI parameter coverage.
 These capabilities do not exist on the harness listeners. Any path outside
 section 1 answers the 404 envelope
 (`unknown_routes_answer_the_envelope_on_every_listener`). The route table in
-`category_router` (`src/api/mod.rs`) is the evidence for absence.
+`category_router` (`src/api/proxy.rs`) is the evidence for absence.
 
 - No `/v1/images`.
 - No audio endpoints.
