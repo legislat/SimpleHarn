@@ -11,16 +11,17 @@
 //! - strata/ninfer cases are `SKIP` (no templates in v0 — §0.4);
 //! - T11 (external adoption) is `SKIP` — adoption is scrapped in SE, the
 //!   externals display list lands past v1.0;
-//! - T10.4 restart expectations follow SE's no-state-restore non-goal: after a
+//! - restart expectations follow SE's no-state-restore non-goal: after a
 //!   harness kill, Job Objects guarantee zero orphan engines and boot starts
 //!   with empty slots (v3.3 expected the model back);
-//! - T12.4 `{}` is the explicit unload-all (v3.3 semantics); only *garbage*
+//! - `{}` is the explicit unload-all (v3.3 semantics); only *garbage*
 //!   bodies are `400`.
 //!
 //! Verdict vocabulary (per case, from the plan §17): PASS / FAIL / FINDING /
 //! BLOCKED / SKIP. A failing assertion fails the test = FAIL; a `BLOCKED`
 //! declaration prints and PANICS - the older "print and return early" was the
-//! vacuous PASS chunk 21 exists to catch (libtest hides a passing test's stdout
+//! vacuous PASS this suite's panic-on-BLOCKED rule exists to catch (libtest
+//! hides a passing test's stdout
 //! and exits 0). Only `SKIP` (t11 - adoption scrapped, it loads nothing) still
 //! prints and returns. Flake policy: re-run once, then classify FLAKY n/3 by
 //! worst observed.
@@ -92,7 +93,7 @@ fn use_mid_t08() -> bool {
     std::env::var("SIMPLEHARN_T_MIDS").map_or(true, |value| value != "0") && mid_gguf().exists()
 }
 
-// The T-suite card gate, mirrored inside the test binary (FINDINGS-21 [3]).
+// The T-suite card gate, mirrored inside the test binary.
 // `tier.ps1` prices the same tiers and `run-group.ps1` enforces them per test;
 // that gate stays the PRIMARY one - under the driver this check only re-confirms
 // the tier it just enforced. Its reason to exist is the bare
@@ -101,7 +102,7 @@ fn use_mid_t08() -> bool {
 // Only the `#[ignore]`d card tests in this file reach these helpers - without
 // `--ignored` no test here runs at all - so cardless tests are never affected.
 //
-// The mirror is deliberate duplication (REV4-07), not a shared source of truth:
+// The mirror is deliberate duplication, not a shared source of truth:
 // the two files share no mechanism, but `Test-TierParity` in `run-group.ps1`
 // refuses every group while a constant here and its `tier.ps1` twin disagree.
 // Change a tier -> change both files in one edit, and keep each const on ONE
@@ -173,9 +174,10 @@ fn t_label(tag: &str) -> String {
 }
 
 /// The one stdout line the driver can see for a missing-file refusal.
-/// `Get-TestVerdict` in `handoff/t-suite/tier.ps1` classifies BLOCKED from the
-/// line-anchored, case-sensitive regex `(?m)^T\d+ BLOCKED` — Run 6 learned that
-/// an unanchored match collides with `blocked by:` inside an admission refusal.
+/// `Get-TestVerdict`, in the operator layer's T-suite scripts, classifies
+/// BLOCKED from the
+/// line-anchored, case-sensitive regex `(?m)^T\d+ BLOCKED` — an unanchored
+/// match collides with `blocked by:` inside an admission refusal.
 /// Pure, so `missing_files_earn_an_anchored_blocked_line` can pin the shape
 /// without printing (stdout is not capturable from inside the crate).
 #[must_use]
@@ -192,10 +194,11 @@ fn blocked_line(label: &str, files: &[PathBuf]) -> String {
 
 /// The model-file fallback gate: refuses before anything boots when a gguf this
 /// test needs is not on disk. Panics, never `return;` — a quiet early return is
-/// exactly the vacuous PASS chunk 21 exists to catch. The anchored
+/// exactly the vacuous PASS this suite refuses to allow. The anchored
 /// [`blocked_line`] output keeps the outcome classifiable as BLOCKED under
-/// `run-group.ps1` (R2-17-01: an assert-only panic for a missing
-/// `SIMPLEHARN_T_EMB` / `SIMPLEHARN_T_SMALL` file reached the driver as a FAIL and
+/// `run-group.ps1` (an assert-only panic for a missing
+/// `SIMPLEHARN_T_EMB` / `SIMPLEHARN_T_SMALL` file once reached the driver as a
+/// FAIL and
 /// earned a flake re-run);
 /// the panic message is the stop sign for a bare `cargo test` and names the env
 /// overrides the operator must set.
@@ -224,8 +227,8 @@ fn require_files(tag_label: &str, files: &[PathBuf]) {
 
 /// The in-test fallback gate: refuses before anything loads when the card
 /// cannot hold this test's tier. Panics, never `return;` - a quiet early
-/// return is exactly the vacuous PASS this suite just learned to distrust
-/// (chunk 21). The anchored `T<n> BLOCKED` line keeps the outcome classifiable
+/// return is exactly the vacuous PASS this suite just learned to distrust.
+/// The anchored `T<n> BLOCKED` line keeps the outcome classifiable
 /// as BLOCKED under `run-group.ps1`; the panic message is the stop sign for a
 /// bare `cargo test`.
 fn require_free_vram(tag: &str) {
@@ -270,10 +273,10 @@ impl Harness {
     /// Async because the readiness probe must share the test's tokio runtime: a
     /// nested blocking runtime dropped from this context aborts the test (Run 2).
     async fn spawn(tag: &str) -> Harness {
-        // The card is priced before the temp catalog is even written
-        // (FINDINGS-21 [3]): this runs before anything here can load a model.
+        // The card is priced before the temp catalog is even written:
+        // this runs before anything here can load a model.
         require_free_vram(tag);
-        // R2-17-01: the identity sentinel registered below is an EMB model, so
+        // The identity sentinel registered below is an EMB model, so
         // EVERY test here needs the EMB gguf on disk before the harness boots.
         // Without it the scan drops the sentinel and the identity probe fails 50 s
         // later with a FAIL the driver re-runs as a flake; the anchored BLOCKED
@@ -315,7 +318,7 @@ impl Harness {
         // weights load, so scheduler/mod.rs:2843 runs the readiness deadline
         // `load_timeout_s.unwrap_or(cfg)`, whose default is 120 s (config/mod.rs:106) -
         // and a 23.5 GiB Q6_K off a spun-down F: must not lose the release gate to a
-        // disk race. Truthful test-side budget (FINDINGS-BATCH-2026-10-28Q D-1b): the
+        // disk race. Truthful test-side budget: the
         // 31B legs POST /har/load INLINE, so their ceiling is the shared http client's
         // 300 s timeout above, not the 900 s product deadline nor the 600 s polls that
         // follow them (those polls are status slack after the blocking POST returns);
@@ -421,7 +424,7 @@ impl Harness {
         let sentinel = format!("sentinel-{tag}");
         // `/har/models` queues behind the actor's FIRST turn - the boot scan stats
         // every `model:` file, and one spun-up cold F: volume holds that request for
-        // 5-10 s on its own (FINDINGS2-17 [2]). The probe therefore gets a 15 s
+        // 5-10 s on its own. The probe therefore gets a 15 s
         // per-attempt budget (one cold-volume spin-up plus slack) inside a 30 s wall
         // clock, and a failed attempt RETRIES instead of panicking: the 2 s
         // single-attempt `expect` used to convert an ordinary slow boot into the
@@ -755,7 +758,7 @@ fn harness_exe() -> PathBuf {
 #[ignore = "operator-gated: real exe + real model files (SIMPLEHARN_T_*)"]
 async fn t01_listener_routing_guards() {
     serial_lock();
-    // R2-17-01: the precondition prints the anchored `T1 BLOCKED` line before it
+    // The precondition prints the anchored `T1 BLOCKED` line before it
     // panics, and it runs BEFORE the harness boots, so a missing
     // `SIMPLEHARN_T_SMALL` / `SIMPLEHARN_T_EMB` file classifies as BLOCKED instead of
     // a FAIL that earns a flake re-run.
@@ -1101,7 +1104,7 @@ async fn t05_implicit_load_and_no_model_fallback() {
     assert_eq!(status, 200, "{body}");
     assert!(harness.wait_serving("work06", 120).await);
 
-    // 5.2: no-model request now serves the loaded occupant (F-2 rule).
+    // 5.2: no-model request now serves the loaded occupant (the MRU rule).
     let (status, body) = harness.chat(CONTROL, None).await;
     assert_eq!(status, 200, "{body}");
     println!("T5 PASS");
@@ -1128,7 +1131,8 @@ async fn t06_eviction_matrix() {
     // same. The tie must fall to disposability: AUX may be evicted by WORK and RP, RP
     // only by WORK, so AUX is the one released and RP survives. RP is NOT protected
     // from WORK (src/config/mod.rs:238 says `evictable_by: [Work]`) - it survives
-    // because an equally cheap, more disposable victim existed (T6.2 keep + T6.3 evict).
+    // because an equally cheap, more disposable victim existed (the keep-leg
+    // pins RP surviving, the evict-leg pins AUX released).
     for model in ["rp31", "aux31"] {
         let (status, body) = harness
             .post(&format!("{CONTROL}/har/load"), json!({ "model": model }))
@@ -1188,7 +1192,7 @@ async fn t07_admission_failure() {
     }
 
     // Fill WORK + RP (58 of 68 budgeted GiB); an AUX load cannot evict WORK/RP
-    // (neither is evictable by AUX): 503 with named blockers (T7.1).
+    // (neither is evictable by AUX): 503 with named blockers.
     for model in ["work31", "rp31"] {
         let (status, body) = harness
             .post(&format!("{CONTROL}/har/load"), json!({ "model": model }))
@@ -1289,7 +1293,7 @@ async fn t08_cancel_during_load() {
         cancelled["is_fault"], false,
         "a deliberate cancel is policy, not a fault: {cancelled}"
     );
-    // Positive evidence that a CANCELLATION happened (chunk 17 [2]). `is_fault == false`
+    // Positive evidence that a CANCELLATION happened. `is_fault == false`
     // is satisfied by construction for a load that completed: `fault_of` needs an error,
     // and an unload after a finished load records a separate Unload row ("unloaded")
     // whose `is_fault` is false too. The load's OWN row is the only record that can tell
@@ -1371,7 +1375,7 @@ async fn t09_concurrency() {
         .await;
     assert_eq!(status, 200);
     // Queued-intents coverage lives at actor level (tests/scheduler_actor.rs);
-    // a card park leg needs a slow-first-load design - deferred, FINDINGS2-17 [3] reopened.
+    // a card park leg needs a slow-first-load design - deferred.
     println!("T9 PASS");
 }
 
@@ -1845,9 +1849,9 @@ async fn t14_soak() {
 
 // ------------------------------------------------- classifier pin (cardless)
 
-/// R2-17-01: a missing model file must reach the driver as BLOCKED, never as a
+/// A missing model file must reach the driver as BLOCKED, never as a
 /// FAIL that earns a flake re-run. The driver sees only the run's stdout:
-/// `Get-TestVerdict` in `handoff/t-suite/tier.ps1` classifies BLOCKED from the
+/// `Get-TestVerdict`, in the operator layer's T-suite scripts, classifies BLOCKED from the
 /// line-anchored, case-sensitive regex `(?m)^T\d+ BLOCKED`. This pin is cardless:
 /// it boots no harness and loads nothing. It checks
 /// both halves of the fix: the pure formatter carries the classifier shape, and

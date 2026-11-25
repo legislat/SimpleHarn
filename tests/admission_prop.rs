@@ -1,4 +1,4 @@
-//! Admission arithmetic property tests (TASK-ADMISSION-PROPTEST, review #8).
+//! Admission arithmetic property tests.
 //!
 //! The conformance target `tests/admission_conformance.rs` states the five admission
 //! invariants once each on fixed figures. This target drives the SAME seams — the

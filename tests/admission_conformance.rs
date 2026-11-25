@@ -7,8 +7,8 @@
 //! can reach refuses before any kill. Plus one API-level leg: a load against an
 //! unreadable card answers 503 `witness_unavailable` in the typed envelope.
 //!
-//! Scope and limits (TASK-ADMISSION-MOCK-RUNNER, ruling D1: a thin conformance
-//! target over the existing proven tests, not a new harness):
+//! Scope and limits (a thin conformance target over the existing proven tests,
+//! not a new harness):
 //!
 //! - Everything runs cardless: a scripted witness and the in-process mock engine,
 //!   no GPU, no model files, no private handoff repo, no port bind.
@@ -348,8 +348,8 @@ async fn in_flight_bookings_are_debited_so_two_loads_cannot_double_spend() {
         let handle = handle.clone();
         tokio::spawn(async move { handle.swap("b", CategoryId::Rp).await })
     };
-    // The 2026-11-10 ruling names the response: the deficit rides on a live
-    // paper booking, so the row parks instead of dying AdmitFail.
+    // The operator ruling on over-limit loads names the response: the deficit
+    // rides on a live paper booking, so the row parks instead of dying AdmitFail.
     wait_until(&handle, 10, |status| {
         status
             .jobs
@@ -596,7 +596,7 @@ async fn eviction_releases_the_cheapest_sufficient_victim_and_spares_the_rest() 
 
 /// Invariant 5, unreachable-floor refusal. Carried publicly by
 /// `scheduler_eviction.rs::an_unreachable_launch_floor_refuses_before_any_release`
-/// (R2-19-01, ruled 2026-11-01); stated here as the named contract: when no
+/// (DECISIONS row 10); stated here as the named contract: when no
 /// release the harness may perform reaches the launch floor, admission refuses
 /// BEFORE any kill, names the guard, and leaves the resident installed.
 #[tokio::test]

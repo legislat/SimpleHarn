@@ -5,3 +5,11 @@
 # A public standards anchor, not a release pin: the "3.2.2" is the RFC 3986
 # host grammar the IPv6 split follows, so the version-pin regex misreads it.
 src/api/guards.rs RFC 3986 §3.2.2
+
+# An RFC 5737 documentation address (TEST-NET-3) used as the hostile-Host
+# example, not a release pin; the three-octet regex misreads the IP literal.
+tests/api_surface/control_plane.rs Host: 203.0.113.9:8708
+
+# A public standards anchor, not a release pin: the "7.6.1" is the RFC 9110
+# hop-by-hop header section the proxy strip list follows.
+tests/api_surface/proxy_admission.rs RFC 9110 §7.6.1

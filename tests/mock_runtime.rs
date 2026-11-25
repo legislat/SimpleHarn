@@ -1,4 +1,4 @@
-//! In-process fake engine (DESIGN Step 19): real axum servers on ephemeral ports, so
+//! In-process fake engine: real axum servers on ephemeral ports, so
 //! the whole scheduler actor is testable without spawning processes or touching the
 //! GPU. Behavior modes are selected by the `engine:` id the model carries: `mock`
 //! (instant ready), `mock-slow` (2.5 s readiness delay), `mock-dies` (server stops
@@ -11,18 +11,18 @@
 //! `Failed` park is an observable state), and `mock-nodiscovery` (instant ready but
 //! `/v1/models` 404s: the silent-engine discovery class), and `mock-late-discovery`
 //! (404s the FIRST `/v1/models` probe only, so a discovery miss at readiness is
-//! observable recovering on a later resolve — FINDINGS-06 [8]). The id an engine
+//! observable recovering on a later resolve). The id an engine
 //! reports at
 //! `/v1/models` comes from `spec.env["MOCK_MODEL_ID"]` (default `mock-model`), so a
 //! test can give each engine a DISTINCT identity via [`MockIdAdapter`]. A row may
 //! instead carry `MOCK_SPAWN_IDS` (a `|`-separated id list): this runtime then
 //! consumes ONE entry per spawn of that row (the last entry repeats), so the two
 //! generations of a `mock-dies-once` crash-retry report DIFFERENT ids — or `none`,
-//! which makes that generation silent (R2-18-04, [`MockGenerationIdAdapter`]).
+//! which makes that generation silent; see [`MockGenerationIdAdapter`]).
 //! [`MockRuntime::stale_kill_of`] marks a port superseded: every `kill` and
 //! `release_confirmed` naming that port answers `SpawnError::StaleTicket` (the
 //! fake reports the next generation as the owner) and never acts on the ticket,
-//! the state the scheduler's continue-on-stale reap arm needs (R2-20-06).
+//! the state the scheduler's continue-on-stale reap arm needs.
 
 use async_trait::async_trait;
 use axum::extract::State;
@@ -44,7 +44,7 @@ use std::time::Duration;
 /// Version-agnostic "decrement if positive" shared by the mock's atomic counters.
 /// `Atomic::fetch_update` is a hard deprecation warning on the newer stable
 /// toolchain (CI), renamed to `try_update`, which does not exist on the local
-/// rustc 1.98.1 (local gate); a `compare_exchange` retry loop compiles and
+/// gate toolchain; a `compare_exchange` retry loop compiles and
 /// behaves identically on both. Semantics match the replaced
 /// `fetch_update(SeqCst, SeqCst, |n| n.checked_sub(1))` exactly: SeqCst on
 /// every access, a counter already at zero is left alone (no underflow), and
@@ -111,13 +111,13 @@ pub enum MockMode {
     /// The server stops this long after start (the port refuses afterwards).
     DiesAfterMs(u64),
     /// Only the first engine this runtime starts dies; its replacement lives. This is
-    /// what makes the T10.1 crash-retry observable: the corpse is real and the
+    /// what makes crash-retry observable: the corpse is real and the
     /// restart is real, in one request.
     DiesOnce,
     /// `/health` always reports not-loaded.
     Never,
-    /// Every proxy target answers 500 (A9: a genuine upstream error is never
-    /// retried).
+    /// Every proxy target answers 500: a genuine upstream error is never
+    /// retried.
     AlwaysError,
     /// The engine answers normally but a `kill` request parks until the test releases
     /// it: a terminate that has not landed yet, so a release still in flight is
@@ -132,7 +132,7 @@ pub enum MockMode {
     /// where `discover_model_id` finds nothing and the harness must not invent an id.
     NeverDiscover,
     /// `/health` answers immediately and `/v1/models` 404s for the FIRST probe only
-    /// (FINDINGS-06 [8]): discovery misses at readiness, and only a later re-probe
+    /// — discovery misses at readiness, and only a later re-probe
     /// sees the id — the shape that makes a serve-id retry observable.
     LateDiscover,
 }
@@ -154,19 +154,19 @@ fn mode_for(engine: &str) -> MockMode {
 
 /// The exact bytes a `stream: true` chat completion answers with. The proxy contract
 /// is byte-for-byte pass-through (headers included), so the streaming test declares
-/// this same literal and asserts equality on the wire (FINDINGS-18 [4]).
+/// this same literal and asserts equality on the wire.
 pub const SSE_BODY: &str = "data: {\"chunk\":1}\n\ndata: {\"chunk\":2}\n\n";
 
 struct MockServer {
     mode: MockMode,
     /// `None` while a death is in flight: the entry stays in the table until the
     /// `axum::serve` future has really been dropped, so `release_confirmed` can never
-    /// answer `true` while the port still completes handshakes (FINDINGS-20 [7]).
+    /// answer `true` while the port still completes handshakes.
     handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// One kill currently parked on the kill gate: recorded while it waits and removed
-/// when its future ends, by any exit (FINDINGS-19 [4]).
+/// when its future ends, by any exit.
 struct ParkedKill {
     parked: Arc<Mutex<Vec<(u16, u64)>>>,
     port: u16,
@@ -204,7 +204,7 @@ struct MockState {
     mode: MockMode,
     model_id: Option<String>,
     /// Remaining `/v1/models` probes that answer 404 before this engine starts
-    /// reporting its id (FINDINGS-06 [8]: the `LateDiscover` class).
+    /// reporting its id — the `LateDiscover` class.
     discover_failures: Arc<AtomicU32>,
 }
 
@@ -236,31 +236,31 @@ pub struct MockRuntime {
     /// unload of what the cancel left installed) lowers this instead of racing the
     /// release deadline. See [`MockRuntime::hold_next_kills`].
     kill_holds: Arc<AtomicUsize>,
-    /// Ports whose kills always park (FINDINGS-19 [4]): hold by TARGET rather than
+    /// Ports whose kills always park: hold by TARGET rather than
     /// by count, so a change in how many kills the product issues cannot silently
     /// re-arm or disarm the fake. See [`MockRuntime::hold_kill_of`].
     hold_ports: Arc<Mutex<BTreeSet<u16>>>,
     /// Every kill currently parked: `(port, generation)` of its ticket. The tests
     /// assert this SET (which kills the product really issued and left unproven)
-    /// instead of trusting the fake's budget arithmetic (FINDINGS-19 [4]).
+    /// instead of trusting the fake's budget arithmetic.
     parked: Arc<Mutex<Vec<(u16, u64)>>>,
-    /// R2-20-06 fake seam: ports whose table entry reads as SUPERSEDED — a newer
+    /// Fake seam for the stale reap: ports whose table entry reads as SUPERSEDED — a newer
     /// generation owns them, so every `kill` and `release_confirmed` naming such
     /// a port answers `SpawnError::StaleTicket` and the fake never acts on the
     /// ticket (exactly what the real runtime refuses for, so a successor is never
     /// killed or confirmed away with a stale ticket). Without this the scheduler's
-    /// continue-on-stale reap wiring is unreachable for any mock-based suite
-    /// (R2-20 [6]). See [`MockRuntime::stale_kill_of`].
+    /// continue-on-stale reap wiring is unreachable for any mock-based suite.
+    /// See [`MockRuntime::stale_kill_of`].
     stale_ports: Arc<Mutex<BTreeSet<u16>>>,
-    /// R2-18-04 fake seam: how many `MOCK_SPAWN_IDS` generations each id sequence
+    /// Fake seam for spawn-era identity: how many `MOCK_SPAWN_IDS` generations each id sequence
     /// has already served, keyed by the sequence itself. First spawn of a sequence
     /// reports entry 0, next spawn entry 1, the last entry repeats; rows without
     /// the key never touch the map, so every pre-existing behavior is unchanged.
     spawn_id_taken: Arc<Mutex<HashMap<String, usize>>>,
-    /// R9 fake seam: canned `docker logs` text per container name, returned by
+    /// Fake seam for container reports: canned `docker logs` text per container name, returned by
     /// [`EngineRuntime::container_report`] (tests seed the startup `MemorySummary`).
     container_reports: Arc<Mutex<HashMap<String, String>>>,
-    /// R9 fake seam: every `(model, text)` handed to `save_container_log`, for
+    /// Fake seam for container-log snapshots: every `(model, text)` handed to `save_container_log`, for
     /// asserting a failed launch snapshotted its container log.
     saved_container_logs: Arc<Mutex<Vec<(String, String)>>>,
     /// Ruling 1(b) fake seam: canned publish evidence returned by
@@ -304,7 +304,7 @@ impl MockRuntime {
     }
 
     /// Seeds the canned `docker logs` text [`EngineRuntime::container_report`] returns
-    /// for `name` (R9). Call before driving the scheduler.
+    /// for `name`. Call before driving the scheduler.
     #[allow(dead_code)]
     pub fn set_container_report(&self, name: &str, text: &str) {
         self.container_reports
@@ -313,7 +313,7 @@ impl MockRuntime {
             .insert(name.to_string(), text.to_string());
     }
 
-    /// Every `(model, text)` the scheduler asked to snapshot, in order (R9).
+    /// Every `(model, text)` the scheduler asked to snapshot, in order.
     #[allow(dead_code)]
     pub fn saved_container_logs(&self) -> Vec<(String, String)> {
         self.saved_container_logs
@@ -360,7 +360,7 @@ impl MockRuntime {
     }
 
     /// Parks EVERY further `kill` of `port` until the gate is released, by target
-    /// rather than by count (FINDINGS-19 [4]): the fake's parking no longer depends on
+    /// rather than by count: the fake's parking no longer depends on
     /// how many kills the product happens to issue, so a correct change to the reap
     /// path (dedup, re-order) cannot silently re-arm the scenario.
     #[allow(dead_code)]
@@ -372,14 +372,14 @@ impl MockRuntime {
     }
 
     /// The `(port, generation)` of every kill currently parked: the SET the test
-    /// expects to be held (FINDINGS-19 [4]). An entry is removed when its kill
+    /// expects to be held. An entry is removed when its kill
     /// proceeds, so this names the releases the product left unproven right now.
     #[allow(dead_code)]
     pub fn held_kills(&self) -> Vec<(u16, u64)> {
         self.parked.lock().expect("parked kills lock").clone()
     }
 
-    /// R2-20-06 seam: declare every ticket that names `port` stale — the fake
+    /// Stale-reap seam: declare every ticket that names `port` stale — the fake
     /// answers `SpawnError::StaleTicket` to its `kill` AND its `release_confirmed`
     /// and never acts on the entry, exactly what the real table does for a port a
     /// newer generation owns (`process_runtime` pins the runtime side). Marking
@@ -396,14 +396,15 @@ impl MockRuntime {
             .insert(port);
     }
 
-    /// Number of live engines (leak-check helper for F-1 / F-6). Used by the
+    /// Number of live engines (leak-check helper for the client-abort and
+    /// double-load checks). Used by the
     /// scheduler_actor test binary; other binaries sharing this module may not call it.
     #[allow(dead_code)]
     pub fn server_count(&self) -> usize {
         self.servers.lock().expect("mock runtime lock").len()
     }
 
-    /// Chaos seam (TASK-BERTH-B7): kill `port` OUT OF BAND — the same teardown the
+    /// Chaos seam: kill `port` OUT OF BAND — the same teardown the
     /// harness's own `kill` performs (abort the `axum::serve` future, await its drop,
     /// clear the table entry) but issued by the test, not through `kill`/the gate.
     /// This is the fake's stand-in for `contrib/chaos` killing a component at the seam:
@@ -463,31 +464,30 @@ async fn health(
 
 /// Exact bytes a `mock_encoded_reply: true` request answers with: opaque bytes
 /// labelled `content-encoding: gzip`. The proxy decodes nothing, so the pass-through
-/// contract demands these same bytes and that header reach the client untouched
-/// (FINDINGS-06 [9]).
+/// contract demands these same bytes and that header reach the client untouched.
 pub const ENCODED_BODY: &[u8] = b"\x1f\x8b\x08\x00opaque-not-really-gzip\x00\xff";
 
 /// Proxy echo: any other path answers 200 with the request shape, so proxy tests can
 /// assert what the harness forwarded (including the rewritten `model` field). The
-/// echoed `path` is the full request target INCLUDING the query string (FINDINGS-06
-/// [10]): the test asserts what the engine actually received, not what the proxy
+/// echoed `path` is the full request target INCLUDING the query string:
+/// the test asserts what the engine actually received, not what the proxy
 /// chose to reveal. A body carrying `"stream": true` is answered with the fixed SSE
 /// literal and a `text/event-stream` content-type, so the proxy's pass-through
-/// contract (byte-for-byte body + preserved content-type, FINDINGS-18 [4]) has
+/// contract (byte-for-byte body + preserved content-type) has
 /// something real to assert. A body carrying `"mock_encoded_reply": true` is answered
 /// with [`ENCODED_BODY`] under `content-encoding: gzip`. A body carrying
 /// `"mock_hop_by_hop": true` is answered with one of every hop-by-hop response
 /// header (plus a `connection` value naming one more) beside an ordinary marker
 /// header, so the proxy's engine→client strip list has a real emitter to pin
-/// against (R2-06-02). A body carrying `"mock_plain_404": true` is answered with
+/// against. A body carrying `"mock_plain_404": true` is answered with
 /// a `404` under `content-type: text/plain`, the silent engine refusing on the
-/// wire (R2-05-03 pass-through integrity).
+/// wire (pass-through integrity).
 async fn echo(
     State(state): State<MockState>,
     uri: axum::http::Uri,
     body: Option<Json<serde_json::Value>>,
 ) -> axum::response::Response {
-    // A9 test support: this mode is a genuinely-erroring upstream.
+    // Test support for the never-retry rule: this mode is a genuinely-erroring upstream.
     if state.mode == MockMode::AlwaysError {
         return (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -525,7 +525,7 @@ async fn echo(
         )
             .into_response();
     }
-    // R2-06-02 test support: an engine replying with one of every RFC 9110
+    // Hop-by-hop strip support: an engine replying with one of every RFC 9110
     // hop-by-hop response header, a `connection` value enumerating a further
     // header name, and one ordinary header that must survive the harness strip.
     if body.as_ref().is_some_and(|Json(value)| {
@@ -551,7 +551,7 @@ async fn echo(
         )
             .into_response();
     }
-    // R2-05-03 test support: an engine answering a plain-text `404`. On a proxy
+    // Plain-404 pass-through support: an engine answering a plain-text `404`. On a proxy
     // path this is the engine's own refusal, and the harness envelope must not
     // replace it (pass-through integrity).
     if body.as_ref().is_some_and(|Json(value)| {
@@ -580,7 +580,7 @@ async fn echo(
 }
 
 /// Aborts the server on `port` after `ms`, making the port refuse connections.
-/// Awaits the aborted `axum::serve` future exactly as `kill` does (FINDINGS-20 [7]):
+/// Awaits the aborted `axum::serve` future exactly as `kill` does:
 /// until the drop lands the entry stays in the table, so the fake never calls an
 /// engine "gone" while its listener is still completing handshakes.
 fn schedule_death(servers: Arc<Mutex<HashMap<u16, MockServer>>>, port: u16, ms: u64) {
@@ -607,13 +607,13 @@ impl EngineRuntime for MockRuntime {
             .map(String::as_str)
             .unwrap_or("mock");
         let mode = mode_for(engine);
-        // R2-18-04: a row may carry `MOCK_SPAWN_IDS` - a `|`-separated id list
+        // A row may carry `MOCK_SPAWN_IDS` - a `|`-separated id list
         // this runtime consumes ONE entry per spawn of that row (last entry
         // repeats), so the generations of a `mock-dies-once` crash-retry report
         // DIFFERENT ids, or `none` for a generation that discovers nothing. A
         // fixed per-row id hid exactly this: the corpse and its replacement
         // answered the same `mock-model`, so a crash-retry that kept forwarding
-        // the DEAD engine's id stayed green (the FINDINGS-20 [6] blindness). A
+        // the DEAD engine's id stayed green. A
         // row without the key keeps the historical behavior untouched.
         let (model_id, discover_failures) = match spec.env.get("MOCK_SPAWN_IDS") {
             Some(sequence) => {
@@ -702,7 +702,7 @@ impl EngineRuntime for MockRuntime {
     }
 
     async fn kill(&self, ticket: &SpawnTicket) -> Result<(), SpawnError> {
-        // R2-20-06 seam: a port the test declared superseded refuses every ticket
+        // Stale-reap seam: a port the test declared superseded refuses every ticket
         // naming it (see [`MockRuntime::stale_kill_of`]) - the kill would land on
         // a newer generation this ticket does not own, so it is refused, not forced.
         if self
@@ -728,7 +728,7 @@ impl EngineRuntime for MockRuntime {
             });
         // A `HoldKill` engine parks while the test still holds kills for it: either
         // by TARGET (`hold_kill_of`: every kill of this port parks, so the product's
-        // kill COUNT cannot re-arm the fake — FINDINGS-19 [4]) or by the legacy
+        // kill COUNT cannot re-arm the fake) or by the legacy
         // `hold_next_kills` budget a still-unmigrated scenario relies on.
         let held_by_target = holdkill
             && self
@@ -752,7 +752,7 @@ impl EngineRuntime for MockRuntime {
         // must not be held across the cancellation). The entry is removed only after
         // the `axum::serve` future has been dropped: a `release_confirmed` of `true`
         // therefore always means the port has really stopped answering, never that
-        // the fake merely forgot the engine (FINDINGS-20 [7]). A handle already taken
+        // the fake merely forgot the engine. A handle already taken
         // by `schedule_death` means that task owns the removal — the kill of a
         // self-dying engine is a no-op, and the entry disappears with the drop.
         let handle = {
@@ -776,14 +776,14 @@ impl EngineRuntime for MockRuntime {
         // The runtime's own bookkeeping is the release evidence: `kill` clears the
         // entry only after its server has been aborted and reaped, and a held kill
         // leaves the entry in place — exactly the "terminate has not landed yet" state
-        // a test needs to observe (chunk 4 [1]). Re-probing the port here instead made
+        // a test needs to observe. Re-probing the port here instead made
         // the answer depend on when the runtime happened to drop the listener of a task
         // it had just cancelled: the kernel kept completing handshakes into a backlog
         // nobody serviced, so the connect hung past the release deadline of an engine
         // that was already dead. `is_dead` keeps that TCP check for the tests that want
         // the port-level claim — and the death paths now await the drop BEFORE the
-        // entry disappears, so the two claims cannot disagree (FINDINGS-20 [7]).
-        // R2-20-06 seam: a superseded port confirms NOTHING to any ticket naming
+        // entry disappears, so the two claims cannot disagree.
+        // Stale-reap seam: a superseded port confirms NOTHING to any ticket naming
         // it - `Ok(true)` here would talk a successor's live engine away (the
         // real-side invariant `process_runtime` pins) - the answer is the same typed
         // `StaleTicket` the kill refuses with.
@@ -847,7 +847,7 @@ impl EngineRuntime for MockRuntime {
 }
 
 /// A `MockAdapter` under a caller-chosen engine id that reports a caller-chosen
-/// `id` at `/v1/models` (FINDINGS-20 [6]). One fixed id for every engine made every
+/// `id` at `/v1/models`. One fixed id for every engine made every
 /// `serve_id` assertion compare the same constant, so a product bug that forwarded
 /// slot A's id for slot B's request was invisible; distinct ids per engine make the
 /// identity per-slot again.
@@ -874,7 +874,7 @@ impl EngineAdapter for MockIdAdapter {
 }
 
 /// A `MockAdapter` whose engine misses the FIRST `/v1/models` discovery and
-/// reports `serve_id` on every probe after it (FINDINGS-06 [8]): the readiness
+/// reports `serve_id` on every probe after it: the readiness
 /// discovery yields `None`, and only a re-probe — the kind the scheduler now
 /// runs when an occupant resolves with no id — can ever see the id.
 #[derive(Debug, Clone)]
@@ -902,7 +902,7 @@ impl EngineAdapter for MockLateIdAdapter {
 }
 
 /// A `MockAdapter` under a `mock-dies-once` engine id whose two generations carry
-/// distinct `/v1/models` identities (R2-18-04): the corpse reports the first entry
+/// distinct `/v1/models` identities: the corpse reports the first entry
 /// of `ids` and the crash-retry successor the second - or, with the entry `none`,
 /// it discovers nothing, so the harness-name fallback becomes observable. The
 /// entries ride [`MockRuntime`]'s `MOCK_SPAWN_IDS` per-spawn sequence, one entry
@@ -910,7 +910,7 @@ impl EngineAdapter for MockLateIdAdapter {
 /// one constant id, so the crash-retry's re-resolved request could not be pinned
 /// to the SUCCESSOR's discovery: a proxy that kept the pre-restart `serve_id` -
 /// including forwarding a dead engine's id when the successor stays silent - stayed
-/// green (the FINDINGS-20 [6] blindness, surviving in the crash-retry test).
+/// green, in the crash-retry test included.
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // binaries that never script a crash-retry id pair still compile this module
 pub struct MockGenerationIdAdapter {

@@ -1,4 +1,4 @@
-//! Discovery and crash-retry tests (Step 10 F-4, T10.1, A9): the engine's
+//! Discovery and crash-retry tests: the engine's
 //! self-reported id wins for proxy rewriting with a recorded warning on yaml
 //! mismatch; a dead engine's restart installs a fresh, correctly-identified
 //! engine; a genuine upstream error is never retried. The end-to-end mid-request
@@ -47,7 +47,7 @@ fn harness(
     for engine in ["mock-dies", "mock-error", "mock-nodiscovery"] {
         adapters.insert(engine.to_string(), Arc::new(MockAdapter));
     }
-    // FINDINGS-20 [6]: two engines with DISTINCT self-reported ids, so a serve_id
+    // Two engines with DISTINCT self-reported ids, so a serve_id
     // crossed between slots is visible instead of hiding behind one constant.
     for (id, serve_id) in [("mock-id-a", "engine-alpha"), ("mock-id-b", "engine-beta")] {
         adapters.insert(
@@ -89,7 +89,7 @@ async fn post(
 #[tokio::test]
 async fn discovery_adopts_the_engines_real_id() {
     // The mock reports its own id `mock-model` at /v1/models; with no yaml claim,
-    // the receipt and slot carry the discovered id (F-4 fixed).
+    // The receipt and slot carry the discovered id.
     let (handle, _runtime) = harness(config(), &[("m1", "mock", CategoryId::Work, 4.0, None)]);
     let receipt = post(&handle, "m1", CategoryId::Work).await;
     assert_eq!(receipt.serve_id.as_deref(), Some("mock-model"));
@@ -106,7 +106,8 @@ async fn discovery_adopts_the_engines_real_id() {
 #[tokio::test]
 async fn serve_model_mismatch_is_a_recorded_warning_and_discovery_wins() {
     // The yaml claims `wrong-id`; the engine reports `mock-model`: discovery
-    // wins, the mismatch lands in the job's warnings (never trusted, F-4).
+    // wins, the mismatch lands in the job's warnings (the yaml claim is
+    // never trusted).
     let (handle, _runtime) = harness(
         config(),
         &[("m2", "mock", CategoryId::Work, 4.0, Some("wrong-id"))],
@@ -136,7 +137,7 @@ async fn serve_model_mismatch_is_a_recorded_warning_and_discovery_wins() {
 
 #[tokio::test]
 async fn restart_after_death_installs_a_new_engine() {
-    // T10.1's scheduler half. FINDINGS-20 [13]: this used to be named
+    // The scheduler half of crash-retry: this used to be named
     // `dead_engine_mid_request_is_restarted_and_retried_once` while sending NO
     // request — a test named for the retry contract that cannot see a retry. The
     // end-to-end mid-request retry (send → connect failure → restart → retry) is
@@ -153,8 +154,8 @@ async fn restart_after_death_installs_a_new_engine() {
 
     // Wait past the mock's 300 ms self-death window.
     tokio::time::sleep(Duration::from_millis(500)).await;
-    // The restart names the refused port — the corpse the caller witnessed
-    // (R2-06-01): the slot occupant is still exactly that generation, so the
+    // The restart names the refused port — the corpse the caller witnessed:
+    // the slot occupant is still exactly that generation, so the
     // reap + reload path runs.
     let reply = handle
         .restart("dies", CategoryId::Work, first.port)
@@ -164,7 +165,7 @@ async fn restart_after_death_installs_a_new_engine() {
         panic!("expected Loaded, got {reply:?}");
     };
 
-    // FINDINGS-20 [8]: the old `assert_ne!(first.port, second.port)` could not fail
+    // The old `assert_ne!(first.port, second.port)` could not fail
     // (the fake binds ephemeral OS ports the scheduler reads back verbatim,
     // src/scheduler/mod.rs `(Spawn, Spawned(Ok))` overwrites the ticket port) and
     // COULD flake (the OS may hand the same ephemeral port back). The honest pins
@@ -211,7 +212,7 @@ async fn restart_of_a_missing_model_falls_back_to_a_plain_load() {
     );
     let reply = handle
         // No prior forward happened, so there is no corpse port to name; any
-        // value takes the same "no occupant" arm (R2-06-01 added the port).
+        // value takes the same "no occupant" arm.
         .restart("phantom", CategoryId::Work, 0)
         .await
         .expect("restart ok");
@@ -220,9 +221,9 @@ async fn restart_of_a_missing_model_falls_back_to_a_plain_load() {
 
 #[tokio::test]
 async fn two_loaded_engines_carry_distinct_serve_ids() {
-    // FINDINGS-20 [6]: with one fixed id for every engine, a product bug that
-    // forwarded slot A's `serve_id` for slot B — the crash-retry staleness class
-    // fixed in b540c30 — compared equal against the same constant. Each engine here
+    // With one fixed id for every engine, a product bug that
+    // forwarded slot A's `serve_id` for slot B — the crash-retry staleness class —
+    // compared equal against the same constant. Each engine here
     // reports its own id; the slot and receipt must carry THEIR OWN engine's id.
     let mut cfg = config();
     cfg.category_mut(CategoryId::Aux)
@@ -261,7 +262,7 @@ async fn two_loaded_engines_carry_distinct_serve_ids() {
 
 #[tokio::test]
 async fn a_silent_engine_adopts_no_id_and_records_no_false_warning() {
-    // FINDINGS-20 [6], the `serve_id == None` branch: an engine that 404s
+    // The `serve_id == None` branch: an engine that 404s
     // `/v1/models` yields no discovered id. `install` only records a mismatch
     // warning when BOTH the yaml claim and discovery produced an id, so a claimed
     // id beside a silent engine must leave the slot with NO id (never the claimed
@@ -305,16 +306,16 @@ async fn a_silent_engine_adopts_no_id_and_records_no_false_warning() {
 
 #[tokio::test]
 async fn a_self_dying_engine_stops_answering_before_the_fake_calls_it_gone() {
-    // FINDINGS-20 [7]: `kill` awaited the aborted serve future but `schedule_death`
+    // `kill` awaited the aborted serve future but `schedule_death`
     // (the `mock-dies` path) did not, so the map-only `release_confirmed` could
     // answer `true` while the corpse's listener was still completing handshakes —
-    // exactly the pre-0fa70eb condition that let a connect hang past a release
+    // the condition that once let a connect hang past a release
     // deadline. The fake's word must be the port's word: from the instant
     // `release_confirmed` says gone, the port must refuse. 8 rounds is one per
     // death cycle; the pre-fix window opened exactly once per death, and on the
     // current-thread runtime the reverted ordering was observable only as a slow
-    // connect, never a hard failure — this is the structural invariant pin
-    // (FINDINGS-20 [7]), not a race-catcher.
+    // connect, never a hard failure — this is the structural invariant pin,
+    // not a race-catcher.
     let runtime = MockRuntime::new();
     let spec = LaunchSpec {
         argv: vec!["mock-engine".to_string()],

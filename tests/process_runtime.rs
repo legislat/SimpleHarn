@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Test port, outside every SE plan and protected range (HANDOFF §3). Each test in
+/// Test port, outside every SE plan and protected range. Each test in
 /// this binary takes its own offset: `#[tokio::test]` runs them concurrently, so two
 /// children may never be given one port. `18_195` stays reserved for the lib binary's
 /// own engine-child test.
@@ -23,7 +23,7 @@ const TEST_PORT: u16 = 18_190;
 const PYTHON: &str = if cfg!(windows) { "python" } else { "python3" };
 
 /// Log namespace owned by the capture test. It may delete any file starting with this
-/// prefix because nothing else writes it (FINDINGS-20 [1]: a name left over from an
+/// prefix because nothing else writes it: a name left over from an
 /// earlier run is not evidence that this run's child produced bytes).
 const CAPTURE_PREFIX: &str = "process-runtime-logcapture";
 
@@ -304,7 +304,7 @@ async fn spawns_a_real_child_probes_ready_and_confirms_release() {
 
 #[tokio::test]
 async fn killing_a_port_we_do_not_own_is_a_noop() {
-    // Step 1: never kill what it did not start — FINDINGS-20 [4]: the whole test
+    // Never kill what it did not start: the whole test
     // used to be `kill().is_ok()` + `release_confirmed()==true`, which stays green
     // even if `kill` grows an unscoped TerminateProcess path, because nothing in
     // the outside world was asserted. Now a stand-in foreign engine (a listener the
@@ -482,7 +482,7 @@ async fn probe_fails_fast_when_the_child_already_exited() {
 
 #[tokio::test]
 async fn child_output_lands_in_a_new_non_empty_log_file() {
-    // FINDINGS-20 [1]: the Step-8 capture check used to pass on any leftover name in
+    // The capture check used to pass on any leftover name in
     // `logs/`, and every leftover was 0 bytes because the child printed nothing. This
     // pins capture by creation AND content: the test deletes its own namespace, plants
     // a 0-byte decoy that a name-matching assertion would have accepted, and then
@@ -528,11 +528,12 @@ async fn child_output_lands_in_a_new_non_empty_log_file() {
 
 #[tokio::test]
 async fn release_is_not_confirmed_while_the_port_still_answers() {
-    // FINDINGS-20 [2] / FINDINGS-19 [1]: `release_confirmed` was only ever seen saying
-    // `true`, so an implementation that answered true the moment `kill` was called —
-    // the exact optimism 0fa70eb removed from the mock — passed every assertion here.
+    // `release_confirmed` was only ever seen saying `true`, so an
+    // implementation that answered true the moment `kill` was called — the
+    // exact false optimism later removed from the mock — passed every
+    // assertion here.
     // A foreign listener keeps the port answering after this runtime's own child has
-    // exited, so the G12 pair (child exited AND port refused) is falsified on its port
+    // exited, so the confirmed-release pair (child exited AND port refused) is falsified on its port
     // leg, and the same call must flip to `true` once nothing else holds the port.
     let runtime = ProcessRuntime::new();
     let port = TEST_PORT + 3;
@@ -607,7 +608,7 @@ async fn release_is_not_confirmed_while_the_port_still_answers() {
 
 #[tokio::test]
 async fn release_confirmed_refuses_a_stale_ticket_as_a_typed_error() {
-    // FINDINGS-20 [2]: every call in this file reused `generation: 1`, so the
+    // Every call in this file reused `generation: 1`, so the
     // `Err(StaleTicket)` arms of `kill` and `release_confirmed` were unreachable from
     // an integration test. A ticket that does not name the live spawn of that port is
     // reported, never silently answered.
@@ -716,7 +717,8 @@ async fn a_stale_ticket_cannot_confirm_away_the_successor_on_its_port() {
 
 #[tokio::test]
 async fn probe_names_the_missing_model_file_when_a_child_exits_early() {
-    // FINDINGS-13 [2]'s load-path companion, end to end on the real runtime: the
+    // The load-path companion of the boot's missing-binary report, end to end
+    // on the real runtime: the
     // argv is llama-shaped (-m <missing path>), the child is a real command that
     // exits at once, and the fast-fail reason must name the doomed file rather
     // than only the exit status. Pre-fix this fails: the reason is the bare
@@ -724,7 +726,7 @@ async fn probe_names_the_missing_model_file_when_a_child_exits_early() {
     let runtime = ProcessRuntime::new();
     // +9: the next free offset below the protected 18203/18204 window; +5 stays
     // free because 18_195 is reserved for the lib binary's engine-child test
-    // (header contract, R2-20-04).
+    // (header contract).
     let port = TEST_PORT + 9;
     let missing = "Z:\\definitely-not-here\\doomed.gguf";
     let spec = LaunchSpec {
@@ -790,7 +792,7 @@ async fn probe_names_the_missing_model_file_when_a_child_exits_early() {
 
 #[tokio::test]
 async fn dropping_the_runtime_kills_its_child_via_the_job_object() {
-    // FINDINGS-20 [5]: the file header advertises `JOB_OBJECT_LIMIT_KILL_ON_CLOSE`
+    // The file header advertises `JOB_OBJECT_LIMIT_KILL_ON_CLOSE`
     // (src/platform/windows.rs `create_kill_on_close_job`) — the guarantee that stops an
     // orphaned llama-server holding 40+ GiB after a harness crash or a dropped
     // runtime — but every kill exercised here is the cooperative `kill()` path.

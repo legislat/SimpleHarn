@@ -1,4 +1,4 @@
-//! FINDINGS-06 [8] falsifier: a `serve_id` discovery miss at readiness is
+//! Discovery-miss falsifier: a `serve_id` discovery miss at readiness is
 //! neither silent nor permanent. The install must WARN (naming the model and
 //! what was tried), the load must still succeed, the first forward must keep
 //! the documented harness-name fallback, and the next resolve must re-run the
@@ -152,7 +152,7 @@ async fn get_json(app: &Router, path: &str) -> (StatusCode, Value) {
 
 /// Control and WORK listeners over one PERMANENTLY silent engine (`/v1/models`
 /// always 404s — the `mock-nodiscovery` class): the shape where every resolve
-/// re-runs discovery and every re-run lands silence (FINDINGS-11 [2]).
+/// re-runs discovery and every re-run lands silence.
 fn silent_app(model: &str) -> (Router, Router) {
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
     adapters.insert(
@@ -214,7 +214,7 @@ async fn wait_for_silence_warn(lines: &Arc<Mutex<Vec<String>>>, model: &str) -> 
 
 #[tokio::test]
 async fn a_hammered_silent_engine_is_warned_about_once_per_spawn() {
-    // FINDINGS-11 [2], the client-hammer falsifier: a permanently silent engine
+    // The client-hammer falsifier: a permanently silent engine
     // answers nothing to EVERY re-discovery, so pre-fix a hammering client
     // logged ~0.5 warns/s/slot forever. The reconcile doctrine stands: the warn
     // names the state, and an unchanged state is named once per spawn.

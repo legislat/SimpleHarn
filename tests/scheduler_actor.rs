@@ -1,6 +1,6 @@
-//! Scheduler-actor integration tests against the in-process mock engine (Step 19).
-//! Each test pins one v3.3 defect class: F-1 (client abort), F-6 (double load),
-//! T3.4 (rapid A->B), T8 (cancel mid-load), A1 (control plane behind a load), plus
+//! Scheduler-actor integration tests against the in-process mock engine.
+//! Each test pins one defect class: client abort, double load, rapid A->B
+//! supersede, cancel mid-load, control plane behind a load, plus
 //! the admission and supersede contracts.
 
 mod mock_runtime;
@@ -146,7 +146,7 @@ async fn wait_until(
 }
 
 /// Submits a load and vanishes: the command reaches the actor, the reply is discarded —
-/// the true F-1 client-abort shape (the dropped waiter must not cancel the load).
+/// the true client-abort shape (the dropped waiter must not cancel the load).
 async fn submit_and_vanish(handle: &SchedulerHandle, model: &str, category: CategoryId) {
     let client = handle.clone();
     let model = model.to_string();
@@ -232,7 +232,7 @@ async fn same_model_same_category_is_already_and_idempotent() {
 
 #[tokio::test]
 async fn concurrent_identical_loads_share_one_job_and_one_engine() {
-    // F-6: two loads for the same model and category must not race.
+    // Two loads for the same model and category must not race.
     let (handle, runtime) = harness(
         config(10),
         &[("qwen3", "mock-slow", CategoryId::Work, Some(4.0))],
@@ -299,7 +299,7 @@ async fn different_model_replaces_occupant_and_kills_previous() {
 
 #[tokio::test]
 async fn rapid_a_then_b_ends_with_exactly_b() {
-    // T3.4: a slow A is superseded by B; the end state is B serving, A's engine dead.
+    // A slow A is superseded by B; the end state is B serving, A's engine dead.
     let (handle, runtime) = harness(
         config(10),
         &[
@@ -330,7 +330,7 @@ async fn rapid_a_then_b_ends_with_exactly_b() {
 
 #[tokio::test]
 async fn client_abort_mid_load_leaves_a_serving_slot_and_no_orphan() {
-    // F-1: the waiter disappears; the load itself must complete.
+    // The waiter disappears; the load itself must complete.
     let (handle, runtime) = harness(
         config(10),
         &[("qwen3", "mock-slow", CategoryId::Work, Some(4.0))],
@@ -418,7 +418,7 @@ async fn admission_refusal_carries_the_numbers_and_keeps_the_slot() {
     );
 }
 
-/// TASK-BERTH-B1 `min_turn` juggle guard: A serves RP under a one-hour knob;
+/// `min_turn` juggle guard: A serves RP under a one-hour knob;
 /// B into WORK needs RP's bytes; the planner must refuse, name A and the knob
 /// in the blockers tail, and keep A serving. Kills A-B-A-B ping-pong (measured
 /// swaps run 14-45 s). Falsifier: delete the young-holder filter in
@@ -563,7 +563,7 @@ async fn an_explicit_same_slot_request_still_replaces_a_young_holder() {
 
 #[tokio::test]
 async fn under_specified_model_refuses_with_the_real_reason() {
-    // F-7 lesson: the refusal must name under-specification, not blame a neighbor.
+    // The refusal must name under-specification, not blame a neighbor.
     let (handle, _runtime) = harness(config(5), &[("ghost", "mock", CategoryId::Work, None)]);
 
     let error = handle
@@ -590,8 +590,8 @@ async fn unload_frees_slot_ledger_and_engine() {
     })
     .await;
     assert_eq!(runtime.server_count(), 0, "unload must kill the engine");
-    // Idempotent: unloading an empty category moved nothing, and the reply says so
-    // (FINDINGS-07 [5]: it used to be an indistinguishable `Done`).
+    // Idempotent: unloading an empty category moved nothing, and the reply says so —
+    // an idempotent unload used to answer an indistinguishable `Done`.
     assert!(matches!(
         handle.unload(CategoryId::Work).await.expect("idempotent"),
         Reply::Unloaded {
@@ -603,7 +603,7 @@ async fn unload_frees_slot_ledger_and_engine() {
 
 #[tokio::test]
 async fn unload_model_during_load_cancels_and_kills_engine() {
-    // T12.1 + T8: unloading a still-loading model cancels its swap and the
+    // Unloading a still-loading model cancels its swap and the
     // cancellation still runs kill + release confirmation.
     let (handle, runtime) = harness(
         config(10),
@@ -638,7 +638,7 @@ async fn unload_model_during_load_cancels_and_kills_engine() {
         0,
         "cancelled swap must not leak an engine"
     );
-    // T12.2: unloading a model that is not loaded moved nothing; the reply says so.
+    // Unloading a model that is not loaded moves nothing; the reply says so.
     assert!(matches!(
         handle.unload_model("ghost").await.expect("idempotent"),
         Reply::Unloaded {
@@ -648,7 +648,7 @@ async fn unload_model_during_load_cancels_and_kills_engine() {
     ));
 }
 
-// --- cancel while a victim release is in flight (chunk 4 [1], 2026-10-27) ---------
+// --- cancel while a victim release is in flight -------------------------------------
 
 /// The resident model of the cancel-mid-release scenarios: its engine parks inside
 /// `kill` until the test releases it, so the swap's Dispose release is genuinely still
@@ -708,7 +708,7 @@ async fn swap_parked_in_dispose_over_a_victim(handle: &SchedulerHandle) -> JobId
 
 #[tokio::test]
 async fn cancel_of_a_swap_mid_victim_release_kills_the_victim_and_empties_its_slot() {
-    // FINDINGS-04 [1]: Unload during a hung swap is the operator's commonest recovery
+    // Unload during a hung swap is the operator's commonest recovery
     // gesture. Cancelling there must still kill the victim and confirm it: a job that
     // terminalizes over an unconfirmed release leaves a dead-but-installed occupant,
     // which debits the ledger forever and blocks reload with 200 `already`.
@@ -771,7 +771,7 @@ async fn cancel_of_a_swap_mid_victim_release_kills_the_victim_and_empties_its_sl
 
 #[tokio::test]
 async fn a_repeat_unload_of_a_stuck_swap_reports_nothing_new() {
-    // FINDINGS-09 [1]: with the first unload's cancel still stuck in
+    // With the first unload's cancel still stuck in
     // `CancelRequested` (the victim's kill held), a second `unload_model` moves
     // nothing — the unload commitment is already armed behind the same job and
     // the job is already cancelled — yet pre-fix it answered like a command
@@ -833,7 +833,7 @@ async fn a_repeat_unload_of_a_stuck_swap_reports_nothing_new() {
 
 #[tokio::test]
 async fn second_unload_of_a_slow_unload_kills_the_victim_and_empties_its_slot() {
-    // The mirror case of chunk 4 [1]: `begin_unload_slot` sets `victim`, never
+    // The mirror case of the unproven-release rule: `begin_unload_slot` sets `victim`, never
     // `spawned`, so the second /har/unload of a slow unload cancels the first while
     // its kill is in flight — and must still finish the job it cancels.
     let (handle, runtime) = hold_kill_harness(config(10));
@@ -857,7 +857,7 @@ async fn second_unload_of_a_slow_unload_kills_the_victim_and_empties_its_slot() 
         "the engine is still live when the second unload lands"
     );
 
-    // FINDINGS-09 [2]: the command disarms an in-flight UNLOAD job, which is a
+    // The command disarms an in-flight UNLOAD job, which is a
     // change of `unloading` commitment (the release is re-armed behind the
     // cancel), not a cancellation of a load — `cancelled` per README names only
     // load jobs. Pre-fix this answered `jobs_cancelled: 1` for an Unload row.
@@ -982,7 +982,7 @@ async fn a_second_cancel_of_the_same_swap_still_reaps_the_victim() {
 
 #[tokio::test]
 async fn unload_all_clears_every_category_and_cancels_inflight() {
-    // T12.4 (the tray's Unload All): every occupied slot releases, every
+    // The tray's Unload All: every occupied slot releases, every
     // in-flight job cancels, nothing leaks.
     let (handle, runtime) = harness(
         config(10),
@@ -1094,7 +1094,7 @@ async fn engine_that_never_becomes_ready_fails_within_the_deadline() {
         slot_model(&status, CategoryId::Work)
     );
     assert!(terminal_jobs(&status).iter().any(|j| j.error.is_some()));
-    // FINDINGS-19 [3]: the F-6 funnel is runtime-enforced only by a `debug_assert`
+    // The double-load funnel is runtime-enforced only by a `debug_assert`
     // compiled out of the release binary, so the failure tests must pin the STATES,
     // not just strings. A failed load terminalizes by walking Failed -> Reap -> Idle;
     // a regression that terminalizes without completing the walk leaves the row in
@@ -1116,10 +1116,11 @@ async fn engine_that_never_becomes_ready_fails_within_the_deadline() {
 
 #[tokio::test]
 async fn a_failed_spawn_parks_in_failed_then_walks_the_funnel_to_idle() {
-    // FINDINGS-19 [3]: `SwapState::Failed` was asserted by zero tests, so a
+    // `SwapState::Failed` was asserted by zero tests, so a
     // regression that terminalized a failure without walking Failed -> Reap -> Idle
-    // (or skipped Quiesce) was green suite-wide while `/har/jobs` — the surface F-5
-    // exists to make honest — showed a state that never happened. The runtime enforces
+    // (or skipped Quiesce) was green suite-wide while `/har/jobs` — the surface the
+    // ledger-honesty rule exists to make honest — showed a state that never
+    // happened. The runtime enforces
     // the walk only with a `debug_assert!` compiled out of the release binary.
     // `mock-hold-never` makes the observation *deterministic*, not a race: the engine
     // spawns and never becomes ready, so `fail_job` parks the job in `Failed` and its
@@ -1184,7 +1185,7 @@ async fn failed_swap_that_released_its_victim_still_reaps_its_own_engine() {
     // The kill target used to be `job.victim` when one existed, and `job.victim` is never
     // cleared once queued — so a swap that evicted its victim, spawned, and then failed
     // readiness re-killed a corpse and left the engine it had started holding the card and
-    // its port while the slot read empty (chunk 3, CRITICAL, 2026-10-27).
+    // its port while the slot read empty.
     let (handle, runtime) = harness5(
         config(1),
         &[
@@ -1540,7 +1541,7 @@ async fn exact_with_a_number_gates_like_fixed() {
     assert_eq!(runtime.server_count(), 0);
 }
 
-// --- launch validation precedes eviction (chunk 10 [2], 2026-10-27) -----------
+// --- launch validation precedes eviction --------------------------------------------
 
 /// Pins the refusal of a load the adapter cannot build a spec for: terminal at the
 /// admission stage, naming what it refused, and leaving the card exactly as it was —
@@ -1591,7 +1592,7 @@ fn assert_refused_without_damage(
 
 #[tokio::test]
 async fn a_strata_model_without_a_profile_source_is_refused_before_the_victim_dies() {
-    // Chunk 10 [2], row 19 shape: the template's `strata_exe` is required by the
+    // DECISIONS row 19 shape: the template's `strata_exe` is required by the
     // real adapter and existence checked there. 30 (AUX) + 60 (WORK) > 72 - 2, so
     // admission plans aux30 as the victim: without the pre-Dispose preflight the
     // kill runs first and the refusal arrives over a corpse.
@@ -1638,7 +1639,7 @@ async fn a_strata_model_without_a_profile_source_is_refused_before_the_victim_di
 #[cfg(windows)]
 #[tokio::test]
 async fn an_illegal_ninfer_container_name_is_refused_before_the_occupant_dies() {
-    // The security refusal of chunk 10 [2]: a `ninfer_container` docker would not
+    // The security refusal of the preflight: a `ninfer_container` docker would not
     // accept is rejected by the real adapter — and must be rejected while the model
     // this load replaces is still serving.
     let (handle, runtime) = harness5(
@@ -1692,7 +1693,7 @@ async fn an_illegal_ninfer_container_name_is_refused_before_the_occupant_dies() 
 async fn a_llama_model_without_its_model_key_is_refused_before_the_occupant_dies() {
     // `model:` is llama's one required key (Appendix A.7); scan accepts the file, so
     // the adapter is the first place that can see it — and the first place it may be
-    // seen, per chunk 10 [2].
+    // seen, before any eviction may run.
     let (handle, runtime) = harness5(
         config(5),
         &[
@@ -1738,7 +1739,7 @@ async fn a_llama_model_without_its_model_key_is_refused_before_the_occupant_dies
     );
 }
 
-// --- unload during a swap, and the load parked behind it (FINDINGS-02 [2], [3]) -----
+// --- unload during a swap, and the load parked behind it ----------------------------
 
 /// The model that ends up queued on the category's only slot, behind the swap.
 const PARKED_MODEL: &str = "model-c";
@@ -1848,9 +1849,9 @@ fn job_of(status: &SchedulerStatus, model: &str) -> JobId {
 
 #[tokio::test]
 async fn unload_during_a_swap_frees_the_slot_after_cancelling_the_swap() {
-    // FINDINGS-02 [2]: `unload_slots` chose cancel OR unload. A slot with an occupant
+    // `unload_slots` once chose cancel OR unload. A slot with an occupant
     // *and* an in-flight swap is where that choice loses the card: the cancel's reap
-    // cannot prove the victim's release (chunk 4 [1] deliberately keeps an engine
+    // cannot prove the victim's release (the held-kill fake deliberately keeps an engine
     // nobody proved dead installed), so before the fix the operator was told `Done`
     // while the model stayed loaded and serving.
     let (handle, runtime) = parked_swap_harness();
@@ -1860,11 +1861,11 @@ async fn unload_during_a_swap_frees_the_slot_after_cancelling_the_swap() {
         1,
         "only the resident engine is live"
     );
-    // Hold the victim's kills BY TARGET, and observe what the fake actually parked
-    // (FINDINGS-19 [4]): the scenario used to hinge on a bare kill COUNT from the
+    // Hold the victim's kills BY TARGET, and observe what the fake actually parked:
+    // the scenario used to hinge on a bare kill COUNT from the
     // fake's budget (`hold_next_kills(1)`), so a correct product change to the reap
     // path re-armed the fake silently. The cancel's reap of the victim stays
-    // unprovable (chunk 4 [1] keeps the engine installed over it); the test then
+    // unprovable (the fake keeps the engine installed over it); the test then
     // releases the gate itself, turning the operator's follow-up unload into a
     // terminate it can prove.
     runtime.hold_kill_of(victim.port);
@@ -1890,7 +1891,7 @@ async fn unload_during_a_swap_frees_the_slot_after_cancelling_the_swap() {
     })
     .await;
     // What was held unprovable was exactly the victim's reap — the parked SET, not
-    // the fake's arithmetic (FINDINGS-19 [4]).
+    // the fake's arithmetic.
     let held = runtime.held_kills();
     assert!(
         !held.is_empty() && held.iter().all(|(port, _)| *port == victim.port),
@@ -1977,7 +1978,7 @@ async fn unload_during_a_swap_frees_the_slot_after_cancelling_the_swap() {
 
 #[tokio::test]
 async fn unload_replies_acceptance_before_any_release_evidence() {
-    // FINDINGS-02 [2] second half + FINDINGS-07 [5] reply honesty: `unload_slots`
+    // The second half of the cancel-OR-unload defect, plus reply honesty: `unload_slots`
     // answers `Reply::Unloaded` as soon as the commands are dispatched, while the
     // kill it triggered is still in flight. The reply names the COMMITMENT (one
     // slot unloading, one job cancelled), never a release: a client still cannot
@@ -2014,13 +2015,13 @@ async fn unload_replies_acceptance_before_any_release_evidence() {
 
 #[tokio::test]
 async fn a_parked_load_is_answered_when_its_predecessor_keeps_the_occupant() {
-    // FINDINGS-02 [3], the reviewer's experiment: A serving, swap B frozen in Admit,
+    // The parked-load scenario: A serving, swap B frozen in Admit,
     // swap C parked behind it, B cancelled. B terminalizes with A still installed, so
     // C's queue place can never be satisfied: it must be answered, not left hanging,
     // and it must not fire later when the operator finally frees the slot.
     let (handle, runtime) = parked_swap_harness();
     let victim = serve_and_submit_frozen_swap(&handle).await;
-    // Hold the victim's kills BY TARGET (FINDINGS-19 [4]): parking C cancels B once
+    // Hold the victim's kills BY TARGET: parking C cancels B once
     // ("superseded by a newer load") and the operator's cancel below re-issues that
     // same reap. Both stay unprovable — and the test now ASSERTS the parked set the
     // fake really holds, instead of trusting a bare `hold_next_kills(2)` budget
@@ -2035,7 +2036,7 @@ async fn a_parked_load_is_answered_when_its_predecessor_keeps_the_occupant() {
     // Parking C already cancelled B; this is the operator's own cancel of the same job,
     // which must still terminalize it.
 
-    // The parked SET, not the fake's arithmetic (FINDINGS-19 [4]): the supersede
+    // The parked SET, not the fake's arithmetic: the supersede
     // cancel's reap is parked on the victim's ticket the moment C queues — and after
     // the operator's cancel re-issues that same reap, a victim kill is parked again
     // (each cancel aborts the previous reap task, so exactly one is parked at any
@@ -2135,10 +2136,10 @@ async fn a_parked_load_is_answered_when_its_predecessor_keeps_the_occupant() {
 
 #[tokio::test]
 async fn unload_drops_a_parked_load_from_the_slot_it_targets() {
-    // R2-19-02: the `unload_slots` arm that drops a load PARKED on a targeted slot
+    // The `unload_slots` arm that drops a load PARKED on a targeted slot
     // (src/scheduler/mod.rs "unloaded by request before it started") had no test in
     // any file; the sibling `finish`-time strand-arm is pinned twice above, this one
-    // never. Remove the arm and FINDINGS-02 [3] reopens twice over: the parked
+    // never. Remove the arm and the parked-load defect reopens twice over: the parked
     // waiter hangs (it is answered by nothing else on this path), and the row keeps
     // the slot's queue place, so it fires on the slot's LATER finish (`finish` ->
     // `pending.remove` -> `start_pending`) - the load the operator explicitly
@@ -2147,7 +2148,7 @@ async fn unload_drops_a_parked_load_from_the_slot_it_targets() {
     // never answered with the unload's Cancelled (the 8 s below trips).
     let (handle, runtime) = parked_swap_harness();
     let victim = serve_and_submit_frozen_swap(&handle).await;
-    // Hold the victim's kills BY TARGET (FINDINGS-19 [4]) BEFORE parking: parking
+    // Hold the victim's kills BY TARGET BEFORE parking: parking
     // PARKED_MODEL supersede-cancels the frozen swap, and that cancel's reap of the
     // victim parks on the hold, so the parked row genuinely holds the slot's queue
     // place while the operator's unload lands.
@@ -2160,7 +2161,7 @@ async fn unload_drops_a_parked_load_from_the_slot_it_targets() {
     // fixture has the one WORK slot. It commits to unload (occupied, carrying a
     // job), and the command's only cancel fact is the parked row - the swap already
     // carries `CancelRequested` from the park's supersede, so re-cancelling it is no
-    // new fact (FINDINGS-09 [1]).
+    // new fact.
     assert!(
         matches!(
             handle
@@ -2226,7 +2227,7 @@ async fn unload_drops_a_parked_load_from_the_slot_it_targets() {
     // Land the parked reap: the swap terminalizes with the victim's release proven,
     // the slot frees - and the abandoned load must NOT resurrect. Its queue place is
     // gone, so `finish` finds no pending row to arm: the spawn count is the proof
-    // against the double-spawn half of FINDINGS-02 [3].
+    // against the double-spawn half of the parked-load defect.
     runtime.release_held_kills();
     wait_until(&handle, 10, |s| {
         s.jobs.iter().all(|j| j.terminal)
@@ -2247,7 +2248,8 @@ async fn unload_drops_a_parked_load_from_the_slot_it_targets() {
 
 #[tokio::test]
 async fn a_parked_load_has_a_queued_ledger_row_before_it_starts() {
-    // FINDINGS-02 [3], the ledger half: `/har/jobs` is what F-5 exists to make honest,
+    // The ledger half: `/har/jobs` is what the honest-ledger rule exists to make
+    // honest,
     // and a parked load used to have no row at all while its request hung. The row it
     // gets at park time is the same one it runs on when it does start, and the one
     // the answered error is recorded against.
@@ -2308,9 +2310,10 @@ async fn a_parked_load_has_a_queued_ledger_row_before_it_starts() {
 
 #[tokio::test]
 async fn a_parked_load_that_starts_runs_on_the_row_it_queued_with() {
-    // FINDINGS-19 [5], the row-identity half: 0fa70eb claims `start_pending` "arms
+    // The row-identity half: the ledger contract claims `start_pending` "arms
     // that same row rather than creating a second one", and `/har/jobs` is the
-    // surface F-5 exists to make honest. B parks behind A's in-flight swap (T3.4)
+    // surface the honest-ledger rule exists to make honest. B parks behind A's
+    // in-flight supersede
     // and is the parked load that ACTUALLY starts; the loaded receipt must carry
     // the single ledger row B registered at park time. If `start_pending` created
     // a second row — or armed a different one — the queued row would linger in the
@@ -2363,7 +2366,7 @@ async fn a_parked_load_that_starts_runs_on_the_row_it_queued_with() {
 
 #[tokio::test]
 async fn cancel_names_a_stale_job_id_and_answers_done_for_a_terminal_row() {
-    // R2-19-05: the two outer arms of `on_cancel` were never exercised anywhere -
+    // The two outer arms of `on_cancel` were never exercised anywhere -
     // every cancel site in the suite targets a live job. `/har/jobs` offers Cancel
     // on rows that may have just terminalized and the page reloads across
     // restarts, so a stale id must get the TYPED `UnknownJob` (the API maps it to
@@ -2435,18 +2438,18 @@ async fn cancel_names_a_stale_job_id_and_answers_done_for_a_terminal_row() {
 
 #[tokio::test]
 async fn restart_during_a_frozen_swap_cancels_the_swap_and_keeps_the_occupant() {
-    // FINDINGS-19 [6]: `on_restart` only takes the replacement path when the slot has
-    // no job; with a swap in flight it silently degrades to `on_swap` — a T10.1
+    // `on_restart` only takes the replacement path when the slot has
+    // no job; with a swap in flight it silently degrades to `on_swap` — a crash-retry
     // recovery gesture that becomes a supersede. Nobody had observed what that
     // degradation does. Pinned here, honestly: the in-flight swap is cancelled,
     // HOLD_MODEL ends still installed on exactly its original live engine, nothing
     // spawns, and the restart's own queued load is answered (never left hanging)
-    // with the chunk-4 [1] rule — the occupant nobody proved dead stays.
+    // with the unproven-release rule — the occupant nobody proved dead stays.
     let (handle, runtime) = parked_swap_harness();
     let victim = serve_and_submit_frozen_swap(&handle).await;
 
     let client = handle.clone();
-    // The restart names the live occupant's port (R2-06-01): this is the honest
+    // The restart names the live occupant's port: this is the honest
     // crash-retry shape, the caller witnessed exactly this engine. The slot
     // carries a job here, so the port never reaches the successor check.
     let victim_port = victim.port;
@@ -2501,7 +2504,7 @@ async fn restart_during_a_frozen_swap_cancels_the_swap_and_keeps_the_occupant() 
 
 #[tokio::test]
 async fn a_late_restart_never_evicts_the_successor_the_first_retry_installed() {
-    // R2-06-01: request A refuses on the corpse's port, restarts, and the reload
+    // Request A refuses on the corpse's port, restarts, and the reload
     // installs successor S. Request B — whose own send also refused on the corpse
     // earlier — dispatches its Restart after S is Installed. The old `on_restart`
     // found the slot by (model, category) alone and booked the healthy successor as
@@ -2576,7 +2579,7 @@ async fn a_late_restart_never_evicts_the_successor_the_first_retry_installed() {
 
 #[tokio::test]
 async fn the_idle_sweep_never_starts_an_unload_behind_an_in_flight_job() {
-    // FINDINGS-19 [6], the sweep half (and the actor-side twin of FINDINGS-20 [9]):
+    // The sweep half of the wedge class:
     // `on_tick` skips any slot whose `job` is `Some` — the filter that stops the 2 s
     // idle tick from unloading a slot mid-Quiesce/Dispose/Install (the double-release
     // / slot-with-no-engine wedge class). It is a guard that can silently disappear:
@@ -2613,7 +2616,7 @@ async fn the_idle_sweep_never_starts_an_unload_behind_an_in_flight_job() {
     // exhausted), so `slot.job` is `Some` for the whole window. (A second parked load
     // can't co-exist here: parking model-c would supersede-cancel the frozen model-b,
     // leaving the slot genuinely idle — that parked row's fate is the separate
-    // FINDINGS-02 [3] tests' subject, not the sweep guard.)
+    // the parked-load tests' subject, not the sweep guard.)
 
     // Past two sweep ticks (IDLE_TICK is 2 s) while the occupant's age is well over
     // the 1 s threshold: the in-flight job is the only thing that may spare it.
@@ -2674,7 +2677,7 @@ async fn the_idle_sweep_never_starts_an_unload_behind_an_in_flight_job() {
 
 #[tokio::test]
 async fn the_idle_sweep_tick_fires_while_a_swapping_slot_is_spared() {
-    // R2-19-04, the positive half the guard pin above cannot give itself: its whole
+    // The positive half the guard pin above cannot give itself: its whole
     // window is also satisfied by a runtime in which the sweep never ticked once
     // (no fake clock, no tick counter in the status). This test runs the SAME
     // harness shape with one extra opt-in slot and makes the sweep show its work
@@ -2774,7 +2777,7 @@ async fn the_idle_sweep_tick_fires_while_a_swapping_slot_is_spared() {
     );
 }
 
-// --- the release-timeout arm: `Dispose` + `Released(Err)` (FINDINGS-19 [2]) ----------
+// --- the release-timeout arm: `Dispose` + `Released(Err)` ------------------------------
 
 #[tokio::test]
 async fn a_swap_whose_victim_never_proves_its_release_times_out_and_keeps_the_occupant() {
@@ -2871,7 +2874,8 @@ async fn a_swap_whose_victim_never_proves_its_release_times_out_and_keeps_the_oc
         vec![Some(HOLD_MODEL.to_string())],
         "the victim keeps its occupant"
     );
-    // EVID-01 pin (c), G12 posture at the ledger half: nobody proved the victim
+    // Live card-run proof (c), confirmed-release posture at the ledger half: nobody
+    // proved the victim
     // dead, so its own load row keeps the honest Serving/loaded truth — the row
     // moves only at a confirmed-release commit (`commit_victim_release` in
     // `src/scheduler/occupant.rs`), and a timeout is not one. Falsifier (run in
@@ -2958,7 +2962,7 @@ async fn a_swap_whose_victim_never_proves_its_release_times_out_and_keeps_the_oc
         "this time the release was proven: {:?}",
         unload.timings
     );
-    // EVID-01, operator-path wording at the commit: the unload that finally
+    // Live card-run proof, operator-path wording at the commit: the unload that finally
     // proved the release also terminalizes the kept LOAD row — the ledger no
     // longer claims a dead engine serves, and it names the operator release
     // `unloaded`, never the eviction word `evicted` (`victim.evicted` is the
@@ -3002,7 +3006,7 @@ async fn a_swap_whose_victim_never_proves_its_release_times_out_and_keeps_the_oc
     assert_eq!(runtime.spawn_count(), 1, "recovery spawns nothing either");
 }
 
-// --- the `releasing` slot state (TASK-BERTH-B3, operator ruling 2026-11-04) ---------
+// --- the `releasing` slot state (operator ruling) -------------------------------------
 
 #[tokio::test]
 async fn a_parked_unload_shows_releasing_on_its_slot_until_the_release_is_confirmed() {
@@ -3265,7 +3269,7 @@ async fn a_release_timeout_slot_reads_serving_again_and_never_stuck_releasing() 
     );
 }
 
-// --- chaos legs (TASK-BERTH-B7, `contrib/chaos` methodology) ------------------------
+// --- chaos legs (`contrib/chaos` methodology) ----------------------------------------
 //
 // Berth's `contrib/chaos` injects a fault at a seam and asserts the orchestrator
 // names it and leaves no orphan. Two legs, cardless, on the fake engine — never a
@@ -3283,9 +3287,10 @@ async fn chaos_engine_killed_mid_release_is_confirmed_and_leaves_no_orphan() {
     // admission still works.
     // Falsifier (run in place, revert): remove `commit_victim_release` from the
     // `(Dispose, Released(Ok))` arm in `src/scheduler/events.rs` — the unload-acceptance
-    // race B7 exists to catch — and the "slot empty / no orphan / next admission"
+    // race this leg exists to catch — and the "slot empty / no orphan / next admission"
     // asserts below go red while the timeout arm stays green. The unload row's
-    // `unloaded` outcome stays the release wording B7 pins (EVID-01 re-check: the
+    // `unloaded` outcome stays the release wording this leg pins (live card-run
+    // proof re-check: the
     // fix rewrites only the victim's LOAD row, never an unload row's note).
     let (handle, runtime) = hold_kill_harness(config(10));
     let victim = serve_hold_model(&handle).await;
@@ -3527,7 +3532,7 @@ fn chaos_harness_died_mid_drain_names_the_in_flight_job_and_orphans_nothing() {
 
 #[tokio::test]
 async fn a_nameless_yaml_loads_by_its_file_stem_end_to_end() {
-    // FINDINGS-13 [3]/[7] end-to-end: the yaml carries no `name:` key at all.
+    // End-to-end: the yaml carries no `name:` key at all.
     // The file stem is the identity the client loads by, the identity the actor
     // books into the slot, and (through `ModelEntry::name`) the engine log name.
     let dir = simpleharn::testutil::temp_dir("modelconf");
@@ -3566,12 +3571,11 @@ async fn a_nameless_yaml_loads_by_its_file_stem_end_to_end() {
     );
 }
 
-// --- reload-drift Axis 1: rescan retires queued intents (ruling 2026-10-29) ---------
+// --- reload-drift Axis-1: rescan retires queued intents (operator ruling) ------------
 //
-// Operator ruling (routed through `research/reload-slot-drift-2026-10-28.md`
-// rows 12-13): **Rescan invalidates queued/parked rows whose model changed or
+// Operator ruling: **Rescan invalidates queued/parked rows whose model changed or
 // vanished; a no-change rescan must NOT drop queues.** The retirement carries
-// the 19[5] `superseded` vocabulary with a named reason, releases like every
+// the `superseded` vocabulary with a named reason, releases like every
 // other queued retirement, and NEVER touches a live slot or an armed row
 // (`Admit` and beyond is the committed-launch half the ruling excludes).
 
@@ -3896,7 +3900,7 @@ async fn rescan_supersedes_a_queued_load_when_only_the_clock_moves() {
 #[tokio::test]
 async fn an_unchanged_rescan_keeps_the_queue_and_the_parked_load_still_loads() {
     // Pin (b), THE no-drop pin: queue -> Rescan with the bytes untouched -> the
-    // row survives (and arms the SAME ledger row later, FINDINGS-02 [3]) and
+    // row survives (and arms the SAME ledger row later) and
     // loads when the slot frees. Falsifier: an always-invalidate predicate
     // retires this row on the no-change rescan and the reply never Loads.
     let (handle, runtime, _dir, gate) = drift_harness(
@@ -4059,8 +4063,9 @@ async fn rescan_retires_only_the_queued_load_whose_yaml_moved() {
         status.jobs
     );
     // The survivor's load-then-complete fate is pin (b)'s subject; here the aux
-    // row must simply have survived the rescan. Dropping the caller is the F-1
-    // shape the actor already handles (a dropped waiter never strands a row).
+    // row must simply have survived the rescan. Dropping the caller is the
+    // client-abort shape the actor already handles (a dropped waiter never strands
+    // a row).
     drop(areply);
 }
 
@@ -4185,7 +4190,7 @@ async fn rescan_retires_a_parked_twin_of_a_serving_model_without_touching_the_sl
 
 #[tokio::test]
 async fn a_serving_model_gains_its_launch_stamp_and_ambers_on_the_next_rescan() {
-    // Axis-2 end-to-end, resident side (ruling 2026-10-29): the serving slot
+    // Axis-2 end-to-end, resident side (operator ruling): the serving slot
     // carries the server-formatted wall-clock launch stamp from INSTALL, the
     // verdict moves ONLY on a rescan (the pre-rescan leg proves the status path
     // never stats), and the stamp never moves under the marker.
@@ -4227,7 +4232,7 @@ async fn a_serving_model_gains_its_launch_stamp_and_ambers_on_the_next_rescan() 
 
     std::fs::write(
         dir.join("stamponly.yaml"),
-        // The `cpu_offload` flag key (phase 4): a pure cost edit is now
+        // The `cpu_offload` flag key: a pure cost edit is now
         // re-booked without a reload, so an amber pin must move a flag —
         // config the running engine never read — to earn the verdict.
         "name: stamponly\nengine: mock\ncategory: WORK\nvram_gb: 44\ncpu_offload: true\n",
@@ -4291,7 +4296,7 @@ async fn one_edit_retires_the_queue_and_ambers_the_resident_on_the_same_rescan()
     .await;
     std::fs::write(
         dir.join(format!("{DRIFT_RESIDENT}.yaml")),
-        // The `cpu_offload` flag key (phase 4): a pure cost edit is now
+        // The `cpu_offload` flag key: a pure cost edit is now
         // re-booked without a reload; this pin judges the amber verdict, so
         // the edit moves a flag the running engine never read.
         "name: drift-resident\nengine: mock-hold-kill\ncategory: WORK\nvram_gb: 44\ncpu_offload: true\n",

@@ -189,7 +189,7 @@ async fn default_model_endpoint_validates_and_takes_effect() {
 
 #[tokio::test]
 async fn default_model_persists_the_canonical_name_not_the_alias() {
-    // FINDINGS-06 [5]: `resolve` accepts case-insensitive names and GGUF aliases,
+    // `resolve` accepts case-insensitive names and GGUF aliases,
     // but the scheduler and the boot check compare `m.name == model` exactly. The
     // endpoint must persist the entry's canonical name, or the default it just
     // accepted 404s on the first no-model request and after every restart.
@@ -237,7 +237,7 @@ async fn default_model_persists_the_canonical_name_not_the_alias() {
 
 #[tokio::test]
 async fn default_model_requires_the_model_key_and_rejects_wrong_types() {
-    // FINDINGS-07 [10]: absent, null and wrong-typed `model` all cleared the
+    // Absent, null and wrong-typed `model` all once cleared the
     // persisted default. Only `null` may clear; absent and wrong-typed are caller
     // mistakes and must 400 without touching the file.
     let (control, _, _, _, _, modelconf) = app(
@@ -282,7 +282,7 @@ async fn default_model_requires_the_model_key_and_rejects_wrong_types() {
 
 #[tokio::test]
 async fn control_bodies_are_capped_below_the_proxy_ceiling() {
-    // FINDINGS-06 [7]: the 1 GiB proxy ceiling was shared by
+    // The 1 GiB proxy ceiling once was shared by
     // `/har/*`, so a control POST could force a 1 GiB buffer. The control surface
     // now has its own 64 KiB limit; a body over it is refused before any handler.
     let (control, _, _, _, _, _) = app(AppConfig::default(), &[]);
@@ -313,7 +313,7 @@ async fn control_bodies_are_capped_below_the_proxy_ceiling() {
         text.contains("length limit exceeded"),
         "the refusal must name the limit, not a parse error: {text}"
     );
-    // Operator ruling 2026-11-04: an over-limit body stays `400 bad_request`;
+    // Operator ruling: an over-limit body stays `400 bad_request`;
     // `413` is not used — request-shape refusals stay one class.
     let body: Value = serde_json::from_slice(&bytes).expect("the refusal is the JSON envelope");
     assert_eq!(body["code"], "bad_request", "flat envelope: {body}");
@@ -329,7 +329,7 @@ async fn control_bodies_are_capped_below_the_proxy_ceiling() {
 
 #[tokio::test]
 async fn proxy_bodies_are_capped_at_64_mib() {
-    // FINDINGS-06 [7]: the proxy ceiling was 1 GiB, and the body is buffered into a
+    // The proxy ceiling was 1 GiB, and the body is buffered into a
     // `Json<Value>` before any handler runs. The 64 MiB cap must be enforced by the
     // extractor, not discovered after a multi-GiB parse. Falsifier: restore 1 GiB and
     // this body parses far enough to answer a JSON error instead of the limit.
@@ -359,7 +359,7 @@ async fn proxy_bodies_are_capped_at_64_mib() {
         text.contains("length limit exceeded"),
         "the refusal must name the limit, not a JSON parse error: {text}"
     );
-    // Operator ruling 2026-11-04: an over-limit body stays `400 bad_request`;
+    // Operator ruling: an over-limit body stays `400 bad_request`;
     // `413` is not used — request-shape refusals stay one class.
     let body: Value = serde_json::from_slice(&bytes).expect("the refusal is the JSON envelope");
     assert_eq!(body["code"], "bad_request", "flat envelope: {body}");
@@ -375,8 +375,8 @@ async fn proxy_bodies_are_capped_at_64_mib() {
 
 #[tokio::test]
 async fn config_model_writes_back_to_the_yaml_file() {
-    // The CPU leg rides a `llama` row since the FINDINGS-BATCH-2026-10-28F [3]
-    // gate: a `cpu` edit is refused for engines without the `cpu_offload` knob
+    // The CPU leg rides a `llama` row since the engine-knob gate:
+    // a `cpu` edit is refused for engines without the `cpu_offload` knob
     // (the
     // refusal legs are pinned by
     // `cpu_edit_is_refused_on_models_whose_engine_never_reads_the_key`); the
@@ -430,10 +430,11 @@ async fn config_model_writes_back_to_the_yaml_file() {
 
 #[tokio::test]
 async fn a_wrong_typed_cpu_is_refused_rather_than_silently_dropped() {
-    // FINDINGS2-0507 [5]: `body.get("cpu").and_then(Value::as_bool)` treated `"true"`
+    // `body.get("cpu").and_then(Value::as_bool)` once treated `"true"`
     // and `1` as "absent", so a client that asked for two changes got one and a
     // `{"status":"edited"}` saying both landed. The in-file sibling
-    // `/har/config/logging` 400s a non-bool `enabled`, and 07[10] made that the parity
+    // `/har/config/logging` 400s a non-bool `enabled`, and the wrong-typed-`model`
+    // fix made that the parity
     // rule for this file — the same mistake may not live two routes apart.
     let (control, _, _, _, _, modelconf) = build_app(
         AppConfig::default(),
@@ -498,7 +499,7 @@ async fn a_wrong_typed_cpu_is_refused_rather_than_silently_dropped() {
 
 #[tokio::test]
 async fn a_wrong_typed_category_is_refused_rather_than_silently_dropped() {
-    // R2-07-04: the exact parity sibling of the `cpu` leg above (FINDINGS2-0507 [5]).
+    // The exact parity sibling of the `cpu` leg above.
     // `body.get("category").and_then(Value::as_str)` read `5`, `true` and `null` as
     // "absent", so `{"model":x,"category":5,"cpu":true}` applied only the cpu edit
     // and answered `{"status":"edited"}` — one of the two requested changes,
@@ -566,12 +567,12 @@ async fn a_wrong_typed_category_is_refused_rather_than_silently_dropped() {
 
 #[tokio::test]
 async fn the_webui_fixture_is_a_document_the_endpoint_can_actually_emit() {
-    // FINDINGS2-0507 [8]: the DOM suite drives the page from a hand-maintained
+    // The DOM suite drives the page from a hand-maintained
     // `tests/webui/fixtures/status.json`, and nothing compared that file with what
     // `/har/status` really sends. It had drifted into a document the server cannot
-    // produce — `"version": "0.1.0"` behind the crate, and a `boot.scan_ms` no
-    // `BootTimings` field has ever had (the initial scan is deliberately unmeasured,
-    // 4389a0a) while two measures that do exist were absent. A page tested against a
+    // produce — the `version` field behind the crate, and a `boot.scan_ms` no
+    // `BootTimings` field has ever had (the initial scan is deliberately unmeasured)
+    // while two measures that do exist were absent. A page tested against a
     // fictional server passes while the real one breaks it.
     let (control, _, _, _, _, _) = build_app(
         AppConfig::default(),
@@ -776,7 +777,7 @@ async fn the_webui_fixture_is_a_document_the_endpoint_can_actually_emit() {
 
 #[tokio::test]
 async fn config_model_reports_writeback_refusals_by_http_class() {
-    // FINDINGS-13 [10]: the write-back's typed failures decide the status, so a
+    // The write-back's typed failures decide the status, so a
     // refusal that is the *file's* state is no longer dressed up as a harness
     // fault. Both legs reach the endpoint through the window the editor-race
     // doctrine allows (DECISIONS: the operator edits yamls while the harness is
@@ -824,7 +825,7 @@ async fn config_model_reports_writeback_refusals_by_http_class() {
         message.contains("not a key line"),
         "the problem lines are the operator's diagnosis: {message}"
     );
-    // FINDINGS-BATCH-2026-10-28H [1]: the config-state refusal names the file, as a
+    // The config-state refusal names the file, as a
     // caller-side PREFIX. The two `contains` legs above already prove the module's
     // sentence survived; these prove it is intact at both seams — the reason opens
     // with the path and the module's sentence is its exact tail. Falsifier: drop
@@ -849,7 +850,7 @@ async fn config_model_reports_writeback_refusals_by_http_class() {
 
     // 500 internal: the file itself vanished under a still-published entry — that
     // one genuinely is the harness's/environment's problem, and stays 500 with the
-    // `internal` code. FINDINGS-05 [6] moved the OS sentence out of the client
+    // `internal` code. The error-body doctrine moved the OS sentence out of the client
     // body and into the ring: the body keeps the class, names the harness log as
     // the place the detail lives, and must not carry the path; the full reason's
     // presence in the ring is pinned by
@@ -1019,9 +1020,9 @@ async fn a_flag_edit_never_ambers_its_own_loaded_model_and_status_never_stats() 
 
 #[tokio::test]
 async fn cpu_edit_is_refused_on_models_whose_engine_never_reads_the_key() {
-    // FINDINGS-BATCH-2026-10-28F [3]: with B shipped, a scripted `cpu` write to a
+    // With the inert-key posture shipped, a scripted `cpu` write to a
     // strata (or mock) row would make the harness itself the #1 producer of the
-    // InertKey noise it just invented. The page offers no control there (C) and
+    // InertKey noise it just surfaced. The page offers no control there and
     // the API now agrees: 400 naming the key, the row engine and the owning set —
     // while the engine-blind category write and the llama cpu write keep working.
     // Falsifier: removing the offload-knob gate in `har_config_model` returns
@@ -1086,7 +1087,7 @@ async fn cpu_edit_is_refused_on_models_whose_engine_never_reads_the_key() {
 
 #[tokio::test]
 async fn moving_the_default_model_clears_its_old_category_default() {
-    // Operator finding #1 (2026-10-26): moving the default model out of a category
+    // Operator finding on default-model coherence: moving the default model out of a category
     // must not leave the old listener defaulting to a model it no longer serves.
     let (control, _, _, _, _, _) = app(
         AppConfig::default(),
@@ -1122,7 +1123,7 @@ async fn moving_the_default_model_clears_its_old_category_default() {
 
 #[tokio::test]
 async fn defaults_persist_to_the_config_boot_loaded_even_under_a_custom_path() {
-    // Operator finding #2 (2026-10-26): write-back must hit the file boot read
+    // Operator finding on write-back targeting: write-back must hit the file boot read
     // (`SIMPLEHARN_CONFIG` aware), and a partial config with no `categories` key
     // must still accept the patch instead of silently staying in memory.
     let path = simpleharn::testutil::temp_dir("api-config").join("simpleharn.json");
@@ -1184,7 +1185,7 @@ async fn defaults_persist_to_the_config_boot_loaded_even_under_a_custom_path() {
 
 #[tokio::test]
 async fn a_default_that_never_landed_never_changes_memory() {
-    // R2-07-03: config file is king. A write that never landed may not leave
+    // Config file is king. A write that never landed may not leave
     // memory holding a value the file does not. The boot path is a directory
     // here: every read fails and the publish rename can never replace it, so
     // `persist_default_model` can only answer `NotLanded`. Falsifier: the

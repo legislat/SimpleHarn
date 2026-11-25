@@ -81,8 +81,8 @@ async fn health_and_status_answer_on_default_config() {
 
 #[tokio::test]
 async fn unknown_route_answers_not_found() {
-    // R2-05-03: the unknown-route 404 answers the typed envelope, so the name
-    // claims exactly what the legs check — status, JSON body, and both codes.
+    // The unknown-route 404 answers the typed envelope, so the name claims
+    // exactly what the legs check — status, JSON body, and both codes.
     let response = app()
         .oneshot(
             Request::get("/har/nope")

@@ -159,7 +159,8 @@ async fn await_yaml_contains(path: &std::path::Path, wants: &[&str], secs: u64) 
 async fn admission_refuses_when_the_card_has_no_room() {
     // The card is 72 GiB and reports 70 used — whatever holds it (a foreign process
     // appears here as per-process data, but the physical reading alone suffices), a
-    // 4 GiB load must refuse with the numbers (G13: the F-7 lie is gone).
+    // 4 GiB load must refuse with the numbers; the refusal states them and
+    // never fudges or blames a neighbour.
     let witness = FakeWitness::with(vec![sample(72.0, 70.0, vec![(900, 70.0)])]);
     let cfg = AppConfig {
         settle_timeout_s: 2,
@@ -183,11 +184,11 @@ async fn admission_refuses_when_the_card_has_no_room() {
 async fn settle_blocks_spawn_while_the_card_has_not_freed() {
     // Load model A, then swap to B while the card still reports the released
     // engine's bytes: the settle gate refuses with the numbers and never spawns B
-    // (G12: no double-spawn). The gate is physical free vs the gate target **plus the
+    // (no double-spawn). The gate is physical free vs the gate target **plus the
     // reserve band** — a leftover that still leaves room is no reason to refuse
-    // (operator 2026-10-26: the ledger-baseline form timed out every swap against a
+    // (operator ruling: the ledger-baseline form timed out every swap against a
     // ~3 GiB desktop floor that had nothing to do with the release), but the reserve
-    // the no-release path keeps unreachable is part of the compared figure (R2-01-01).
+    // the no-release path keeps unreachable is part of the compared figure.
     let witness = FakeWitness::with(vec![sample(72.0, 0.0, vec![])]);
     let cfg = AppConfig {
         settle_timeout_s: 1,
@@ -268,7 +269,7 @@ async fn settle_passes_once_the_card_frees() {
 
 #[tokio::test]
 async fn settle_holds_the_reserve_band_the_no_release_path_keeps_unreachable() {
-    // R2-01-01: the settle window is the physical half of the same admission decision,
+    // The settle window is the physical half of the same admission decision,
     // so it compares `max(need, launch floor) + vram_reserve_gb`, never raw free
     // against the bare gate. `reserve 4.0 / tolerance 1.0` keeps the guard band
     // distinct from the tolerance: an 8.0 GiB gate requires 12.0 GiB free. A card at
@@ -346,7 +347,7 @@ async fn settle_passes_once_the_card_frees_to_the_reserve_aware_target() {
 
 #[tokio::test]
 async fn same_slot_swap_releases_first_when_the_booked_credit_understates_the_card() {
-    // Ruling (operator 2026-11-01, revisable): a victim's booked need can fall
+    // Operator ruling (revisable): a victim's booked need can fall
     // below the footprint it actually holds, and a swap that physically fits must
     // not die on that paper deficit. Release-first destroys the (already doomed)
     // resident and re-gates the load in the settle window against the physically
@@ -522,7 +523,7 @@ async fn serving_window_folds_total_diff_into_the_yaml_measured_range() {
 
 #[tokio::test]
 async fn the_measured_fold_never_ambers_its_own_resident() {
-    // Interlock 5 end-to-end (Axis 2, ruling 2026-10-29): the fold rewrites the
+    // Axis-2 interlock 5 end-to-end: the fold rewrites the
     // resident's own yaml with `measured_*` keys — bytes the install-time capture
     // never saw. The success path re-baselines that capture (ModelFileWritten), so
     // the next rescan must find the resident clean; a `false` here on both legs
@@ -551,12 +552,12 @@ async fn the_measured_fold_never_ambers_its_own_resident() {
     // measured_gb/min into the yaml.
     witness.set(sample(72.0, 40.0, vec![]));
     await_measured(&handle, "foldy", (Some(10.0), Some(10.0))).await;
-    // FINDINGS-BATCH-2026-10-28P [P-2], measured not fixed: `await_measured` sees
+    // Measured, not fixed (a benign race): `await_measured` sees
     // the in-memory commit, so the rename+note land a few syscalls later; the
     // reload's ScanFinished can only beat the note if the blocking thread stalls
     // between them. Stress evidence: 40/40 targeted runs under 6 concurrent suites
     // + 5 clean full suites, zero flakes. If this pin ever goes red on these two
-    // asserts, do NOT disable it — add the reviewer's sync point: subscribe before
+    // asserts, do NOT disable it — add a sync point: subscribe before
     // the swap and await one more publish after `await_measured` (the note handler
     // publishes), then reload.
     let path = dir.join("foldy.yaml");
@@ -803,9 +804,10 @@ impl VramWitness for DeadWitness {
 
 #[tokio::test]
 async fn unreadable_card_refuses_rather_than_guesses() {
-    // F-3/F-7: on a GPU box a dead witness is a named refusal, never a fallback
-    // onto bookkeeping — that is exactly how v3.3 over-committed onto a saturated
-    // card (operator 2026-10-26: the ledger left the gate).
+    // On a GPU box a dead witness is a named refusal, never a fallback
+    // onto bookkeeping — that is exactly how the retired ledger-baseline
+    // form over-committed onto a saturated card (the operator took the
+    // ledger out of the gate).
     let cfg = AppConfig {
         settle_timeout_s: 1,
         ..AppConfig::default()
@@ -838,11 +840,12 @@ async fn unreadable_card_refuses_rather_than_guesses() {
 async fn concurrent_loads_cannot_double_spend_the_same_bytes() {
     // An 18 GiB load sits in the settle window (its victim's bytes have not come
     // back), so the card still reads 58 of 72 used. A 4 GiB load in another
-    // category must never be admitted over those bytes. The 2026-11-10 ruling
-    // names the response: the deficit rides on a live paper booking, so the
+    // category must never be admitted over those bytes. The operator
+    // ruling on over-limit loads names the response: the deficit rides on a
+    // live paper booking, so the
     // 4 GiB load WAITS instead of being refused, and admits only once a real
     // release lands. The retired ledger counted installed occupants only, so
-    // it admitted both and over-committed (operator 2026-10-26): under that
+    // it admitted both and over-committed: under that
     // bug the early hold-out loop goes red with an instant Loaded. Falsifier
     // for the wait half (run in place, revert): neuter the park arm in
     // `finish_admit` and the Idle poll times out with a refused, terminalized

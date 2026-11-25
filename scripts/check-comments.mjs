@@ -1,4 +1,4 @@
-// Comment-hygiene checker for Rust comments in src/. Node only, no external
+// Comment-hygiene checker for Rust comments in src/ and tests/. Node only, no external
 // dependencies. A source comment states the invariant and the reason; the
 // durable ledger owns the history. This checker flags internal-history
 // references inside line and block comments: task IDs, finding IDs, rule IDs
@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const SRC = join(ROOT, "src");
+const SCAN_ROOTS = [join(ROOT, "src"), join(ROOT, "tests")];
 const ALLOWLIST = join(HERE, "comment-allowlist.txt");
 
 const FAIL_MODE = process.argv.slice(2).some((a) => /^(-{1,2}fail)$/i.test(a));
@@ -247,13 +247,13 @@ function loadAllowlist() {
 const rel = (p) => relative(ROOT, p).split(sep).join("/");
 const allowlist = loadAllowlist();
 
-let files;
-try {
-  files = listRustFiles(SRC, []);
-} catch {
-  console.log("check-comments: src/ not found; nothing to check");
+const presentRoots = SCAN_ROOTS.filter((root) => existsSync(root));
+if (presentRoots.length === 0) {
+  console.log("check-comments: no scan roots found; nothing to check");
   process.exit(0);
 }
+let files = [];
+for (const root of presentRoots) files = listRustFiles(root, files);
 
 const hits = [];
 let allowed = 0;

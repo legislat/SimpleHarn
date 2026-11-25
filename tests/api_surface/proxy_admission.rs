@@ -27,10 +27,10 @@ async fn proxy_forwards_with_model_rewrite_and_streams_the_response() {
     assert_eq!(body["echo"], true);
     assert_eq!(body["path"], "/v1/chat/completions");
     // Alias resolved to the harness name, then rewritten to the engine's
-    // self-reported id (F-4: the mock reports `mock-model`).
+    // self-reported id (the mock reports `mock-model`).
     assert_eq!(body["body"]["model"], "mock-model");
 
-    // FINDINGS-18 [4]: the "streams" half used to assert nothing. The proxy
+    // The "streams" half used to assert nothing. The proxy
     // contract (src/api/mod.rs `proxy`: upstream headers copied + the body handed
     // through `Body::from_stream`) is byte-for-byte pass-through — a regression
     // that buffered and re-serialised the JSON, or dropped the upstream
@@ -72,8 +72,8 @@ async fn proxy_forwards_with_model_rewrite_and_streams_the_response() {
 
 #[tokio::test]
 async fn polling_an_empty_slot_never_loads_a_model() {
-    // "Reads never wake" on the REAL router (operator ruling 2026-11-04,
-    // Variant A pins the status quo): `GET /v1/models` and `GET /health` answer
+    // "Reads never wake" on the REAL router (operator ruling: reads do not
+    // wake; the status quo is pinned): `GET /v1/models` and `GET /health` answer
     // from the catalog and static state and never admit, so the scheduler stays
     // untouched and the empty slot stays empty. Falsifiers: (1) wire any read
     // route to `proxy` and the polling legs below go red — a ledger row appears
@@ -171,7 +171,7 @@ async fn polling_an_empty_slot_never_loads_a_model() {
 
 #[tokio::test]
 async fn proxy_forwards_the_query_string_the_client_sent() {
-    // FINDINGS-06 [10]: the forward used `uri.path()`, which drops the query, so a
+    // The forward used `uri.path()`, which drops the query, so a
     // client sending `?api-key=` or an engine-specific flag got a DIFFERENT request
     // at the engine than the one it sent. The mock echoes the exact request target
     // it received, so the assertion is about the wire, not about intent.
@@ -218,13 +218,13 @@ async fn proxy_forwards_the_query_string_the_client_sent() {
 
 #[tokio::test]
 async fn proxy_passes_the_engines_content_encoding_through_verbatim() {
-    // FINDINGS-06 [9]: the strip list dropped `content-encoding` from a body the
+    // The strip list once dropped `content-encoding` from a body the
     // proxy never decodes (reqwest is built without gzip/brotli/deflate/zstd), so
     // an engine that answers compressed handed the client gzip bytes labelled as
     // identity — undecodable. The pass-through is honest now: header and bytes
     // cross unchanged. Request-direction pass-through is structurally impossible
     // and not claimed: the proxy parses, rewrites and re-serialises the JSON body
-    // and forwards no client headers (FINDINGS-06 "verified clean").
+    // and forwards no client headers.
     let (control, work, _, _, _runtime, _modelconf) = app(
         AppConfig::default(),
         &[("qwen3", "mock", CategoryId::Work, Some(4.0))],
@@ -263,7 +263,7 @@ async fn proxy_passes_the_engines_content_encoding_through_verbatim() {
 
 #[tokio::test]
 async fn proxy_strips_the_engines_hop_by_hop_response_headers() {
-    // R2-06-02: the engine→client pass-through used to drop only
+    // The engine→client pass-through used to drop only
     // `transfer-encoding`, `content-length` and `connection`, forwarding the rest
     // of the RFC 9110 §7.6.1 hop-by-hop set: a survived `trailer:` advertises a
     // trailer this harness never re-frames, `upgrade:` a protocol switch it never
@@ -338,10 +338,10 @@ async fn proxy_strips_the_engines_hop_by_hop_response_headers() {
 
 #[tokio::test]
 async fn proxy_rewrites_each_occupant_to_its_own_engine_id() {
-    // FINDINGS-20 [6]: every mock engine used to report the one constant `mock-model`
+    // Every mock engine used to report the one constant `mock-model`
     // at `/v1/models`, so every serve_id assertion in the suite compared the same
     // string and a product bug that forwarded slot A's id for slot B's request — the
-    // crash-retry staleness class fixed in b540c30 — was invisible. These two engines
+    // crash-retry staleness class — was invisible. These two engines
     // report DISTINCT ids; each request must be rewritten to ITS OWN engine's id.
     let adapters: Vec<(&str, Arc<dyn EngineAdapter>)> = vec![
         (
@@ -394,7 +394,7 @@ async fn proxy_rewrites_each_occupant_to_its_own_engine_id() {
 
 #[tokio::test]
 async fn a_silent_engine_falls_back_to_the_harness_name_on_the_wire() {
-    // FINDINGS-20 [6], the `serve_id == None` half: when an engine answers nothing at
+    // The `serve_id == None` half: when an engine answers nothing at
     // `/v1/models`, discovery yields `None` and the proxy forwards the HARNESS NAME
     // (documented `serve_id.unwrap_or_else` fallback at src/api/mod.rs) — previously
     // untestable because no mock mode could make discovery fail. The mock
@@ -427,7 +427,7 @@ async fn a_silent_engine_falls_back_to_the_harness_name_on_the_wire() {
 
 #[tokio::test]
 async fn crash_retry_re_resolves_by_name_after_the_id_rewrite() {
-    // T10.1 regression (T-suite Run 4, 2026-10-27). `proxy` rewrites `body["model"]`
+    // Crash-retry regression. `proxy` rewrites `body["model"]`
     // to the engine's self-reported id - `mock-model` here, the gguf PATH for llama -
     // before forwarding. The crash-retry then re-resolved the target from that
     // rewritten body, so it searched the catalog for a model *named* by engine id and
@@ -483,13 +483,13 @@ async fn crash_retry_re_resolves_by_name_after_the_id_rewrite() {
 
 #[tokio::test]
 async fn crash_retry_re_sends_the_successor_discovered_id() {
-    // R2-18-04: the leg above cannot tell the NEW engine's id from the DEAD
+    // The leg above cannot tell the NEW engine's id from the DEAD
     // engine's - both `dies-once` generations used to answer the same constant
     // `mock-model` - so a retry that kept the pre-restart `serve_id` instead of
     // re-deriving it (src/api/mod.rs `ensure_named` → `new_serve_id`) stayed
-    // green, the FINDINGS-20 [6] shared-id blindness surviving in exactly this
-    // test. Here the corpse reports `engine-gen1` and the successor `engine-gen2`
-    // (the mock's per-spawn id sequence, R2-18-04's `MockGenerationIdAdapter`):
+    // green — this is the very test in which the shared-id blindness
+    // survived. Here the corpse reports `engine-gen1` and the successor `engine-gen2`
+    // (the mock's per-spawn id sequence, `MockGenerationIdAdapter`):
     // forwarding the corpse's id now goes RED, and the retried wire must carry
     // the SUCCESSOR's self-reported id.
     let adapters: Vec<(&str, Arc<dyn EngineAdapter>)> = vec![(
@@ -548,7 +548,7 @@ async fn crash_retry_re_sends_the_successor_discovered_id() {
 
 #[tokio::test]
 async fn crash_retry_falls_back_to_the_harness_name_when_the_successor_is_silent() {
-    // R2-18-04, the other half: when the successor discovers NOTHING at
+    // The other half: when the successor discovers NOTHING at
     // `/v1/models`, the retried request must carry the documented harness-name
     // fallback (the same `serve_id.unwrap_or_else` the first forward uses) - never
     // the DEAD engine's id. The corpse therefore reports a real id
@@ -628,7 +628,7 @@ async fn no_model_fallback_serves_the_loaded_occupant() {
 
 #[tokio::test]
 async fn no_model_fallback_loads_the_category_default() {
-    // R2-18-05: with one RP entry the old fixture could not tell "loads the
+    // With one RP entry the old fixture could not tell "loads the
     // configured default_model" from "loads the only entry of the category". The
     // decoy carries a distinct name AND a distinct engine-reported id, so a
     // fallback that ignored the default's value (while keeping the
@@ -927,7 +927,8 @@ async fn a_confirmed_release_lands_the_estimate_and_a_place_on_the_next_refusal(
     // Leg 3: the refusal. `aux-over` (60 GiB) arms on the third, empty AUX
     // slot; the ledger already holds aux-a plus the in-flight debit for
     // aux-slow, so the card holds 10 free and the 50 GiB deficit is bigger
-    // than every in-flight booking (30) - a refusal the 2026-11-10 ruling
+    // than every in-flight booking (30) - a refusal the operator's
+    // over-limit ruling
     // leaves intact (a booking-only deficit would park instead, see
     // `a_gate_short_load_waits_at_the_api_behind_an_in_flight_booking_and_
     // admits`), and nothing same-category is evictable, so the gate refuses
@@ -981,7 +982,7 @@ async fn a_confirmed_release_lands_the_estimate_and_a_place_on_the_next_refusal(
 
 #[tokio::test]
 async fn a_gate_short_load_waits_at_the_api_behind_an_in_flight_booking_and_admits() {
-    // Operator ruling 2026-11-10 at the wire: a load whose VRAM deficit is
+    // Operator ruling at the wire: a load whose VRAM deficit is
     // covered only by another load's paper booking must wait, not refuse.
     // `aux-a` holds 30 and `aux-slow` (never-ready mock) books 30, so
     // `aux-over` (20 GiB) is 10 short with 30 of booking ahead: the POST
@@ -1082,12 +1083,12 @@ async fn a_gate_short_load_waits_at_the_api_behind_an_in_flight_booking_and_admi
 
 #[tokio::test]
 async fn the_wire_reports_an_evicted_victims_row_not_serving_once_the_release_lands() {
-    // EVID-01 at the wire (the live proof's exact shape: slot empty while the
+    // The live card-run proof at the wire (its exact shape: slot empty while the
     // evicted model's own load row kept `Serving`/`loaded`): after a cross-
     // category eviction commits, `GET /har/jobs` and the `jobs` array of
     // `/har/status` must show the victim row terminal and NOT Serving, with the
     // honest `evicted` word, while the incoming row serves. The victim's kill
-    // is held BY TARGET (`hold_kill_of`, the FINDINGS-19 [4] seam) so the
+    // is held BY TARGET (`hold_kill_of`, the by-target-hold seam) so the
     // pre-commit window — row still `Serving`, slot `releasing`, engine alive —
     // is an observed state, not a race, and the flip is one commit.
     // Falsifier (run in place, revert): drop the `terminalize_victim_load_row`
@@ -1199,7 +1200,7 @@ async fn the_wire_reports_an_evicted_victims_row_not_serving_once_the_release_la
     assert_eq!(incoming_row["state"], "Serving", "{incoming_row}");
     assert_eq!(incoming_row["outcome"], "loaded", "{incoming_row}");
 
-    // `/har/status.jobs` is the second surface EVID-01 caught reading stale —
+    // `/har/status.jobs` is the second surface the live proof caught reading stale —
     // same actor snapshot, one truth, no second derivation allowed.
     let (_, status_doc) = get_json(&control, "/har/status").await;
     let status_victim = status_doc["jobs"]
@@ -1275,7 +1276,7 @@ async fn genuine_upstream_error_is_surfaced_never_retried() {
 
 #[tokio::test]
 async fn no_model_fallback_with_fresh_instants_answers_200() {
-    // FINDINGS-06 [1] shape check on a young process. Honest scope: at HEAD
+    // No-fabricated-instants fallback: shape check on a young process. Honest scope: at HEAD
     // every in-process `/har/load` goes through `swap_for_port`, which touches
     // the usage map, so the API cannot leave an occupant hint-free and this
     // request passes pre-fix too; the pre-fix panic (a fabricated
@@ -1301,7 +1302,7 @@ async fn no_model_fallback_with_fresh_instants_answers_200() {
 
 #[tokio::test]
 async fn no_model_fallback_prefers_the_most_recently_proxied_occupant() {
-    // F-2 MRU contract end to end. Honest scope: `swap_for_port` calls
+    // The no-model fallback's MRU contract, end to end. Honest scope: `swap_for_port` calls
     // `api.touch` on every in-process load, so the control API cannot leave an
     // occupant usage-hint-free; the untouched fallback branch (the pre-fix
     // panic site, reached in production when the ACTOR reloads an occupant
@@ -1358,7 +1359,7 @@ async fn no_model_fallback_prefers_the_most_recently_proxied_occupant() {
 
 #[tokio::test]
 async fn timeout_class_is_502_and_never_restarts() {
-    // FINDINGS-06 [2] classifier half: this leg feeds a READ timeout - the
+    // The classifier half: this leg feeds a READ timeout - the
     // client's response deadline expiring on a socket that was accepted but
     // never answered (`is_timeout()` true, `is_connect()` false), the class
     // that used to mean "engine died" and reaped healthy engines. It must map
@@ -1404,10 +1405,10 @@ async fn timeout_class_is_502_and_never_restarts() {
 
 #[tokio::test]
 async fn dead_engine_connect_failure_restarts_exactly_once() {
-    // FINDINGS-06 [2] restart-class proof, verified: the T10.1 mock death aborts
+    // The restart-class proof, verified: the `mock-dies-once` death aborts
     // the axum serve task so the port REFUSES and `send()` yields
     // `is_connect()` (probe-verified: kind Request, source hyper Connect /
-    // ConnectionRefused 10061 - see report). `mock-dies-once` makes only the
+    // ConnectionRefused 10061). `mock-dies-once` makes only the
     // first engine a corpse and its replacement lives forever, so the crash-retry
     // is fully deterministic. (A 502 "retry exhausted" end-to-end case is
     // unattainable with this runtime: a dies-always engine cannot pass
@@ -1456,7 +1457,7 @@ async fn dead_engine_connect_failure_restarts_exactly_once() {
     );
 }
 
-/// R2-05-03 must not eat the proxy contract: an engine that answers a plain-text
+/// The typed-envelope rewrite must not eat the proxy contract: an engine that answers a plain-text
 /// `404` keeps its content type and its bytes on the wire — the rewrite never
 /// touches a proxy path. Closest existing pass-through pins:
 /// `proxy_passes_the_engines_content_encoding_through_verbatim` and

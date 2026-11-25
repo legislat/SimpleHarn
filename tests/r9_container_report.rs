@@ -1,4 +1,4 @@
-//! R9 report-present legs (the seam the unit pins deliberately leave dark): a real
+//! Report-present legs (the seam the unit pins deliberately leave dark): a real
 //! load through the scheduler actor against [`MockRuntime`], whose `container_report`
 //! answers with a seeded startup `MemorySummary`. The in-module pins only call the
 //! fold directly, so a regression that swallows the one-shot between the runtime and
@@ -181,11 +181,11 @@ fn expect_loaded(reply: Reply, model: &str) {
     }
 }
 
-/// The whole R9 chain, end to end: readiness fetches the container report through
-/// the runtime seam, the ninfer parse turns the engine's own startup record into a
-/// reserved figure, the actor books it, and the fold persists pair + provenance +
-/// profile to the spawn-era yaml. The stale restart record ahead of the live one
-/// pins "newest startup wins".
+/// The whole container-report chain, end to end: readiness fetches the
+/// container report through the runtime seam, the ninfer parse turns the
+/// engine's own startup record into a reserved figure, the actor books it,
+/// and the fold persists pair + provenance + profile to the spawn-era yaml.
+/// The stale restart record ahead of the live one pins "newest startup wins".
 #[tokio::test]
 async fn a_container_memory_summary_books_engine_report_end_to_end() {
     let (handle, runtime, dir) = harness(&[(
@@ -317,8 +317,8 @@ async fn an_unparseable_or_incomplete_report_never_books() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The raise (operator ruling 2026-11-01, amending ruling 15 (ii)'s
-/// declared-always-leg): a report PERSISTS its honest pair next to a declared row
+/// The raise (operator ruling, amending the earlier declared-always leg): a
+/// report PERSISTS its honest pair next to a declared row
 /// (the forensic value stands) and the mid-session slot keeps charging the
 /// declared figure — the raise is not retroactive — but the NEXT admit books the
 /// container's certified reservation instead of the smaller declaration. A
@@ -476,7 +476,7 @@ fn trust_harness(container: &'static str) -> TrustHarness {
     }
 }
 
-/// The sampler's trust-site name-shape gate (review-wave leftover): a container's
+/// The sampler's trust-site name-shape gate: a container's
 /// self-reserved figure books only when its name passes the very rule the spawn
 /// path applies (`valid_container_name` — the validator the adapter spec, the
 /// pre-reap, the boot reclaim, and `ProcessRuntime::container_report` all share).

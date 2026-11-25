@@ -1,6 +1,6 @@
-//! TASK-NAMING-CLEANUP tripwire: one name everywhere. No code-side scope file
+//! Naming tripwire: one name everywhere. No code-side scope file
 //! (`src`, `tests`, `scripts`, `examples`, `.github`) may carry an older
-//! product spelling (TASK-NAMING-CLEANUP, operator ruling 2026-11-05).
+//! product spelling; the operator ruled on a single product name.
 //!
 //! Two occurrence classes stay legal:
 //! - Legacy machine-path bans: names of the operator's old install, backup,

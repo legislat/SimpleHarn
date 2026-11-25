@@ -31,7 +31,7 @@ use tower::ServiceExt;
 
 type Spec = (&'static str, &'static str, CategoryId, Option<f64>);
 
-/// The per-test stand-in for the boot config file (FINDINGS-18 [2]): `app()` points
+/// The per-test stand-in for the boot config file: `app()` points
 /// every `AppConfig` at `<modelconf dir>/simpleharn.json` so the persisting
 /// endpoints (`/har/config/default`, the retag default-clear) write INSIDE the test's
 /// own temp dir. Before this they fell through to `default_config_path()` — the exe
@@ -88,7 +88,7 @@ fn build_app(
     }
     let dir = write_modelconf(specs);
     // A hand-stamped `source_path` (the custom-path persist test) is respected;
-    // everything else is sandboxed to this test's temp dir (FINDINGS-18 [2]).
+    // everything else is sandboxed to this test's temp dir.
     if config.source_path.is_none() {
         config.source_path = Some(dir.join(TEST_CONFIG_NAME));
     }
@@ -128,7 +128,7 @@ fn app(
 }
 
 /// Every builder here carries a loopback `Host`: the guard's DNS-rebinding gate now
-/// runs on every request (FINDINGS-05 [5]), and a `tower::ServiceExt::oneshot`
+/// runs on every request, and a `tower::ServiceExt::oneshot`
 /// request carries no `Host` header on its own.
 async fn post_json(app: &Router, path: &str, body: &str) -> (StatusCode, Value) {
     let response = app

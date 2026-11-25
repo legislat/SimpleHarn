@@ -1,11 +1,13 @@
-//! Gate-honesty suite — executes the Falsifier of every FINDINGS-17 item against
-//! the real exe on a free GPU card, answering one question per finding: can the
+//! Gate-honesty suite — executes the falsifier of every audited gate item against
+//! the real exe on a free GPU card, answering one question per item: can the
 //! T-suite gate lie about this?
 //!
 //! Operator-gated like the T-suite: every test is `#[ignore]`d and driven by
-//! `handoff/gate-honesty/` (PROMPT.md + RUN.md + preflight/run-group/tier scripts),
-//! which an external agent runs on a machine with a free card. Run nothing from
-//! this file directly unless RUN.md says so. Sole exception:
+//! the operator layer's gate-honesty driver scripts (prompt + runbook +
+//! preflight/run-group/tier
+//! scripts), which an external agent runs on a machine with a free card. Run
+//! nothing from
+//! this file directly unless the runbook says so. Sole exception:
 //! [`closed_verdicts_are_observations`] is cardless by design and runs in normal
 //! `cargo test` — it pins the port-observation honesty itself.
 //!
@@ -36,7 +38,7 @@
 //!
 //! The `Harness` here is deliberately a copy, not a shared module with
 //! `tests/t_switching.rs`: the T-suite is the frozen v1.0 release gate pending
-//! its own operator-run (HANDOFF §4 item 3), and this suite must not be able to
+//! its own operator-run, and this suite must not be able to
 //! destabilise it. Sharing the harness is a post-tag refactor.
 
 use serde_json::{json, Value};
@@ -50,7 +52,7 @@ use std::time::{Duration, Instant};
 /// Serializes the whole suite: the harness spawns the real exe and the
 /// single-instance guard refuses a second one.
 static SERIAL: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-/// Per-spawn discriminator for the identity sentinel (FINDINGS-17 [3] fix): a
+/// Per-spawn discriminator for the identity sentinel: a
 /// leaked or foreign harness can replicate a static `sentinel-{tag}` name, but
 /// not a name this process minted seconds ago for one specific child.
 static NONCE_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -240,7 +242,7 @@ struct Harness {
 
 impl Harness {
     /// Spawns with a per-run nonce sentinel and re-samples `try_wait()` after
-    /// the identity loop (FINDINGS-17 [3] minimal fix). Returns Err with the
+    /// the identity loop. Returns Err with the
     /// evidence rather than panicking, so adversarial tests assert on the refusal.
     async fn spawn_verified(
         tag: &str,
@@ -483,8 +485,8 @@ impl Drop for Harness {
 }
 
 /// A harness spawned to impersonate: it owns 8708-8711 and carries the OLD
-/// static `sentinel-{tag}` name, exactly the leaked/foreign server
-/// FINDINGS-17 [3] describes.
+/// static `sentinel-{tag}` name, exactly the shape of the leaked/foreign
+/// server the impersonation guard rejects.
 struct Decoy {
     child: Child,
     _work_dir: PathBuf,
@@ -634,7 +636,7 @@ async fn port_open(port: u16, secs: u64) -> bool {
 }
 
 /// `(name, parent_pid)` from the live process table — the OS is the only
-/// trustworthy source for "whose child is this" (FINDINGS-17 [6]/[9]).
+/// trustworthy source for "whose child is this".
 fn process_info(pid: u32) -> Option<(String, u32)> {
     let script = format!(
         "(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}' -ErrorAction SilentlyContinue \
@@ -655,7 +657,7 @@ fn process_info(pid: u32) -> Option<(String, u32)> {
     ))
 }
 
-/// The guard FINDINGS-17 [6] demands before any kill: the target must be
+/// The guard this suite demands before any kill: the target must be
 /// llama-server AND a direct child of the harness we spawned.
 fn kill_target_authorized(pid: u32, harness_pid: u32) -> bool {
     process_info(pid)
@@ -724,9 +726,9 @@ fn log_verdicts(
     (run_local_ok, cap_ok)
 }
 
-// ---------------------------------------------------------------- G1 (FINDINGS-17 [1])
+// ---------------------------------------------------------------- G1
 
-/// STRENGTHENED. T12.4 proved "`{}` unloads all" against ONE occupant, so a
+/// STRENGTHENED. The old unload-all test proved "`{}` unloads all" against ONE occupant, so a
 /// first-occupant-only implementation passed green. Two residents now; both must
 /// be gone, by slot table AND by their engine ports refusing TCP.
 #[tokio::test]
@@ -763,9 +765,9 @@ async fn g01_unload_all_frees_every_occupant() {
     println!("G1 REFUTED: unload-all verified against TWO residents (slots null, ports closed)");
 }
 
-// ---------------------------------------------------------------- G2 (FINDINGS-17 [2])
+// ---------------------------------------------------------------- G2
 
-/// STRENGTHENED. The old T12.4 discarded the load waiter's reply (a 502 counted
+/// STRENGTHENED. The old unload-all test discarded the load waiter's reply (a 502 counted
 /// as "loaded") and `wait_empty` accepted any all-null snapshot. Now every setup
 /// load must be an accepted receipt, both engines must answer a real chat BEFORE
 /// the unload, and after it both engine ports must refuse TCP — a null slot
@@ -821,7 +823,7 @@ async fn g02_evidence_before_and_after_the_unload() {
     println!("G2 REFUTED: accepted receipts, live chats before, and port-closed after — not a discarded reply plus null slots");
 }
 
-// ---------------------------------------------------------------- G3 (FINDINGS-17 [3])
+// ---------------------------------------------------------------- G3
 
 /// ADVERSARIAL. A foreign harness holding 8708-8711 with the OLD static
 /// `sentinel-{tag}` name must NOT be able to impersonate our spawn: the nonce
@@ -872,7 +874,7 @@ async fn g03_foreign_harness_cannot_impersonate() {
     drop(ours);
 }
 
-// ---------------------------------------------------------------- G4 (FINDINGS-17 [4])
+// ---------------------------------------------------------------- G4
 
 /// STRENGTHENED. A supersede 409 is indistinguishable from a port-holder 409 by
 /// status code alone. One AUX slot; the slow mid load A is superseded by B
@@ -929,7 +931,7 @@ async fn g04_supersede_409_names_the_reason() {
     }
 }
 
-// ---------------------------------------------------------------- G5 (FINDINGS-17 [5])
+// ---------------------------------------------------------------- G5
 
 /// ADVERSARIAL-with-honest-SKIP. T9 claimed the in-flight attach path but never
 /// sighted an in-flight job; issuance is not overlap. Two gates make REFUTED
@@ -971,7 +973,7 @@ async fn g05_attach_path_is_sighted_not_assumed() {
     );
     // The attach proof: duplicates that joined the in-flight job answer
     // `loaded` with that job's receipt; an `already` means the job served
-    // before the post landed — the path FINDINGS-17 [5] says proves nothing.
+    // before the post landed — a path that proves nothing.
     let job_of = |body: &Value| {
         (body["status"] == "loaded")
             .then(|| body["receipt"]["job"].clone())
@@ -992,7 +994,7 @@ async fn g05_attach_path_is_sighted_not_assumed() {
     println!("G5 REFUTED: duplicates attached to the SAME loaded job, sighted in flight — 3 posts, 1 job row");
 }
 
-// ---------------------------------------------------------------- G6 (FINDINGS-17 [6])
+// ---------------------------------------------------------------- G6
 
 /// ADVERSARIAL. The kill guard must accept the product's real engine child and
 /// reject the strangers the product (or a ticket-aliasing bug) could hand it:
@@ -1024,7 +1026,7 @@ async fn g06_kill_guard_accepts_child_rejects_strangers() {
     println!("G6 REFUTED: guard authorized the real engine child and refused two stranger PIDs");
 }
 
-// ---------------------------------------------------------------- G7 (FINDINGS-17 [7])
+// ---------------------------------------------------------------- G7
 
 /// STRENGTHENED. T7 7.2 ignored the unload reply and slept a fixed 2 s before
 /// trusting "VRAM freed". Release is proven the way T2 proves it: asserted
@@ -1064,7 +1066,7 @@ async fn g07_release_is_proven_by_the_port_not_a_sleep() {
     println!("G7 REFUTED: unload receipt asserted, release proven by port-close, no fixed sleeps");
 }
 
-// ---------------------------------------------------------------- G8 (FINDINGS-17 [8])
+// ---------------------------------------------------------------- G8
 
 /// ADVERSARIAL, no card needed: both log rules run against the SAME synthetic
 /// directory. The retired T-suite per-prefix cap (count by prefix <= a fixed
@@ -1107,7 +1109,7 @@ fn g08_log_bound_fails_a_leak_and_ignores_litter() {
     );
 }
 
-// ---------------------------------------------------------------- G9 (FINDINGS-17 [9])
+// ---------------------------------------------------------------- G9
 
 /// STRENGTHENED. Orphan accounting is parent-scoped through a real engine
 /// lifecycle: 0 before load, exactly 1 (and it is the slot-reported pid) while
@@ -1160,7 +1162,7 @@ async fn g09_orphan_count_is_parent_scoped() {
     );
 }
 
-// ---------------------------------------------------------------- G10 (FINDINGS-14 [5])
+// ---------------------------------------------------------------- G10
 
 /// ADVERSARIAL. A10 / §0.2 step 3 is a boot-order claim: the second harness is
 /// refused by the named mutex BEFORE it can touch any state. The t-suite boot tests

@@ -5,8 +5,8 @@
 
 use super::*;
 
-/// `AppConfig::default()` with a `llama_server_exe` that exists. Since FR-13
-/// the default is `None` — and `None` reports no `engine_binary_missing` at
+/// `AppConfig::default()` with a `llama_server_exe` that exists. The default is
+/// `None` — and `None` reports no `engine_binary_missing` at
 /// all (the unset posture belongs to `config_warnings`, not to a scan error) —
 /// but a test pinning the BINARY-IS-VERDICTED path still needs a configured,
 /// present stand-in. `tag` keeps each test's stand-in directory attributable
@@ -22,7 +22,7 @@ fn config_with_existing_llama(tag: &str) -> AppConfig {
 
 #[tokio::test]
 async fn retagging_an_embedding_model_out_of_emb_keeps_it_in_the_catalog() {
-    // FINDINGS-12 [1]: the page's category dropdown wrote only `category:`, so
+    // The page's category dropdown once wrote only `category:`, so
     // retagging an `is_embedding_model: true` + `category: EMB` file to WORK left
     // the alias; the reload at the end of the same handler hit
     // EmbeddingCategoryConflict and DROPPED the file — the model 404s everywhere,
@@ -151,7 +151,7 @@ async fn retagging_an_embedding_model_out_of_emb_keeps_it_in_the_catalog() {
 
 #[tokio::test]
 async fn retagging_a_bom_prefixed_embedding_model_keeps_it_in_the_catalog() {
-    // FINDINGS-13 [1], the finding's falsifier as a test: writeback's key matcher
+    // The falsifier for the BOM-blind key matcher: writeback's key matcher
     // did not strip a UTF-8 BOM while the scan parser does, so on a file whose
     // BOM'd FIRST line is `is_embedding_model: true` the batch retag treated the
     // removal as a no-op, published `category: WORK` beside the surviving alias,
@@ -217,8 +217,8 @@ async fn retagging_a_bom_prefixed_embedding_model_keeps_it_in_the_catalog() {
 }
 
 /// Two yamls whose `model:` paths share one GGUF basename in different dirs —
-/// the reviewer's `mid/X.gguf` vs `big/X.gguf` shape. Same-name
-/// twins became unconstructable with file-stem identity (FINDINGS-13 [3]), so the
+/// the `mid/X.gguf` vs `big/X.gguf` shape. Same-name
+/// twins became unconstructable with file-stem identity, so the
 /// surviving ambiguity class is the alias tier of `catalog::resolve`: neither file
 /// may win the shared GGUF name. The files carry no `name:` key at all.
 fn seed_alias_twins(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
@@ -250,7 +250,7 @@ async fn ambiguous_app() -> (
         &[("filler", "mock", CategoryId::Work, Some(4.0))],
     );
     seed_alias_twins(&routers.5);
-    // FINDINGS-18 [2]: the twins fixture gets a REAL config file on disk (the `app()`
+    // The twins fixture gets a REAL config file on disk (the `app()`
     // sandbox path), so the "…and not_persisted" test can assert the claim its name
     // makes — the refused 409 left the operator's config bytes untouched — instead of
     // only reading the in-memory `/har/status` categories.
@@ -266,7 +266,7 @@ async fn ambiguous_app() -> (
 
 #[tokio::test]
 async fn load_of_an_ambiguous_gguf_alias_is_409_naming_both_yamls() {
-    // FINDINGS-11 [4] survives stem identity on the alias tier: before the fix
+    // Ambiguity survives stem identity on the alias tier: before the fix
     // this answered 200 having spawned whichever quantization sorted first, under
     // the identity the client asked for.
     let (control, _, _, _, runtime, _) = ambiguous_app().await;
@@ -275,7 +275,7 @@ async fn load_of_an_ambiguous_gguf_alias_is_409_naming_both_yamls() {
     assert_eq!(body["code"], "conflict", "flat code: {body}");
     assert_eq!(body["error"]["code"], "conflict", "envelope code: {body}");
     let message = body["message"].as_str().unwrap_or_default();
-    // R2-18-02: a bare `contains('2')` was satisfiable by a digit in the fixture
+    // A bare `contains('2')` was satisfiable by a digit in the fixture
     // temp path the same message embeds, so a count-free regression still passed.
     // Pin the operator-visible phrase the wire actually renders.
     assert!(
@@ -328,8 +328,8 @@ async fn named_proxy_on_an_ambiguous_gguf_alias_is_the_same_409_not_a_misdirecte
 
 #[tokio::test]
 async fn a_name_contradicting_the_stem_is_dropped_at_scan_and_the_first_file_loads_by_stem() {
-    // 6667c84's shared-name-handoff class, relocated by file-stem identity
-    // (FINDINGS-13 [3]): a second file carrying the FIRST file's name can no
+    // The shared-name-handoff class, relocated by file-stem identity:
+    // a second file carrying the FIRST file's name can no
     // longer reach the catalog at all — the scan drops it with the InvalidName
     // mismatch, and the twin shape never arrives at the API to be picked.
     let (control, _, _, _, runtime, dir) = app(
@@ -420,9 +420,9 @@ async fn colliding_gguf_file_names_are_409_on_the_alias_tier() {
 
 #[tokio::test]
 async fn setting_the_default_model_on_an_ambiguous_alias_is_refused_and_not_persisted() {
-    // The write-back half of the finding: `/har/config/default` persists the name it
+    // The write-back half of the alias finding: `/har/config/default` persists the name it
     // validated, so an ambiguity must stop BEFORE `persist_default_model`.
-    // FINDINGS-18 [2]: the name promised a file-level claim the body never checked —
+    // The name promised a file-level claim the body never checked —
     // it read only the in-memory `/har/status` categories, and a regression that
     // answered 409 *and still rewrote the config file* passed. The fixture now owns a
     // seeded config file in the test's temp dir; the refusal must leave its bytes
@@ -465,7 +465,7 @@ async fn setting_the_default_model_on_an_ambiguous_alias_is_refused_and_not_pers
 
 #[tokio::test]
 async fn editing_an_ambiguous_alias_refuses_the_writeback_rather_than_picking_a_victim_file() {
-    // Chunk 7 [9]: `/har/config/model` resolves a name to choose WHICH yaml to edit.
+    // `/har/config/model` resolves a name to choose WHICH yaml to edit.
     // Under ambiguity it must refuse; editing the first match silently rewrites one
     // operator file for a model the client did not necessarily name.
     let (control, _, _, _, _, dir) = ambiguous_app().await;
@@ -496,7 +496,7 @@ async fn editing_an_ambiguous_alias_refuses_the_writeback_rather_than_picking_a_
 
 #[tokio::test]
 async fn retagging_one_loaded_aux_model_never_touches_the_other_aux_occupant() {
-    // FINDINGS-07 [1]: `/har/config/model` is a single-model edit, but its retag branch
+    // `/har/config/model` is a single-model edit, but its retag branch
     // called `scheduler.unload(old_CATEGORY)` — "unloads every occupant of `category`".
     // With AUX at max_models 2..6, retagging one AUX model killed the others: in-flight
     // generations lost, VRAM dumped, cold reload for the operator's next request.
@@ -561,10 +561,10 @@ async fn retagging_one_loaded_aux_model_never_touches_the_other_aux_occupant() {
 
 #[tokio::test]
 async fn retagging_an_unloaded_aux_model_leaves_the_loaded_aux_occupant_alive() {
-    // FINDINGS-07 [1], second half: the collateral unload fired on the CATEGORY CHANGE,
+    // The second half of the collateral-unload defect: the collateral unload fired on the CATEGORY CHANGE,
     // not on the model being loaded, so retagging a third AUX model that was never
     // loaded wiped the AUX occupants that were serving "for nothing".
-    // R2-18-03: the old blind 150 ms sleep is gone. aux1 is a `mock-hold-kill`
+    // The old blind 150 ms sleep is gone. aux1 is a `mock-hold-kill`
     // engine whose kill is held BY TARGET (`hold_kill_of`), so a collateral
     // `unload(AUX)` can neither succeed (that engine cannot die) nor slip past an
     // unmeasured window unnoticed: its kill parks on the runtime gate forever
@@ -600,7 +600,7 @@ async fn retagging_an_unloaded_aux_model_leaves_the_loaded_aux_occupant_alive() 
     .expect("port fits u16");
     // Hold the ONE thing a wrong retag could kill: by-target holding means the
     // fake's parking cannot be re-armed or dodged by a change in how many kills
-    // the product issues (the FINDINGS-19 [4] seam).
+    // the product issues (the by-target-hold seam).
     runtime.hold_kill_of(aux1_port);
 
     let (status, body) = post_json(
@@ -612,10 +612,10 @@ async fn retagging_an_unloaded_aux_model_leaves_the_loaded_aux_occupant_alive() 
     assert_eq!(status, StatusCode::OK, "a retag never 500s: {body}");
     assert_eq!(body["status"], "edited");
     assert_eq!(body["category"], "WORK");
-    // The positive settle signal, R2-18-03: `slot_freed` is the actor's reply to
+    // The positive settle signal: `slot_freed` is the actor's reply to
     // the retag's follow-up command (`unload_model` - the idempotent Done the
     // actor guarantees for a never-loaded model), so the retag path is proven
-    // PROCESSED, not merely posted. The broken FINDINGS-07 [1] branch answered its
+    // PROCESSED, not merely posted. The broken collateral-unload branch answered its
     // `unload(old_category)` at this same point.
     assert_eq!(
         body["slot_freed"],
@@ -672,7 +672,7 @@ async fn retagging_an_unloaded_aux_model_leaves_the_loaded_aux_occupant_alive() 
 }
 
 /// The boot config with `WORK`'s default pointed at `model`, the shape the retag
-/// dangling-default clear acts on (operator finding #1, 2026-10-26).
+/// dangling-default clear acts on (operator finding on default-model coherence).
 fn config_defaulting_work(model: &str) -> AppConfig {
     let mut config = AppConfig::default();
     config
@@ -686,7 +686,7 @@ fn config_defaulting_work(model: &str) -> AppConfig {
 
 #[tokio::test]
 async fn the_retag_reply_surfaces_the_slot_and_default_follow_ups() {
-    // R2-07-05: the retag branch swallowed the slot-free (`let _ =`) and the
+    // The retag branch once swallowed the slot-free (`let _ =`) and the
     // dangling-default clear (the dropped `(effective, persisted)` tuple), so a
     // default-clear whose write failed still answered a bare `"status":"edited"`
     // with no field, log contrast, or warning for either failure. The 200 stays an
@@ -695,7 +695,7 @@ async fn the_retag_reply_surfaces_the_slot_and_default_follow_ups() {
     let specs = [("qwen3", "mock", CategoryId::Work, Some(4.0))];
 
     // Leg 1 — both follow-ups land: the clear reaches the file (build_app stamps
-    // source_path inside the test's own modelconf dir, FINDINGS-18 [2]).
+    // source_path inside the test's own modelconf dir).
     let (control, _, _, _, _, modelconf) = build_app(config_defaulting_work("qwen3"), &specs, &[]);
     let (status, body) = post_json(
         &control,
@@ -756,7 +756,7 @@ async fn the_retag_reply_surfaces_the_slot_and_default_follow_ups() {
     // 200 and `"edited"` stay — the yaml edit is honestly done — but the reply says
     // the file still names the moved model, and memory never moves either: a
     // clear whose bytes never landed leaves the effective default at the value
-    // the file still holds (R2-07-03). The pre-R2-07-03 pin asserted memory
+    // the file still holds (config file is king). The earlier pin asserted memory
     // took the clear anyway; the operator ruling retires that memory-beats-file
     // shape, so this pin now demands the opposite.
     let mut broken = config_defaulting_work("qwen3");
@@ -811,7 +811,7 @@ async fn the_retag_reply_surfaces_the_slot_and_default_follow_ups() {
 
 #[tokio::test]
 async fn an_unknown_key_warns_on_the_page_and_the_model_still_loads() {
-    // FINDINGS-13 [8]: the warning is real (visible in `catalog_errors`, `kind`
+    // The warning is real (visible in `catalog_errors`, `kind`
     // round-tripping through the JSON) and harmless (README doctrine: preserved
     // for reference — the entry publishes and loads).
     let (control, _, _, _, runtime, dir) = app(
@@ -862,7 +862,7 @@ async fn an_unknown_key_warns_on_the_page_and_the_model_still_loads() {
 
 #[tokio::test]
 async fn a_bogus_llama_server_exe_is_a_page_visible_engine_binary_missing_error() {
-    // FINDINGS-13 [2]'s cross-check twin of the boot banner: the missing binary
+    // Cross-check twin of the boot banner: the missing binary
     // is not only said once at boot, it is IN `catalog_errors` with its kind on
     // the wire (file `config`, kind `engine_binary_missing`).
     let config = AppConfig {
@@ -889,7 +889,7 @@ async fn a_bogus_llama_server_exe_is_a_page_visible_engine_binary_missing_error(
     );
 }
 
-/// FR-13/FR-15 through the whole surface: an UNSET `llama_server_exe` is a
+/// The unset-binary posture through the whole surface: an UNSET `llama_server_exe` is a
 /// posture, not a fault — no `engine_binary_missing` scan error (the scan has
 /// no verdict to hand), and `/har/status` names `llama_server_exe_unset` in
 /// `config_warnings` while a loopback bind owes no LAN warning. Falsifier:
@@ -929,7 +929,7 @@ async fn an_unset_llama_binary_warns_on_the_page_and_never_fakes_a_scan_error() 
 
 #[tokio::test]
 async fn a_missing_gguf_is_dropped_by_the_scan_and_named_on_the_page() {
-    // FINDINGS-13 [2] through the API surface: a llama entry pointed at a GGUF
+    // The missing-file posture through the API surface: a llama entry pointed at a GGUF
     // that is not on disk never reaches the catalog (so it cannot evict anything),
     // and `/har/rescan` names the file and the path with its kind.
     let (control, _, _, _, _, dir) = app(

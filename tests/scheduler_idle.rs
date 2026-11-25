@@ -1,4 +1,4 @@
-//! Idle-timeout tests (DESIGN Step 5): a category with `idle_timeout_s > 0`
+//! Idle-timeout tests: a category with `idle_timeout_s > 0`
 //! unloads unused occupants on the actor's sweep; 0 disables; the in-flight-job
 //! guard keeps the sweep off swapping slots; and WORK's never-idle default holds.
 
@@ -18,7 +18,7 @@ fn harness(config: AppConfig) -> SchedulerHandle {
     let runtime = MockRuntime::new();
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
     adapters.insert("mock".to_string(), Arc::new(MockAdapter));
-    // FINDINGS-20 [9]: the suite used to register ONLY the instant adapter, so no
+    // The suite used to register ONLY the instant adapter, so no
     // test here could ever have a job in flight — the sweep's `slot.job.is_none()`
     // guard was untested anywhere. `mock-slow` gives a 2.5 s readiness window to
     // collide with the 2 s tick.
@@ -79,8 +79,8 @@ async fn wait_until(
 
 #[tokio::test]
 async fn idle_category_unloads_after_the_threshold() {
-    // FINDINGS-20 [10]: the WORK `stayer` fixture existed but no test loaded it, so
-    // the documented "WORK never idles out" guarantee (DESIGN, and WORK's `0`
+    // The WORK `stayer` fixture existed but no test loaded it, so
+    // the documented "WORK never idles out" guarantee (and WORK's `0`
     // default) had no test anywhere — it is a DEFAULT, not a rule: nothing
     // validates WORK's timeout, so the behavioural proof is here. The sweep must
     // take only the opted-in RP occupant and leave the actively-listed WORK model
@@ -166,7 +166,7 @@ async fn activity_resets_the_idle_clock() {
 
 #[tokio::test]
 async fn all_four_categories_boot_with_the_never_idle_default() {
-    // FINDINGS-20 [10], the canary half: "WORK never idles out" is a DEFAULT, not a
+    // The canary half: "WORK never idles out" is a DEFAULT, not a
     // validated rule — grep `src/` and nothing pins any category's `idle_timeout_s`
     // to 0. Flip a default (WORK to 600, say) and the operator's actively-used
     // model silently unloads mid-session with an otherwise-green suite; this row
@@ -186,7 +186,7 @@ async fn all_four_categories_boot_with_the_never_idle_default() {
 
 #[tokio::test]
 async fn a_slot_with_a_job_in_flight_survives_the_idle_sweep() {
-    // FINDINGS-20 [9]: the sweep's `slot.job.is_none()` filter is what stops a 2 s
+    // The sweep's `slot.job.is_none()` filter is what stops a 2 s
     // tick from starting an unload on a slot mid-Spawn/Ready/Install. Nothing in
     // the repo combined a nonzero `idle_timeout_s` with an in-flight job (this file
     // registered only instant engines, so it never could). Here RP idles at 1 s and

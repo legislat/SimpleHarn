@@ -1,4 +1,4 @@
-//! Cross-category eviction tests (DESIGN Step 6, choice C): a load that does not
+//! Cross-category eviction tests: a load that does not
 //! fit evicts the cheapest sufficient set of evictable victims, releases them one
 //! at a time (stopping as soon as the gate is satisfied), and refuses with the
 //! named blockers when nothing evictable can cover the deficit.
@@ -153,7 +153,7 @@ fn harness_rt_dir(
 }
 
 /// [`harness_rt_dir`] plus the idle-sweep opt-ins the eviction fixtures never
-/// needed: RP and AUX `idle_timeout_s` for the R2-20-01 cross-slot-victim test.
+/// needed: RP and AUX `idle_timeout_s` for the cross-slot-victim test.
 /// The other categories keep the never-idle default, so only those two slots can
 /// ever be swept.
 fn harness_rt_idle(
@@ -313,13 +313,14 @@ async fn work_load_evicts_aux_victim_when_short() {
 
 #[tokio::test]
 async fn an_eviction_terminalizes_the_victims_own_load_row_as_evicted() {
-    // EVID-01 (live proof 2026-11-05: slot empty, victim's load row still
+    // Live card-run proof (slot empty, victim's load row still
     // `Serving`/`loaded`): the slot table cleared on a confirmed eviction
     // release, but the victim's own ledger row kept claiming it served, so
     // `/har/jobs` read a gone model as resident. The same commit that empties
     // the slot must terminalize that row as `evicted` while the incoming row —
     // the other writer's job — is untouched and goes on to serve.
-    // The victim's kill is held BY TARGET (`hold_kill_of`, FINDINGS-19 [4]) so
+    // The victim's kill is held BY TARGET (`hold_kill_of`, the by-target-hold
+    // seam) so
     // the pre-commit window is an observed state, not a race, and the flip is
     // one commit.
     // Falsifier (run in place, revert): drop the `terminalize_victim_load_row`
@@ -452,7 +453,7 @@ async fn an_eviction_terminalizes_the_victims_own_load_row_as_evicted() {
 
 #[tokio::test]
 async fn a_stale_resident_is_evicted_like_any_other() {
-    // Interlock 2 (Axis 2, ruling 2026-10-29): the amber is INFO, not policy. A
+    // Axis-2 interlock 2: the amber is INFO, not policy. A
     // resident the marker has judged stale must be evicted exactly like a clean one
     // — same deficit math, same victim record, no sparing and no preference.
     // Falsifier: filter stale occupants out of the victim pool and the WORK load
@@ -661,10 +662,10 @@ async fn equal_cost_victims_evict_the_less_protected_category() {
 
 #[tokio::test]
 async fn equal_total_victims_evict_the_fewer_victims() {
-    // R2-20-02: the planner's documented `fewer victims` tie-break (the
+    // The planner's documented `fewer victims` tie-break (the
     // `count < best_count` arm of `plan_victims`, src/scheduler/admission.rs) was
     // pinned by no fixture — every candidate multiset here had either one covering
-    // mask or different totals (R2-20 [2] read them all). AUX 12 + 8 and one AUX
+    // mask or different totals. AUX 12 + 8 and one AUX
     // 20 against a 20 GiB deficit tie at total 20: the count arm must release the
     // single 20, never the pair. Delete that clause and the planner may kill two
     // operator models where one would do, chosen by disposability alone, with
@@ -746,7 +747,7 @@ async fn rp_load_cannot_evict_work_and_refuses_with_blockers() {
     // WORK holds 50 and a small AUX 8 sits beside it; RP wants 50: free 12,
     // deficit 38. WORK is no candidate (RP cannot evict it) — the blocker — and
     // AUX 8 is a candidate too small to cover. The refusal must carry BOTH arms
-    // of the G6 tail (R2-20-03): `considered evicting:` naming the candidate with
+    // of the blocker sentence: `considered evicting:` naming the candidate with
     // its GiB figure, and `blocked by:` naming the rule. No executed test ever
     // had a non-empty candidate list before, so the whole `considered evicting`
     // arm in src/budget.rs could be deleted without turning anything red.
@@ -810,7 +811,7 @@ async fn rp_load_cannot_evict_work_and_refuses_with_blockers() {
 async fn aux_load_cannot_evict_anything_cross_category() {
     // AUX x2 holds 30 + 20 (ledger 50, free 20); a 55 GiB AUX load replaces its
     // LRU own occupant (allowed) but still falls 5 short - and AUX may evict
-    // nobody outside its own slots. Release-first (ruling 2026-11-01, revisable):
+    // nobody outside its own slots. Release-first (operator ruling, revisable):
     // the same-slot victim is destroyed on the booked credit and the SETTLE window
     // re-gates on the re-sampled card - the card stays full, so the load refuses
     // with the settle numbers. aux20 (a cross-category non-candidate) survives;
@@ -857,7 +858,7 @@ async fn aux_load_cannot_evict_anything_cross_category() {
 
 #[tokio::test]
 async fn an_aux_load_refused_by_an_emb_occupant_names_who_may_evict_emb() {
-    // FINDINGS-20 [11], second half: EMB appeared in no eviction test at all, yet
+    // The blocker-sentence half: EMB appeared in no eviction test at all, yet
     // EMB refusals are the ones that most often need the blocker sentence (EMB is
     // evictable only by WORK and RP — never by AUX). The wording is built by
     // src/scheduler/mod.rs `plan_victims` from the non-empty evictor list; only the
@@ -897,7 +898,7 @@ async fn an_aux_load_refused_by_an_emb_occupant_names_who_may_evict_emb() {
 
 #[tokio::test]
 async fn a_successful_eviction_leaves_the_hard_filtered_occupant_untouched() {
-    // FINDINGS-20 [12]: every successful-eviction test so far ran on otherwise-empty
+    // Every successful-eviction test so far ran on otherwise-empty
     // cards, so the `evictable_by` HARD FILTER was only ever proven in the
     // all-blockers case. Here a protected occupant (WORK: `evictable_by = []`) sits
     // on the card *while an eviction succeeds*: the plan may count only AUX's bytes.
@@ -1151,7 +1152,7 @@ async fn settle_refuses_when_observed_card_stays_busy() {
         error.contains("52.0 GiB free after release, 67.0 GiB required incl. 2.0 GiB reserve"),
         "explanatory settle error: {error}"
     );
-    // R2-19-03: the settle-refusal ROW was pinned only inside a hand-written webui
+    // The settle-refusal ROW was pinned only inside a hand-written webui
     // fixture, which cannot fail. Pin the ledger truth beside the error text: the
     // refused load terminalizes (fail funnel, no spawn: it ends at `Idle`), carries
     // the settle outcome verbatim, and keeps `is_fault` - the headline rule the
@@ -1181,7 +1182,7 @@ async fn settle_refuses_when_observed_card_stays_busy() {
 
 #[tokio::test]
 async fn an_unreachable_launch_floor_refuses_before_any_release() {
-    // R2-19-01 (the Row-10 guard, RULED 2026-11-01): when NO release the harness may
+    // DECISIONS row 10 (the unreachable-floor guard): when NO release the harness may
     // perform can reach the launch floor, `finish_admit` refuses BEFORE any kill and
     // the refusal names the guard sentence "No releases allow for the VRAM floor.
     // Check foreign residents". The guard deliberately PRECEDES the release-first
@@ -1293,7 +1294,7 @@ async fn fresh_load_refused_on_physically_full_card() {
     // Ledger says 15 GiB free (55 booked, no external attribution) but the card
     // is observed at 70.5/72: a fixed 10 GiB AUX load has no victim to release,
     // so the observed clamp applies at admit and refuses - over-booking from a
-    // flattering ledger is the "lying ledger" case (operator 2026-10-26).
+    // flattering ledger is the "lying ledger" case.
     let witness = FakeWitness::with(vec![sample(72.0, 1.0), sample(72.0, 70.5)]);
     let handle = harness_ext(
         &[
@@ -1337,7 +1338,7 @@ async fn fresh_load_refused_on_physically_full_card() {
 
 #[tokio::test]
 async fn a_load_two_victims_short_releases_both_least_disposable_first() {
-    // FINDINGS-20 [3]: every planned-victim assertion in the repo was a single element,
+    // Every planned-victim assertion in the repo was a single element,
     // so the one-at-a-time release loop, its ordering comparator (most-disposable
     // first = most categories may evict it) and `released_cost` across releases ran
     // entirely untested. Neither victim
@@ -1451,14 +1452,14 @@ async fn a_load_two_victims_short_releases_both_least_disposable_first() {
 
 #[tokio::test]
 async fn the_release_loop_stops_only_when_the_single_counted_credit_covers_the_gate() {
-    // FINDINGS-20 [3] (the early-stop branch, `release sufficient; skipping remaining
-    // victims`, src/scheduler/mod.rs) read together with R2-03-01: this load queues
+    // The early-stop branch (`release sufficient; skipping remaining
+    // victims`, src/scheduler/mod.rs): this load queues
     // three release targets — the same-slot holder and BOTH AUX victims (15 + 15
     // against a 16 GiB deficit, so the planner cannot settle for one). The holder's
     // 2.0 GiB is already inside `free_at_admit` (40.0 = 72 - 2 reserve - 32 used + 2
     // holder credit), so after holder + aux_a the honest ledger reads 40.0 + 15.0 =
     // 55.0 against the 56.0 gate — 1.0 GiB short, so aux_b must die. The double
-    // count R2-03-01 filed read 40.0 + 2.0 + 15.0 = 57.0, already over the gate, and
+    // count the reported defect read 40.0 + 2.0 + 15.0 = 57.0, already over the gate, and
     // the loop stopped with an operator model still loaded; this test pins the honest
     // single count, so it is red on the double count and green on the fix.
     let witness = FakeWitness::with(vec![sample(72.0, 32.0)]);
@@ -1532,7 +1533,7 @@ async fn the_release_loop_stops_only_when_the_single_counted_credit_covers_the_g
         "72 - 2 reserve - 32 used + the holder's 2.0 credit"
     );
     assert_eq!(job.gate_target_gib, Some(56.0));
-    // Falsifier leg (R2-03-01): the fixture must straddle the gate between the two
+    // Falsifier leg: the fixture must straddle the gate between the two
     // accounting forms — after aux_a the double-counted ledger term (40.0 + 2.0 +
     // 15.0 = 57.0) clears the 56.0 gate, the single-counted one (40.0 + 15.0 = 55.0)
     // does not. Should the holder's credit ever be counted twice again, this leg goes
@@ -1574,7 +1575,7 @@ async fn the_release_loop_stops_only_when_the_single_counted_credit_covers_the_g
 
 #[tokio::test]
 async fn a_swap_of_a_model_committed_to_eviction_never_answers_already() {
-    // R2-02-01: while a WORK load evicts the AUX resident with the kill held, a
+    // While a WORK load evicts the AUX resident with the kill held, a
     // swap of that same model into AUX answered `Already` — a success receipt
     // for an engine the harness had already committed to kill, which the
     // in-flight eviction then empties. The fix falls through to the queue and
@@ -1604,8 +1605,8 @@ async fn a_swap_of_a_model_committed_to_eviction_never_answers_already() {
     };
     // The card tracks the ledger: the victim holds its 20 GiB.
     witness.set_used(20.0);
-    // Park EVERY kill of the doomed engine by TARGET (`hold_kill_of`, FINDINGS-19
-    // [4]): both pending reaps carry its ticket — the eviction's kill and the
+    // Park EVERY kill of the doomed engine by TARGET (`hold_kill_of`):
+    // both pending reaps carry its ticket — the eviction's kill and the
     // reload's own same-slot reap — so the fake's parking never depends on how
     // many kills the product happens to issue, and a reap change (dedup,
     // re-order) cannot silently re-arm or disarm this scenario. Every receipt
@@ -1700,7 +1701,7 @@ async fn a_swap_of_a_model_committed_to_eviction_never_answers_already() {
 
 #[tokio::test]
 async fn the_idle_sweep_skips_a_cross_slot_eviction_victim() {
-    // R2-20-01: the idle sweep's only spare is `slot.job`, which a cross-slot
+    // The idle sweep's only spare is `slot.job`, which a cross-slot
     // victim slot never carries. With RP opted into `idle_timeout_s = 1`, a
     // WORK load evicts the RP resident and that kill parks in `Dispose`
     // (`hold_kill_of`), the 2 s tick started a second unload for the doomed
@@ -1867,7 +1868,7 @@ async fn the_idle_sweep_skips_a_cross_slot_eviction_victim() {
         "no Unload job or ledger row ever named the doomed model: {:?}",
         status.jobs
     );
-    // R2-04-01 (cause-of-death wording half): first prove the sweep wording
+    // The cause-of-death wording half: first prove the sweep wording
     // channel is live — the canary's row must carry `idle timeout`, or the
     // victim asserts below would pass only because no outcome ever lands. Then
     // demand the victim's death never reads as the sweep's: no row of any kind
@@ -1928,14 +1929,14 @@ async fn the_idle_sweep_skips_a_cross_slot_eviction_victim() {
 
 #[tokio::test]
 async fn a_stale_victim_never_aborts_the_reap_of_the_own_spawn() {
-    // R2-20-06: `reap_should_continue` (src/scheduler/spawn.rs) pinned the
-    // predicate as a unit, but its wiring in `spawn_kill_confirm` - warn and
+    // `reap_should_continue` (src/scheduler/spawn.rs) was pinned
+    // as a unit, but its wiring in `spawn_kill_confirm` - warn and
     // CONTINUE in the kill loop, warn and BREAK the one target in the confirm
     // loop - ran only when the runtime answers `SpawnError::StaleTicket`, and
     // `MockRuntime` could not produce that answer: its kill and release_confirmed
     // keyed on the port alone. The integration path was unreachable, so an
     // inversion that aborts the whole two-target reap on the first stale target -
-    // stranding the job's own live engine on the card, the chunk-2 (2026-10-27)
+    // stranding the job's own live engine on the card, the exact
     // orphan this predicate exists to prevent - kept every mock-based suite green.
     // Here the AUX victim is parked as a superseded generation: its kill AND its
     // release confirm are refused, the release still records and the load still

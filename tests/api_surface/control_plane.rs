@@ -14,7 +14,7 @@ use tracing_subscriber::Layer;
 /// channel (`os_failure_text_reaches_the_ring_but_never_the_client_body`).
 /// Same shape as `tests/serve_id_retry.rs`: a `tracing_subscriber` registry is
 /// installed once via `try_init`, so the ring stays untouched and the pin reads
-/// what `tracing::error!` produced (FINDINGS-05 [6]).
+/// what `tracing::error!` produced.
 #[derive(Clone)]
 struct Capture(Arc<Mutex<Vec<String>>>);
 
@@ -166,7 +166,7 @@ fn linked_assets(html: &str) -> Vec<String> {
 
 #[tokio::test]
 async fn every_page_linked_asset_is_public() {
-    // FINDINGS-16 [1] / FINDINGS-18 [1]: the served-asset set is hand-maintained in three
+    // The served-asset set is hand-maintained in three
     // copies (the webui router, PUBLIC_PATHS, index.html's tags) and the loop in the test
     // above asks only for what the guard already exempts — delete an entry there and the
     // request disappears instead of failing. `/pico.min.css` shipped exactly that way: a
@@ -232,7 +232,7 @@ async fn load_flow_populates_jobs_and_status() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["slots"][0]["model"], "qwen3");
 
-    // R2-18-01: `unwrap_or_default()` read a renamed or dropped `id` as 0, and 0 is
+    // `unwrap_or_default()` once read a renamed or dropped `id` as 0, and 0 is
     // exactly the id of the one job this test mints — the detail leg could never
     // fail. Demand the key: a ledger row that stops carrying its id goes red here.
     let job_id = body["jobs"][0]["id"]
@@ -267,8 +267,8 @@ async fn unload_bodies_are_strict() {
     // Garbage: 400.
     let (status, _) = post_json(&control, "/har/unload", "not json").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    // Model unload of a not-loaded model: accepted (T12.2 idempotence), and the
-    // reply names the no-op instead of claiming an unload (FINDINGS-07 [5]).
+    // Model unload of a not-loaded model: accepted (idempotence), and the
+    // reply names the no-op instead of claiming an unload.
     let (status, body) = post_json(&control, "/har/unload", r#"{"model":"never-loaded"}"#).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "nothing_unloaded", "{body}");
@@ -277,8 +277,8 @@ async fn unload_bodies_are_strict() {
         1,
         "an idempotent model unload of a never-loaded model frees nothing"
     );
-    // Explicit empty object: unload-all (T12.4) — accepted AND it really releases
-    // every engine (FINDINGS-18 [5]: the response used to be bound and discarded;
+    // Explicit empty object: unload-all — accepted AND it really releases
+    // every engine (the response used to be bound and discarded;
     // a handler that answered 200 while unloading nothing passed).
     let (status, _) = post_json(&control, "/har/unload", "{}").await;
     assert_eq!(status, StatusCode::OK);
@@ -326,7 +326,7 @@ async fn unload_bodies_are_strict() {
 
 #[tokio::test]
 async fn unload_reply_names_what_the_actor_actually_did() {
-    // FINDINGS-07 [5]: the handler discarded the actor's `Reply` and always answered
+    // The handler once discarded the actor's `Reply` and always answered
     // `{"status":"unloading"}` — the no-op arms (nothing loaded at all, or a model
     // that never was) answered exactly like a scope that really moved. The reply
     // must now name the fact: `nothing_unloaded` when the command moved nothing,
@@ -374,7 +374,7 @@ async fn unload_reply_names_what_the_actor_actually_did() {
 
 #[tokio::test]
 async fn unload_during_a_load_answers_cancelled_not_unloading() {
-    // FINDINGS-07 [5], the cancel arm: unloading a still-loading slot cancels the
+    // The cancel arm: unloading a still-loading slot cancels the
     // swap; no occupant was ever installed there, so the honest reply is
     // `cancelled` — not the unconditional `unloading` the handler used to print.
     // Falsifier: pre-fix the status assert reads "unloading".
@@ -431,7 +431,7 @@ async fn unload_during_a_load_answers_cancelled_not_unloading() {
 
 #[tokio::test]
 async fn unload_body_with_both_model_and_category_is_refused() {
-    // FINDINGS-07 [6]: a body carrying BOTH scopes silently took the wider category
+    // A body carrying BOTH scopes once silently took the wider category
     // branch (tested first), so "unload this one model from WORK" killed every WORK
     // occupant and echoed only the category. README lists the three shapes as
     // alternatives, never combinable: both keys are a structural 400 in the
@@ -483,9 +483,9 @@ async fn models_are_filtered_per_listener() {
         .map(|m| m["id"].as_str().expect("id"))
         .collect();
     assert_eq!(ids, vec!["work-model"]);
-    // TASK-NAMING-CLEANUP pin (c, wire half): `owned_by: "simpleharn"` is the
-    // public wire contract. The old legacy-stable ruling is superseded by the
-    // operator ruling of 2026-11-05: the wire value carries the one product
+    // Naming tripwire, wire half: `owned_by: "simpleharn"` is the
+    // public wire contract. An earlier legacy-stable ruling is superseded by a
+    // later operator ruling: the wire value carries the one product
     // name. Falsifier: rename the wire literal and this pin goes red before
     // any client can discover the drift.
     for row in body["data"].as_array().expect("list") {
@@ -814,7 +814,7 @@ async fn guards_refuse_rebinding_hosts_and_foreign_origins() {
         "the OpenAI envelope carries the same code"
     );
 
-    // FINDINGS-18 [3]: the same-authority arm. Browsers send `Origin` on SAME-origin
+    // The same-authority arm. Browsers send `Origin` on SAME-origin
     // non-GET requests too, so a guard that refused every Origin-bearing POST — e.g.
     // comparing Origin against a portless Host — 403s every button on the control
     // page (unload, load, rescan, default picker) while every refusal-direction test
@@ -898,7 +898,7 @@ async fn request_ids_are_echoed_or_generated() {
         .to_string();
     assert!(id.starts_with("req-"), "generated id: {id}");
 
-    // FINDINGS-05 [7]: the echo above is the useful half; the wall is that an
+    // The echo above is the useful half; the wall is that an
     // oversized id, or one carrying a space or a tab, is regenerated rather than
     // echoed — the ring and the response may not be an attacker's echo chamber.
     // Falsifier (pre-fix): every leg below echoes verbatim. The same values are
@@ -933,7 +933,7 @@ async fn request_ids_are_echoed_or_generated() {
     }
 }
 
-/// FINDINGS-05 [3]: `har_config_logging` was the only POST handler taking a bare
+/// `har_config_logging` was once the only POST handler taking a bare
 /// `Json<Value>`, so a malformed body answered axum's default 400 `text/plain`
 /// and broke the documented `{code,message}` + OpenAI-envelope contract on that
 /// route — nothing could branch on a missing `code`. Falsifier: revert the
@@ -981,11 +981,11 @@ async fn malformed_logging_body_answers_the_project_envelope() {
     }
 }
 
-/// FINDINGS-05 [4]: `loopback_host` accepted every IP literal and threw the port
+/// `loopback_host` once accepted every IP literal and threw the port
 /// away (`rsplit_once(':')`), so `Host: 203.0.113.9:8708`, `Host: 0.0.0.0:8708`
 /// and any wrong port on any listener passed the DNS-rebinding gate — looser
-/// than the guard's own doc. Falsifier (pre-batch): every BAD_REQUEST leg below
-/// answers 200. Falsifier (FINDINGS-16 N[1]): the `0.0.0.0`-bind OK leg answers
+/// than the guard's own doc. Falsifier: every BAD_REQUEST leg below
+/// answers 200. Falsifier (publish posture): the `0.0.0.0`-bind OK leg answers
 /// 400 against a gate keyed on `Host == internal_host` instead of the
 /// unspecified-bind rule, so the suite sees the real published posture.
 #[tokio::test]
@@ -1034,7 +1034,7 @@ async fn the_host_gate_closes_on_address_and_port_not_just_syntax() {
             "host {host} is this harness"
         );
     }
-    // The publish posture (FINDINGS-16 N[1]/N[2]): `0.0.0.0` is the only
+    // The publish posture: `0.0.0.0` is the only
     // non-loopback bind boot validation allows and the operator's live shape, so
     // the legs use the real boot-valid configs, never a hand-built unicast bind.
     // The same LAN Host must stay 400 on the loopback bind and answer 200 on the
@@ -1066,7 +1066,7 @@ async fn the_host_gate_closes_on_address_and_port_not_just_syntax() {
     );
 }
 
-/// FINDINGS-05 [5]: the Host gate ran only `if let Some(host)`, so a request
+/// The Host gate once ran only `if let Some(host)`, so a request
 /// carrying no `Host` at all skipped the DNS-rebinding gate instead of being
 /// refused by it — a conditional floor is not a floor, and the published-host
 /// posture is documented as relying on the guard, not on a stack property.
@@ -1119,7 +1119,7 @@ async fn a_request_without_a_host_header_is_refused_not_skipped() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// FINDINGS-05 [6]: `error_body` passed the `Internal`/`Upstream` reasons through
+/// `error_body` once passed the `Internal`/`Upstream` reasons through
 /// verbatim, and those reasons embed absolute paths (model yaml, log file,
 /// engine exe), so a published harness with no token told any host on the
 /// segment its install tree. The full sentence now goes to `tracing::error!` —
@@ -1236,7 +1236,7 @@ async fn a_named_503_refusal_is_not_an_error_on_the_http_trace() {
     );
 }
 
-/// FINDINGS-05 [8]: the `Bearer` scheme was stripped byte-exactly, so an
+/// The `Bearer` scheme was once stripped byte-exactly, so an
 /// OpenAI-style client sending `authorization: bearer <token>` got a 401 that
 /// read as a wrong token; RFC 7235 makes auth-schemes case-insensitive. The
 /// constant-time half of the finding is pinned against the shipped source
@@ -1372,7 +1372,7 @@ async fn refusal_envelope(
     body
 }
 
-/// R2-05-03: a route the harness does not know answers the typed envelope on
+/// A route the harness does not know answers the typed envelope on
 /// every listener. Pre-fix the control listener answered the webui fallback's
 /// empty body and a category listener answered axum's `text/plain` 404 —
 /// nothing could branch on a missing `code`. Falsifier: drop the
@@ -1402,7 +1402,7 @@ async fn unknown_routes_answer_the_envelope_on_every_listener() {
     );
 }
 
-/// R2-05-03/04: a known route with the wrong method answers `405
+/// A known route with the wrong method answers `405
 /// method_not_allowed` in the same envelope, and the router's `Allow` header
 /// survives the rewrite. The guard's POST content-type gate runs before
 /// routing, so the `POST /health` leg declares JSON exactly as the page would.
@@ -1451,9 +1451,9 @@ async fn wrong_methods_answer_the_envelope_and_keep_the_allow_header() {
     );
 }
 
-/// R2-05-03: `har_log` extracts `Result<Query, QueryRejection>` and answers a
+/// `har_log` extracts `Result<Query, QueryRejection>` and answers a
 /// rejection with the typed `400 bad_request` envelope, never axum's plain-text
-/// one. Honest scope: on axum 0.8.9 that branch is defensive. The form decoder
+/// one. Honest scope: on the axum version shipped today that branch is defensive. The form decoder
 /// passes a bad escape through and replaces invalid UTF-8 (`decode_utf8_lossy`),
 /// and a `HashMap<String, String>` map accepts every pair, so no wire input
 /// makes the extractor reject — `%zz` stays a key and `%ff` becomes one
@@ -1461,7 +1461,7 @@ async fn wrong_methods_answer_the_envelope_and_keep_the_allow_header() {
 /// ring document with the `limit` fallback. A decoder that rejects in the
 /// future must answer the envelope (the `Result` arm); the legs then move to
 /// the `400` shape, they must not silently return to `text/plain`.
-/// FR-05 (2026-11-06): `limit=abc` left this lenient list — a malformed
+/// The `limit` validation fix: `limit=abc` left this lenient list — a malformed
 /// `limit` is now a live handler refusal, `400 bad_request` in the project
 /// envelope (pinned in `src/api/tests.rs`), no longer a swallowed default.
 #[tokio::test]
