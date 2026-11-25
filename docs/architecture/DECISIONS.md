@@ -839,3 +839,10 @@ references still resolve. Every entry carries one status prefix:
   identity stays the file stem, so an `m.yaml`/`m.yml` pair reports the
   existing `DuplicateName` refusal; write-back keeps the row's own extension |
   2026-11-25 | operator session 2026-11-25
+- **Accepted** Llama booking ruling B: the AUX swift row declares `vram_gb: 23`
+  and the Fit probe stays on, so `/har/models` books `fit_gb 24.0078125` at
+  `cost_basis fit`; the card re-test on `73dc938` passed (basalt 67.4 and xolotl
+  68.0 admitted via `Drain` with the swift released), `BOOKING-CREDIT-02` is
+  verified for the live case, and a witnessed-footprint credit stays a
+  code-risk item for any other under-booked row | 2026-11-22 | ruling B,
+  transcribed from the handoff snapshot on 2026-11-25
