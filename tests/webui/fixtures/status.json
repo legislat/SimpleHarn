@@ -697,7 +697,7 @@
    "booked_ram_gb": 0.0,
    "ram_reserve_gb": 8
   },
-  "release": "1.5.1.6",
+  "release": "1.5.2",
   "scheduler_state": "up",
   "slots": [
   {
@@ -761,5 +761,5 @@
    "container_reported_gb": null
   }
  ],
- "version": "1.5.1"
+ "version": "1.5.2"
 }

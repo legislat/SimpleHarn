@@ -14,7 +14,7 @@ and it refuses to overcommit. The product name is SimpleHarn, and the repository
 `legislat/SimpleHarn`. The binary is `simpleharn` (`simpleharn.exe` on Windows), the config file is `simpleharn.json`,
 and the environment names use the `SIMPLEHARN_` prefix.
 
-Current release: **v1.5.1.6**. Windows 10/11 and Linux x86-64 (headless; glibc
+Current release: **v1.5.2**. Windows 10/11 and Linux x86-64 (headless; glibc
 2.16 or newer, see Requirements), one NVIDIA GPU, single user. Prebuilt
 binaries: see the GitHub Releases page of this repository. The release
 zip holds `simpleharn.exe`, `SimpleHarn.vbs`, `README.md`, `LICENSE`, and
@@ -85,7 +85,7 @@ naming".
 
 ### Prebuilt
 
-1. Download `SimpleHarn-1.5.1.6-win-x64.zip` from the Releases page and unzip it.
+1. Download `SimpleHarn-1.5.2-win-x64.zip` from the Releases page and unzip it.
 2. Put one flat `.yaml` row in `ModelConf` beside the exe. The harness creates that
    folder on boot if it is missing; it does not create an example row. Start from a
    minimal llama row. The file stem, for example `example`, is the model identity:
@@ -105,7 +105,7 @@ naming".
    [docs/reference/CLI.md](docs/reference/CLI.md). The full schema is in
    [docs/reference/MODELS.md](docs/reference/MODELS.md).
 3. Double-click `SimpleHarn.vbs`, open `http://127.0.0.1:8708/`, and load the model.
-   On Linux download `SimpleHarn-1.5.1.6-linux-x64.tar.gz` from the same
+   On Linux download `SimpleHarn-1.5.2-linux-x64.tar.gz` from the same
    release, extract it, and run `./simpleharn` headless (no tray, no VBS).
 
 Both archives are built from the release tag in CI: the Windows zip in the
@@ -274,7 +274,7 @@ operator's machine, the setup proof that
 [COMPATIBILITY.md](docs/reference/COMPATIBILITY.md) carry. An engine absent
 from that proof is unproven, not broken. The Linux column states what the
 harness has proven there, with the per-engine evidence rows in COMPATIBILITY.
-The harness ships Windows 1.5.1.6 and a headless Linux artifact built from the
+The harness ships Windows 1.5.2 and a headless Linux artifact built from the
 same tag.
 
 | Engine | Verified here | Linux |

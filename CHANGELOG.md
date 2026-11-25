@@ -17,7 +17,7 @@ three-part (see `docs/process/GIT_WORKFLOW.md`).
 
 Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
-## Unreleased
+## v1.5.2 - 2026-11-25
 
 ### Changed
 

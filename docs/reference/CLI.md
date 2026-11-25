@@ -31,8 +31,8 @@ Autostart and the file layout live in `docs/reference/OPERATIONS.md`.
 `simpleharn --version` prints two lines and exits 0:
 
 ```text
-version 1.5.1
-release 1.5.1.6
+version 1.5.2
+release 1.5.2
 ```
 
 `version` is the crate semver. `release` is the exact tag embedded by the
