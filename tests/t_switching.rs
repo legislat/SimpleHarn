@@ -1374,7 +1374,7 @@ async fn t09_concurrency() {
         .post(&format!("{CONTROL}/har/rescan"), json!({}))
         .await;
     assert_eq!(status, 200);
-    // Queued-intents coverage lives at actor level (tests/scheduler_actor.rs);
+    // Queued-intents coverage lives at actor level (the scheduler_actor suite);
     // a card park leg needs a slow-first-load design - deferred.
     println!("T9 PASS");
 }

@@ -1463,7 +1463,7 @@ async fn wrong_methods_answer_the_envelope_and_keep_the_allow_header() {
 /// the `400` shape, they must not silently return to `text/plain`.
 /// The `limit` validation fix: `limit=abc` left this lenient list — a malformed
 /// `limit` is now a live handler refusal, `400 bad_request` in the project
-/// envelope (pinned in `src/api/tests.rs`), no longer a swallowed default.
+/// envelope (pinned in the api test suite), no longer a swallowed default.
 #[tokio::test]
 async fn a_bad_query_on_har_log_stays_inside_the_typed_surface() {
     let (control, _, _, _, _, _) = app(AppConfig::default(), &[]);
