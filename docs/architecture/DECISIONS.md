@@ -21,11 +21,13 @@ pointer stub and was deleted 2026-11-03.
 
 Unresolved questions live ONLY in `DECISIONS-PENDING.md` (a private handoff
 repository file, absent from a public clone). This file only ever *gains*
-lines, with two operator-ruled exceptions: the 2026-11-03 status-annotation pass may
+lines, with three operator-ruled exceptions: the 2026-11-03 status-annotation pass may
 change lifecycle labels, the section title, and reference qualifiers only; and the
 2026-11-22 hygiene pass may compress prose to decision data while preserving every
-status, date, commit, pointer, and binding clause. Ruling text may not change and no
-ruling may be deleted.
+status, date, commit, pointer, and binding clause; and the 2026-11-25 public/private
+pass may replace private-repository evidence-path citations with plain labels while
+preserving every status, date, commit, and binding clause. Ruling text may not change
+and no ruling may be deleted.
 
 ## Contents
 
@@ -71,7 +73,7 @@ ruling may be deleted.
   child config set (strata profile, ninfer autostart inputs, engine env) lives under
   harness control (like `ModelConf/`), validated at scan/spawn; policy fields (`host`,
   `port`, key) harness-forced, never obeyed from engine-side files. Enforcement build
-  = chunk 10 (see `handoff/PENDING_CHECKLIST.md`); `C:\Strata\*.json` migrate copy-in;
+  = chunk 10 (see the private PENDING_CHECKLIST register); `C:\Strata\*.json` migrate copy-in;
   HANDOFF §3 protects serving profiles until switched.
 - **Ledger demoted** (2026-10-26): budget = `total - reserve - observed_used +
   same-slot victim credit - in-flight bookings`; the ledger sum left gate *and* UI,
@@ -118,7 +120,7 @@ ruling may be deleted.
   ranking), bounded by declared `vram_gb` still winning when present, clamp
   `[0, total]`; `exact` engines only verify (`model/mod.rs:71-73`).
   `CardOccupancy`/"foreign-dominated" deferred to R3 (needs the own-vs-foreign
-  `unreleasable_gib` split). Evidence: `handoff/research/ninfer-telemetry-2026-10-30.md`
+  `unreleasable_gib` split). Evidence: the private research note ninfer-telemetry-2026-10-30
   (local). **AMENDED 2026-11-01 ("Cost = max booking cost")**: the `vram_gb`-wins
   clause holds only as a FLOOR - a guarded `engine_report` figure ABOVE the declared
   value books instead (`engine_report_outranks_declared`); a declared value at-or-above
@@ -139,7 +141,8 @@ ruling may be deleted.
 - **The card window belongs to the handoff, never a served session** (2026-11-02):
   the agent session is served by engines on this box, so no agent may start harness
   instances, load models, or run `verify.ps1 -Card`; card evidence comes only from
-  `handoff/wave-verify/` in an operator-spawned session. Behavior changes land in the
+  the private wave-verify package run in an operator-spawned session. Behavior changes land
+  in the
   PACKAGE (selftested cardless); the operator runs the window. Cardless in-tree work
   (fmt, clippy, `cargo test`, DOM stub) is allowed - it execs no engine.
 
@@ -229,7 +232,7 @@ references still resolve. Every entry carries one status prefix:
   REJECTED on doctrine (harness-owned-config is the inverse of openness-posture);
   Fork A is what C prevents; Concept-set adoption deferred | 2026-10-28
 - **Implemented** `cpu_offload` engine scoping = B+C+D (operator 2026-10-28, per
-  `handoff/research/cpu-offload-scoping-2026-10-28.md`, local evidence not a repository
+  the private research note cpu-offload-scoping-2026-10-28, local evidence not a repository
   document): llama-only via `OFFLOAD_ENGINES` (first `EnginePolicy` row; mock OUT);
   warn-only `ScanKind::InertKey` on engines that never read it; stamp/void engine-gated
   (strata/ninfer measured pairs no longer silently voided); page + API both refuse
@@ -297,7 +300,7 @@ references still resolve. Every entry carries one status prefix:
   no witness-measured credit was built. Live yamls cleared of stale `measured_*`
   (estimate fallback until fresh folds); card is ECC-enabled (witness total 70, not
   72) - operator to flip after session. Upstream ask drafted:
-  `handoff/upstream-ninfer-post-ready-memory-summary.md` | 2026-11-01 | `a7f1623`
+  the private draft upstream-ninfer-post-ready-memory-summary | 2026-11-01 | `a7f1623`
 - **Implemented** (supersedes "Question A SUPERSEDED"; operator: "(ii) - ok. but we
   will leave an option to revise it later") **same-slot swaps are
   release-then-resample**: when the gate is short and the planner cannot cover the
@@ -443,7 +446,7 @@ references still resolve. Every entry carries one status prefix:
   live-layer backup, version/changelog coupling, ASD-STE100 for durable docs. N2
   closed | 2026-11-02 | `1bd78c8`
 - **Accepted** CALIBRATED (TASK-R11-FIT, C1 capture at `805c7d0`,
-  `handoff/wave-verify/logs/`): llama Fit constants stay margin 3 / surcharge 2 /
+  the private wave-verify logs): llama Fit constants stay margin 3 / surcharge 2 /
   session slack 2.0. C1 row books 31,717 MiB / 1024 (CUDA0 only; Host excluded) +
   surcharge 2.0 (mmproj) + margin 3.0 x 1 active device = 35.9736328125 GiB; NVML
   observed 35.61735153198242, so projection is 0.35628128051758 GiB above observation
@@ -502,7 +505,7 @@ references still resolve. Every entry carries one status prefix:
 - **Accepted** RULED (priority): after release 1.1.0, Basalt is priority 1 and Berth
   borrows priority 2; neither starts before the release | 2026-11-03 | `TASK-BASALT`,
   `TASK-BERTH-BORROWS`
-- **Accepted** RULED (BL-23): `handoff/FINDINGS-OPEN.md` is the single technical-debt
+- **Accepted** RULED (BL-23): the private FINDINGS-OPEN register is the single technical-debt
   register (open findings and debt rows with severity, owner, target). Intake, triage,
   aging, and accepted-risk rules are in its header. Deferred decisions live in this
   ledger; aging reviewed at cycle start from task-file dates | 2026-11-03 |
@@ -597,7 +600,7 @@ references still resolve. Every entry carries one status prefix:
   not fixed labels; `categories[].label` drives page and `/har/status`; ids
   `WORK/RP/AUX/EMB` stay the wire and eviction vocabulary (enum, yaml `category:`,
   `evictable_by`, engine-port order). Scheduled after `TASK-CPU-LLAMA-EVICTION`; see
-  `handoff/tasks/TASK-CATEGORY-LABELS.md` | 2026-11-05 | `9c1bfda..`
+  the private task record TASK-CATEGORY-LABELS | 2026-11-05 | `9c1bfda..`
 - **Accepted** CPU-llama W2 GO; Basalt start/stop granted for card windows: W2
   approved (resource-parameterized RAM victim planner, release + RAM settle,
   `measured_ram_gb` write-back). Operator session is API-driven; subagents are served
@@ -629,7 +632,7 @@ references still resolve. Every entry carries one status prefix:
   (19.6 and 9.1 tok/s, 4 s unload), 60 GiB floor refused with a foreign Basalt
   resident, model-management doors answered 404. Residual: dashboard doors stay on
   the loopback slot port; do not use them on a managed instance (`MODELS.md`).
-  Evidence `handoff/evidence/2026-11-06-maya/` | 2026-11-06 | `2de4725`
+  Evidence the private evidence record 2026-11-06-maya | 2026-11-06 | `2de4725`
 - **Accepted** Expert-offload RAM reclaim: strata, basalt and maya offload expert
   layers to host RAM then SSD. A `cost: greedy` admit on these drains every
   CPU-resident row whose booked host RAM exceeds `expert_offload_evict_cpu_above_gb`
@@ -638,7 +641,7 @@ references still resolve. Every entry carries one status prefix:
   stays; GPU residents are never victims; a fixed row or non-expert engine never
   triggers. A protected row or one inside `min_turn` is skipped and named; the load
   proceeds. An admission that queued a victim still fails if that victim cannot be
-  released. Evidence `handoff/evidence/2026-11-06-ram-reclaim/`; card proof owed in
+  released. Evidence the private evidence record 2026-11-06-ram-reclaim; card proof owed in
   the 1.3.2 window | 2026-11-06 | `938660b`
 - **Accepted** Build and release directories: manual test builds live in one tests
   directory below the operator inference root and are deleted when the test
@@ -846,3 +849,11 @@ references still resolve. Every entry carries one status prefix:
   verified for the live case, and a witnessed-footprint credit stays a
   code-risk item for any other under-booked row | 2026-11-22 | ruling B,
   transcribed from the handoff snapshot on 2026-11-25
+- **Accepted** Public and private process are decoupled (operator decision
+  2026-11-25): public commits and public docs stop citing private evidence
+  paths - evidence, research, review-run, and package-run citations become
+  plain private-layer labels; commit subjects stay short (72 preferred, 100
+  hard cap, no exception) and the essay rides the body; a cardless contributor
+  path is documented and proven from a fresh public clone. Citations only -
+  no status, date, commit, or binding clause changes; pushed history is never
+  rewritten | 2026-11-25 | operator decision (this session)
