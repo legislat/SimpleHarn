@@ -29,17 +29,24 @@ the private repository `legislat/SimpleHarn_handoff`. The code repository reache
 that root through `SIMPLEHARN_HANDOFF` (see `docs/process/HANDOFF.md`). Ask the
 operator if you need access.
 
-## External contributors
+## Cardless contributor path (fresh public clone)
 
-You do not need the handoff repository. It is private and absent from a public
-clone.
+This path runs from a clean clone of `legislat/SimpleHarn`. It needs no private
+repository, no card, no model, and no engine.
 
-1. Read `README.md`, `docs/process/ENGINEERING.md`,
-   `docs/process/VERIFICATION.md`, and `docs/process/GIT_WORKFLOW.md`.
-2. Open an issue to propose the change, or open a pull request directly.
-3. CI runs on every pull request.
-4. The maintainer creates the local task file and queue row when the work
-   needs one.
+1. Clone the repository. Install the toolchains CI uses: Rust 1.98.1 and
+   Node.js 24. The crate minimum supported Rust version is `rust-version =
+   "1.88"` in `Cargo.toml`. Install PowerShell 7 to run the gate script.
+2. Run `pwsh scripts/gate.ps1`. It runs the build, the tests, clippy, the
+   format check, the web UI DOM test, and the doc, instruction, comment, path,
+   knob, and release-sum checks. It starts no engine and loads no model.
+   `docs/process/VERIFICATION.md` owns the command list.
+3. Open a pull request. CI runs the same gate on every pull request in the
+   `gate` job. The `msrv`, `msrv-linux`, `linux`, and `deny` jobs run on every
+   pull request too.
+4. Follow `docs/process/REVIEW.md` for review method. Follow the
+   "Commit style (D6)" section of `docs/process/GIT_WORKFLOW.md` for commit
+   style.
 
 ## First task path (operator and agent sessions)
 

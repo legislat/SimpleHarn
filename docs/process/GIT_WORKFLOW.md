@@ -56,11 +56,13 @@ The house style is a narrative subject that states the outcome. It is not an imp
 command.
 
 - The subject states the result of the change, in plain narrative form.
-- Prefer 72 characters or fewer. The hard maximum is 100 characters for a normal commit.
-- A review-round subject may exceed 100 characters only when the commit carries a body
-  and the body names the review round and the reason.
-- The body names: the finding IDs the commit closes, what changed, the falsifier test, and
-  the gate result.
+- Prefer 72 characters or fewer. The hard maximum is 100 characters.
+- There is no subject-length exception: the 72-character preference and the
+  100-character maximum apply to every commit. The essay lives in the body, not
+  in the subject.
+- The body is the essay: what changed and why, the finding IDs the commit
+  closes, the falsifier test, and the gate result. Evidence is named by record,
+  never spelled as a private-repository path (operator decision 2026-11-25).
 - One commit is one logical change. One review-scoped batch may cover one review round.
 - Never create empty commits or noisy splits.
 
