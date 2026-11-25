@@ -1,5 +1,4 @@
-//! tracing initialization, the harness log ring, and the harness log file
-//! (DESIGN Step 16).
+//! tracing initialization, the harness log ring, and the harness log file.
 //!
 //! Production logging is `tracing` only — the v3.3 baseline shipped 67 `println!` /
 //! `eprintln!` calls and zero structured logging (Appendix A.6). The ring keeps the

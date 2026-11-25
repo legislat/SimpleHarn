@@ -35,8 +35,8 @@ fn container_port_uses_the_shared_wsl_prefix() {
     );
 }
 
-/// R5 pin of the real-path command shape: both reconciles (boot reclaim and
-/// the silent R5 probe) build their docker command through
+/// Pin of the real-path command shape: both reconciles (boot reclaim and
+/// the silent stranded probe) build their docker command through
 /// [`container_ps_command`] alone, so this exact argv IS the reconcile's
 /// entire docker reach. The seam pin records the verbs the probe asked the
 /// seam for; this one pins the argv the probe can actually build — the
@@ -1222,7 +1222,7 @@ fn boot_reclaim_touches_only_catalog_owned_names() {
 
 #[test]
 fn boot_reclaim_skips_every_container_lacking_ownership_evidence() {
-    // Chunk 10 [1] reproduced: a running container named by SOME yaml is still
+    // The ownership-evidence rule: a running container named by SOME yaml is still
     // untouchable without all three gates — each failure SKIPs with its reason.
     // (The invalid name is unclaimable, so the claim gate cannot even be reached:
     // the shape gate fires first and the container is left running.)
@@ -1258,7 +1258,7 @@ fn boot_reclaim_skips_every_container_lacking_ownership_evidence() {
 
 #[test]
 fn boot_reclaim_never_reaps_an_id_shaped_name_even_when_a_stale_ledger_holds_it() {
-    // Chunk 10 [4] on the boot path: `docker rm -f 1234abc` deletes whichever
+    // The ID-prefix rule on the boot path: `docker rm -f 1234abc` deletes whichever
     // *unrelated* container's id merely starts with those characters. The shape gate
     // therefore has to outrank any claim an older ledger still carries, so the seed
     // is written behind `claim` (which rightly refuses such names).
@@ -1293,7 +1293,7 @@ fn boot_reclaim_never_judges_a_container_that_is_not_running() {
 
 #[test]
 fn stranded_plan_reports_only_an_unclaimed_catalog_match() {
-    // R5: a claimed match is a running harness engine (normal, silent); a
+    // A claimed match is a running harness engine (normal, silent); a
     // running container no catalog row names is foreign (out of report);
     // only the declared-but-unclaimed match strands VRAM.
     let present: Vec<String> = ["ninfer-kept", "ninfer-stranded", "foreign-x"]
@@ -1395,7 +1395,7 @@ async fn the_reconcile_probe_is_silent_when_docker_cannot_answer() {
 async fn the_reconcile_stands_down_silently_without_wsl_coordinates() {
     // Cardless-safe: no coordinates means no `wsl.exe`, no warn, `None`.
     // (Contrast the boot reclaim, which may name the orphan it cannot
-    // reach — the R5 reconcile is the silent path by ruling.)
+    // reach — the stranded reconcile is the silent path by doctrine.)
     let runtime = ProcessRuntime::new();
     assert_eq!(
         runtime
@@ -1470,7 +1470,7 @@ fn child_ticket(port: u16) -> SpawnTicket {
 }
 
 /// [`client_spec`] marked for custody recording — exactly what the strata
-/// adapter puts on every launch (slice 10b): the engine id says record,
+/// adapter puts on every launch: the engine id says record,
 /// the instance name is the model, `log_name` rides through. Every consumer
 /// spawns a Windows-shaped stand-in client, so the helper is Windows-only.
 #[cfg(windows)]
@@ -1660,7 +1660,7 @@ async fn a_spawned_engine_resumes_and_runs() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Slice 10b, the live-side pins: a custodied launch records its identity
+/// The custody live-side pins: a custodied launch records its identity
 /// the moment the client really started (and the sidecar file sees it),
 /// and a confirmed release clears the entry. `cmd.exe /c ping` stands in
 /// for the strata router so the child is still live at kill time.
@@ -1734,7 +1734,7 @@ async fn a_custodied_launch_records_then_a_release_clears_the_sidecar() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Slice 10b's failure-side twin of the claim pins: a spawn that never
+/// The failure-side twin of the custody claim pins: a spawn that never
 /// started a client records no custody evidence (the entry is written
 /// only after every spawn-failure return), and a client that started but
 /// whose spawn is nevertheless reported failed (injected job failure)
@@ -2152,8 +2152,8 @@ async fn a_kill_with_a_confirmed_reap_releases_the_container_slot() {
 /// with nothing protected. The plain G12 pair decides instead. The
 /// scripted verdict must stay unconsumed: an unclaimed entry never reaches
 /// `docker rm`, and nothing is written to an unheld name. Recovery for the
-/// rare self-inflicted missing claim is the R5 stranded report naming it
-/// -- report-only by ruling.
+/// rare self-inflicted missing claim is the stranded report naming it
+/// -- report-only by doctrine.
 #[cfg(windows)]
 #[tokio::test]
 async fn an_unclaimed_container_slot_releases_on_plain_port_evidence() {
@@ -2210,10 +2210,10 @@ async fn an_unclaimed_container_slot_releases_on_plain_port_evidence() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Slice 10b: the staging path reads its root from the compiled ninfer
-/// row's `custody_exec_roots` cell — the cell 10a left readerless gains
+/// The staging path reads its root from the compiled ninfer
+/// row's `custody_exec_roots` cell — the cell left readerless gains
 /// its reader here, so the staging location is single-homed in the policy
-/// table and cannot drift from the compiled custody root (§20-9 Fork C).
+/// table and cannot drift from the compiled custody root (Fork C).
 #[test]
 fn the_staged_scripts_root_is_read_from_the_policy_cell() {
     let row = crate::engine::policy::engine_policy(crate::ownership::NINFER_ENGINE)
@@ -2782,7 +2782,7 @@ async fn a_control_command_child_carries_no_harness_environment() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// R11: the fit probe rides the ONE control-command family. A tool that is
+/// The fit probe rides the ONE control-command family. A tool that is
 /// not there answers `None` to the caller (the wrapper itself warned — a
 /// spawn failure, never a fabricated projection), and a real child's stdout
 /// travels verbatim toward the strict parser. `cmd.exe` is a harmless
@@ -2837,7 +2837,8 @@ async fn serve_status_fixtures() -> u16 {
 /// loopback read — an answered JSON body reaches the per-engine parser,
 /// and every other outcome (body that is not JSON, nothing listening)
 /// answers `None`, so the sampler falls back to the witness instead of
-/// guessing (ORCHESTRATION §1, R9 `container_report` posture).
+/// guessing (the `container_report` posture: raw stdout or silence, never a
+/// guess).
 #[tokio::test]
 async fn engine_status_json_answers_the_body_or_silence_never_a_guess() {
     let runtime = ProcessRuntime::new();
@@ -2898,7 +2899,7 @@ async fn descendant_pids_includes_the_direct_children_of_the_asked_pid() {
     );
 }
 
-/// Phase-5 pin: the walk reaches the GRANDCHILD level. An outer
+/// Pin: the walk reaches the GRANDCHILD level. An outer
 /// `cmd.exe` synchronously runs an inner `cmd.exe`, which itself spawns
 /// `ping.exe` — the same python -> python -> engine depth as the
 /// captured Strata and Basalt serves — and every stand-in stays alive

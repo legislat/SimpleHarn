@@ -1,4 +1,4 @@
-//! R11 fit-probe cluster: the warm-pass deferral and session-slack constants, the
+//! Fit-probe cluster: the warm-pass deferral and session-slack constants, the
 //! cached projection, the row and pass plans, the two off-actor probe legs, and the
 //! actor-side fit cache, epoch, stamps, and probe lifecycle.
 //!
@@ -17,13 +17,13 @@ use tokio::sync::mpsc;
 use super::measured::MeasuredAnchor;
 use super::{ActorMsg, ActorState};
 
-/// R11: the deferral before a warm fit pass starts probing, so the queue never
+/// The deferral before a warm fit pass starts probing, so the queue never
 /// competes with the boot window (first bind, autostart loads). Long enough to
 /// stay clear of boot, short enough that the figures are warm before an
 /// operator's first click.
 pub(super) const FIT_WARM_DELAY: Duration = Duration::from_millis(1500);
 
-/// R11 session cross-check: the slack added to `fit_margin_gb` to form the
+/// Session cross-check: the slack added to `fit_margin_gb` to form the
 /// tolerance a live witness reading must fall inside to confirm a Fit booking
 /// for the page. A witness total-diff carries noise the deterministic
 /// projection does not (other tenants' sampling instants, KV growth under
@@ -32,21 +32,21 @@ pub(super) const FIT_WARM_DELAY: Duration = Duration::from_millis(1500);
 /// Calibration decision: margin 3,
 /// surcharge 2 and this 2.0 slack STAND - the capture booked conservative
 /// against the live witness figure on the single sample the card holds, and
-/// any numeric change needs multi-sample card-window evidence first. The C1
-/// fact set (rows, constants, figures, headroom) lives in exactly one home:
+/// any numeric change needs multi-sample card-window evidence first. The fact
+/// set (rows, constants, figures, headroom) lives in exactly one home:
 /// the calibration pin in `src/engine/fit.rs` - cite it, do not restate it.
 /// A config knob (`engines.llama.fit_validate_slack_gib`) is DEFERRED: a
 /// fifth `engines.llama` key owes the llama row's `config_knobs` claim and
 /// the parity-test literal in `src/engine/policy.rs`.
 pub(super) const FIT_VALIDATE_SLACK_GIB: f64 = 2.0;
 
-/// One cached R11 fit projection: the booked GiB and the model file's
+/// One cached fit projection: the booked GiB and the model file's
 /// fingerprint at the moment it was computed. The cache is keyed by the probe
 /// argv hash (the void identity — a config change is a different key), and a
 /// figure survives on a row only while that fingerprint is unproven-changed:
 /// both sides known and differing voids it (absence of evidence is never
 /// evidence of change, the KEEP doctrine). The "now" side of that compare is
-/// the scan-carried value (FR-02) — a map read, never an actor-turn stat.
+/// the scan-carried value — a map read, never an actor-turn stat.
 /// In-process only — this figure never persists, so a restart re-derives it.
 #[derive(Debug, Clone)]
 pub(super) struct FitEntry {
@@ -57,7 +57,7 @@ pub(super) struct FitEntry {
 /// One row a fit pass projects: the argv identity, the row it belongs to, and
 /// what the booking formula needs that argv does not carry (the vision
 /// surcharge flag, the model file to fingerprint). The calculator that will
-/// compute it is the row's group (FR-13), not a per-row copy.
+/// compute it is the row's group, not a per-row copy.
 #[derive(Debug, Clone)]
 pub(super) struct FitRowPlan {
     pub(super) model: String,
@@ -67,7 +67,7 @@ pub(super) struct FitRowPlan {
     pub(super) model_file: Option<PathBuf>,
 }
 
-/// One calculator's group (FR-13): the fit tool, the calibration constants,
+/// One calculator's group: the fit tool, the calibration constants,
 /// and the rows its server binary serves. A pass runs the version leg once
 /// per group and projects only that group's rows.
 #[derive(Debug, Clone)]
@@ -197,7 +197,7 @@ impl ActorState {
         entry.fit_model_key().map(PathBuf::from)
     }
 
-    /// FR-02: the fingerprint carried for this row by the scan (or refreshed
+    /// The fingerprint carried for this row by the scan (or refreshed
     /// by a landed fit probe) — the value the cache guard compares against
     /// WITHOUT touching the filesystem: the admit turn reads a map, never a
     /// stat. `None` is the KEEP doctrine's absence of evidence (synthetic row,
@@ -211,17 +211,17 @@ impl ActorState {
         crate::model::scan_fingerprint(yaml, raw)
     }
 
-    /// R11 warm fit pass (boot scan and every rescan alike): re-stamp the epoch
+    /// Warm fit pass (boot scan and every rescan alike): re-stamp the epoch
     /// so probes born under a superseded catalog drop at the handler, then —
     /// only with the probe switched on — project every fit-capable row,
-    /// serially and deferred, off-thread, one version leg per distinct tool
-    /// (FR-13). Like R5's reconcile there is no I/O in the actor loop and
+    /// serially and deferred, off-thread, one version leg per distinct tool.
+    /// Like the reconcile there is no I/O in the actor loop and
     /// nothing here can gate, kill or invent: the answer lands as a catalog
     /// patch through [`ActorState::on_fit_row_done`] or the row keeps its
     /// ladder.
     pub(super) fn spawn_fit_warm(&mut self) {
         self.fit_epoch.fetch_add(1, Ordering::Relaxed);
-        // R11: the rescan's epoch retires every session cross-check stamp — a
+        // The rescan's epoch retires every session cross-check stamp — a
         // green the page showed described the superseded catalog. Clearing keeps
         // the map bounded; the epoch equality is what makes stale entries read
         // as absent even before this line runs.
@@ -242,7 +242,7 @@ impl ActorState {
             // remaining row of THIS pass stale before its probe (the epoch
             // moved), while answers already sent are dropped by the handler's
             // own epoch guard. A group whose version leg fails skips only its
-            // own rows (FR-13): another tool's calculator can still answer.
+            // own rows: another tool's calculator can still answer.
             tokio::time::sleep(FIT_WARM_DELAY).await;
             for tool in plan.tools.iter() {
                 if epoch.load(Ordering::Relaxed) != gen || tx.is_closed() {
@@ -268,12 +268,12 @@ impl ActorState {
         });
     }
 
-    /// The fit tool one row projects with (FR-13): the sibling
+    /// The fit tool one row projects with: the sibling
     /// `llama-fit-params.exe` of the row's EFFECTIVE `llama_server_exe` —
     /// the row's own override when it carries one, else the config default.
     /// `None` means neither names a binary: the row cannot be projected and
     /// keeps its ladder. Pure path derivation — no filesystem touch, so the
-    /// admit turn may call it (FR-02).
+    /// admit turn may call it.
     #[must_use]
     fn fit_tool_program(entry: &ModelEntry, default: Option<&std::path::Path>) -> Option<PathBuf> {
         crate::engine::llama::LlamaAdapter::effective_server_exe(default, entry)
@@ -284,7 +284,7 @@ impl ActorState {
     /// catalog application) when the pass must stay silent: probe off is total
     /// silence — zero probes, ladder unchanged — while an uncalibrated
     /// constant is a named warn, never a silent zero pretending to be a
-    /// calibration. Rows group by their effective tool (FR-13); a row with no
+    /// calibration. Rows group by their effective tool; a row with no
     /// binary at all is named once and keeps its ladder.
     pub(super) fn fit_probe_plan(&self) -> Option<FitProbePlan> {
         let llama = self.cfg.llama_fit()?;
@@ -350,7 +350,7 @@ impl ActorState {
         Some(FitProbePlan { tools })
     }
 
-    /// The R11 admit-time fit refresh, run on the actor BEFORE the booking
+    /// The admit-time fit refresh, run on the actor BEFORE the booking
     /// decision. A cache hit (same argv, same tool epoch, model file not
     /// proven-changed) books the projection for this load AND still rides the
     /// version check fire-and-forget; a miss books the ladder now and fires
@@ -360,7 +360,7 @@ impl ActorState {
     /// admit: the physical gate is unchanged, and the next admit (and the
     /// page) get the figure.
     ///
-    /// FR-02: the "not proven-changed" question is answered from the
+    /// The "not proven-changed" question is answered from the
     /// scan-carried fingerprint ([`Self::fit_carried_fingerprint`], a map
     /// read) — the actor turn makes NO filesystem stat. The change that voids
     /// the cache is a fresh fingerprint observation disagreeing with the
@@ -377,7 +377,7 @@ impl ActorState {
         let Some(key) = Self::fit_row_key(entry) else {
             return;
         };
-        // FR-13: the row's OWN calculator owns the figure — the cache key and
+        // The row's OWN calculator owns the figure — the cache key and
         // the version check both follow the row's effective tool, never a
         // global one. No resolvable binary: nothing certifies, the ladder
         // books.
@@ -457,7 +457,7 @@ impl ActorState {
 
     /// The answer leg of the version probe: a moved epoch voids that tool's
     /// whole cache and strips the rows its binary serves (a projection belongs
-    /// to the calculator that minted it, FR-13: another tool's figures and
+    /// to the calculator that minted it; another tool's figures and
     /// rows are untouched); no answer is silence about THIS pass only — the
     /// established epochs and their figures stand (a momentarily absent tool
     /// is no evidence the tool changed).
@@ -485,11 +485,11 @@ impl ActorState {
             );
         }
         self.fit_versions.insert(program.to_path_buf(), version);
-        // FR-13: only THIS tool's figures die — a figure belongs to the
+        // Only THIS tool's figures die — a figure belongs to the
         // calculator that minted it, and that is exactly the tool that just
         // changed. Other tools keep their certified projections.
         self.fit_cache.retain(|(tool, _), _| tool != program);
-        // R11: a replaced calculator voids the session cross-checks too — the
+        // A replaced calculator voids the session cross-checks too — the
         // tolerance's own margin belongs to the tool that minted the projection,
         // so a verdict earned under the old one says nothing about the new.
         // Cleared whole on purpose: the stamp map does not carry the tool, and
@@ -508,11 +508,11 @@ impl ActorState {
 
     /// The answer leg of a row probe: Ok lands in the cache and patches the
     /// catalog row that still carries the probed identity — argv key AND tool
-    /// (FR-13) — Err is a named warn and the ladder. A stale epoch's answer is
+    /// — Err is a named warn and the ladder. A stale epoch's answer is
     /// dropped at the door — the superseded catalog is not the catalog this
     /// answer describes.
     ///
-    /// FR-02: the probe's fingerprint was taken off-actor after the answer, so
+    /// The probe's fingerprint was taken off-actor after the answer, so
     /// it is the freshest reading of the row's model file — it refreshes the
     /// scan-carried value for that identity too, keeping cache and carried
     /// value in step after a change (without this, the next admit would miss
@@ -554,7 +554,7 @@ impl ActorState {
     }
 
     /// Patches the catalog row the probed identity still describes — argv
-    /// key AND the tool it was projected with (FR-13) — then republishes so
+    /// key AND the tool it was projected with — then republishes so
     /// the page's Cost column sees the same figure the gate would book (one
     /// derivation — the duplication-review rule).
     fn patch_catalog_fit(&mut self, model: &str, program: &Path, key: u64, gib: f64) {
@@ -586,7 +586,7 @@ impl ActorState {
             .map(|margin| margin + FIT_VALIDATE_SLACK_GIB)
     }
 
-    /// R11 session cross-check (rule 2026-11-01, display-only, never a gate
+    /// Session cross-check (display-only, never a gate
     /// input): when a witness reading has survived every fold gate for a
     /// Fit-booked load, compare it against the projection that booked the
     /// spawn. The tolerance is [`Self::fit_validation_tolerance`] -
@@ -683,8 +683,8 @@ mod tests {
         }
     }
 
-    /// State with the probe switched on, a global binary configured (FR-13:
-    /// the cache keys are tool-qualified, so the pins need one), and the
+    /// State with the probe switched on, a global binary configured (the
+    /// cache keys are tool-qualified, so the pins need one), and the
     /// calibration left unset: the refresh gate opens (probe enabled) while
     /// `fit_probe_plan` resolves to `None`, so the pins drive the cache
     /// decision without any spawn.
@@ -711,7 +711,7 @@ mod tests {
     }
 
     /// The tool the pins' rows resolve to: the state's configured global
-    /// binary's fit sibling (FR-13 cache key).
+    /// binary's fit sibling (the cache key is tool-qualified).
     fn fit_program(state: &ActorState) -> std::path::PathBuf {
         crate::engine::fit::resolve_tool(
             state
@@ -757,7 +757,7 @@ mod tests {
         }
     }
 
-    /// FR-02 counting probe: the admit-turn cache hit books the certified
+    /// Counting probe: the admit-turn cache hit books the certified
     /// figure and the current thread's sync-stat counter stays exactly where
     /// the reset left it — zero. Falsifier: restore the pre-fix
     /// `fingerprint(fit_model_file(entry))` on the refresh and the counter
@@ -801,7 +801,7 @@ mod tests {
         );
     }
 
-    /// FR-02 invalidation, both legs: a rescan that re-read the model file
+    /// Invalidation, both legs: a rescan that re-read the model file
     /// leaves a carried fingerprint differing from the cached one, and the
     /// next admit misses to the ladder; an unchanged carried value keeps the
     /// hit. Neither leg stats. Falsifiers: drop the fingerprint compare from
@@ -865,7 +865,7 @@ mod tests {
         );
     }
 
-    /// FR-02 refresh: a landed probe carries its own off-actor fingerprint and
+    /// Refresh: a landed probe carries its own off-actor fingerprint and
     /// updates the carried value for that identity, so the next admit hits on
     /// the fresh pair instead of missing forever against the stale scan
     /// reading. Falsifier: drop the carrier update in `on_fit_row_done` and
@@ -913,7 +913,7 @@ mod tests {
         );
     }
 
-    /// FR-02 KEEP doctrine survives the move: a row whose carried value cannot
+    /// The KEEP doctrine survives the move: a row whose carried value cannot
     /// be known (no `file:` — a synthetic entry) is never punished for it:
     /// one side unknown is absence of evidence and the figure stands.
     #[test]
@@ -943,7 +943,7 @@ mod tests {
         assert_eq!(model::fingerprint_stat_calls(), 0, "no stat either");
     }
 
-    /// FR-02 structural tripwire: the admit refresh's own body holds no
+    /// Structural tripwire: the admit refresh's own body holds no
     /// filesystem call. The counting probe catches `model::fingerprint`; this
     /// leg catches a reintroduction through any other sync-fs door.
     /// Falsifier: put any of the forbidden calls back into the body.
@@ -972,7 +972,7 @@ mod tests {
         }
     }
 
-    /// FR-13 falsifier: two rows on DIFFERENT `llama_server_exe` binaries with
+    /// Falsifier: two rows on DIFFERENT `llama_server_exe` binaries with
     /// byte-identical probe argv get DISTINCT cache keys (a figure belongs to
     /// the calculator that minted it), and a version change for tool A voids
     /// only A's figures — tool B's cached projection and its row's number

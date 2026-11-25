@@ -208,7 +208,7 @@ fn model_json_cpu_offload_agrees_with_the_engine() {
     );
 }
 
-/// R11: the page reads the gate's answer — `cost_basis: "fit"` only when
+/// The page reads the gate's answer — `cost_basis: "fit"` only when
 /// the projection actually books, and the `fit_gb` figure rides the payload
 /// whenever it exists (even under a declared floor that keeps booking).
 #[test]
@@ -256,7 +256,7 @@ fn the_fit_figure_rides_the_payload_only_as_the_gate_decides() {
     );
 }
 
-/// R11 session cross-check, wire shape: `fit_validated` appears ONLY as a
+/// Session cross-check, wire shape: `fit_validated` appears ONLY as a
 /// `true` alongside a row the gate books from Fit — never null, never
 /// `false`, and never beside a row the gate books some other way (the
 /// verdict is about a Fit booking, so a row with no Fit booking cannot
@@ -356,7 +356,7 @@ fn est_vram_gb_only_when_declared_and_measured_are_absent() {
     );
 }
 
-/// W3 RAM cost surface on `/har/models`: a cpu_offload row is priced on the
+/// RAM cost surface on `/har/models`: a cpu_offload row is priced on the
 /// RAM ladder — `cost_basis` names the booked RAM rung in the same vocabulary,
 /// the RAM figures ride, and `ram_source` says whose number the booking is —
 /// while a GPU row keeps its exact pre-RAM shape: no RAM key at all, VRAM
@@ -443,7 +443,7 @@ fn the_cpu_models_row_prices_on_the_ram_ladder_and_a_gpu_row_stays_vram() {
     );
 }
 
-/// W3 RAM booking on the `/har/status` slot rows: every loaded CPU row
+/// RAM booking on the `/har/status` slot rows: every loaded CPU row
 /// carries its booked GiB plus the rung and source labels (the exact wire
 /// vocabulary), and a GPU row carries NONE of the three keys — the absent-not-
 /// null rule every loaded-row field obeys, so GPU rows keep their pre-RAM
@@ -1284,7 +1284,7 @@ async fn status_boot_reports_the_five_measures_as_they_complete() {
     );
 }
 
-/// The R5 rider on `/har/status` (ruling 9): the warned names appear when the
+/// The reconcile rider on `/har/status`: the warned names appear when the
 /// snapshot reports them and the key is ABSENT otherwise — absent, not null,
 /// not `[]` — so a harness with nothing stranded sends the exact old document
 /// (the fixture-parity pin keeps the DOM suite honest about that shape).
@@ -1368,7 +1368,7 @@ async fn status_categories_carry_the_effective_label_beside_the_id() {
     }
 }
 
-/// FR-15: `/har/status` publishes the unsafe-but-legal postures —
+/// `/har/status` publishes the unsafe-but-legal postures —
 /// `config_warnings` always rides as an array of `{code, message}` objects.
 /// `0.0.0.0` without a token names `lan_open_without_token` and a resolved
 /// token retires it; an unset `llama_server_exe` names `llama_server_exe_unset`
@@ -3524,7 +3524,7 @@ fn occupied_slot(model: &str, port: u16, loaded_at: Instant) -> SlotStatus {
     }
 }
 
-/// The R9 memory-bar sum (server side, where the honesty rule lives): it sums
+/// The memory-bar sum (server side, where the honesty rule lives): it sums
 /// the per-slot `engine_report` figures the scheduler anchored — one figure per
 /// model even when the same container occupies two slots — and answers `None`
 /// (never `0.0`) when nobody reported, so a silent container cannot render as
@@ -3683,7 +3683,7 @@ fn other_category_and_dead_ports_resolve_to_nothing() {
 
 #[tokio::test]
 async fn connect_failure_is_the_only_restart_class() {
-    // Evidence for the connect class: the T10.1 mock death is
+    // Evidence for the connect class: the mock death is
     // a `handle.abort()` that drops the listener socket, so the port REFUSES
     // and `send()` yields `is_connect()` — exactly what this classifier maps
     // to the single sanctioned reap + reload + retry.
@@ -4336,7 +4336,8 @@ async fn a_malformed_log_limit_answers_400_in_the_project_envelope() {
     );
 }
 
-/// FR-05, the other leg: a valid `limit` still answers the ring document and
+/// The limit rule, the other leg: a valid `limit` still answers the ring
+/// document and
 /// still clamps to the ring capacity. `limit=2` returns exactly the newest 2
 /// events; `limit=999999` is accepted (not a refusal) and capped by
 /// `RING_CAPACITY` — the events list can never exceed capacity. Falsifiers:
@@ -4401,7 +4402,8 @@ async fn a_valid_log_limit_still_clamps_to_the_ring_capacity() {
     );
 }
 
-/// RC-01/RC-02 live harness: the scripted engine answers readiness immediately
+/// Readiness/crash live harness: the scripted engine answers readiness
+/// immediately
 /// (`probe_ready`), never invents an id, records every reap and confirms every
 /// release — a dead engine's refused port is the harness's own release
 /// evidence. Spawn and probe record only; any other runtime call reaching
@@ -4599,7 +4601,7 @@ fn chat_body(model: &str) -> Value {
     json!({ "model": model, "messages": [{ "role": "user", "content": "hi" }] })
 }
 
-/// RC-01: a load that misses its readiness deadline answers its own named
+/// A load that misses its readiness deadline answers its own named
 /// code `readiness_timeout`, names the deadline, and sanitizes the probe's
 /// text; every neighboring class keeps its current code. Legs: the composed
 /// `spawn_probe_task` shape maps with the URL/OS text stripped (also with the
@@ -4715,7 +4717,8 @@ async fn a_readiness_deadline_answers_its_own_code_and_the_other_classes_keep_th
     let _ = hang;
 }
 
-/// RC-01's negative-shape guard: `readiness_timeout_answer` recognizes ONLY
+/// The negative-shape guard for readiness timeouts: `readiness_timeout_answer`
+/// recognizes ONLY
 /// the exact composed shape — a reason that merely mentions the words, or
 /// carries the shape without the prefix, must answer `None` so it keeps its
 /// current class. Falsifier: matching on `contains("readiness deadline")`
@@ -4746,7 +4749,8 @@ fn only_the_exact_deadline_shape_maps_to_the_readiness_answer() {
     }
 }
 
-/// RC-01 over the wire: `/har/load` of a model whose readiness probe never
+/// Readiness timeout over the wire: `/har/load` of a model whose readiness
+/// probe never
 /// lands (deadline 1 s) answers the named code through the real router —
 /// 502 `readiness_timeout`, the deadline figure named, the probe's engine URL
 /// and reqwest text absent from the body. Falsifier: revert the `From`
@@ -4792,9 +4796,10 @@ async fn a_load_that_misses_its_readiness_deadline_answers_the_named_code() {
     );
 }
 
-/// RC-02 over the wire: a proxied request that witnesses its engine's port
+/// Witnessed-death terminalization over the wire: a proxied request that
+/// witnesses its engine's port
 /// refuse TWO connections terminalizes what it witnessed. The first refusal
-/// still takes the T10.1 crash-retry (reap + reload + one retry, unchanged);
+/// still takes the crash-retry (reap + reload + one retry, unchanged);
 /// the successor's refusal answers an honest typed 502 AND leaves `/har/status`
 /// with no serving slot, no Serving row and an `engine died` ledger line for
 /// the dead model — while the category's OTHER resident keeps serving
@@ -4898,7 +4903,7 @@ async fn a_proxy_request_that_witnessed_its_engine_death_terminalizes_it() {
     );
 }
 
-/// RC-02's never-death leg: an engine that ACCEPTS the connection and drops
+/// The never-death leg: an engine that ACCEPTS the connection and drops
 /// it before any response head is a plain forward failure — the `Other` class.
 /// It answers 502 and NOTHING is terminalized: the resident stays serving,
 /// nothing is reaped, nothing reloads, and the ledger gains no unload row.
@@ -4953,7 +4958,8 @@ async fn an_engine_that_drops_the_connection_serves_502_but_stays_serving() {
     );
 }
 
-/// The structural seam of RC-02 (the repo's established `include_str!`
+/// The structural seam of witnessed-death terminalization (the repo's
+/// established `include_str!`
 /// pattern): the death command is reachable ONLY after the crash-retry is
 /// exhausted — classification first, one restart, and only the second refused
 /// connect reports. Falsifier: move the `report_dead_engine` call above the

@@ -1,7 +1,7 @@
 //! Actor-side catalog and reload lifecycle: the off-thread rescan and its apply
 //! turn, the drift rounds that judge only gathered evidence, the parked-row
 //! helpers, the queued-load retirement, the reload-waiter drain, the harness
-//! write-back re-baseline, and the R5 report-only unclaimed-container reconcile.
+//! write-back re-baseline, and the report-only unclaimed-container reconcile.
 //! The state and its fields stay owned by `mod.rs`.
 
 use crate::model::scan::{Catalog, ScanError, ScanKind};
@@ -38,7 +38,7 @@ async fn scan_models_dir(dir: PathBuf) -> Result<Catalog, String> {
 ///
 /// * `dir` - the `ModelConf` directory to walk.
 /// * `llama_server_exe` - the configured global binary to check, if any
-///   (FR-13: absent means no global default — nothing to report, and each
+///   (absent means no global default — nothing to report, and each
 ///   llama row must name its own).
 ///
 /// # Returns
@@ -60,7 +60,7 @@ pub(super) async fn scan_with_binary_check(
 /// The `EngineBinaryMissing` report for a binary the config points at but the volume
 /// does not have. Pure apart from the one stat, which is why it runs inside
 /// [`scan_with_binary_check`]'s blocking task and not on the actor. `None` exe is
-/// the FR-13 unset state: no global default to miss.
+/// the unset state: no global default to miss.
 #[must_use]
 pub(super) fn missing_binary_error(
     llama_server_exe: Option<&std::path::Path>,
@@ -203,7 +203,7 @@ impl ActorState {
                 }
             }
         }
-        // The rescan twin of the R10 arm-time refusal (`start_queued_load`): the
+        // The rescan twin of the arm-time port refusal (`start_queued_load`): the
         // page names a borrowed port number before the load dies, never after.
         for entry in &models {
             if let Some(port) = crate::engine::ninfer::declared_internal_port(entry) {
@@ -256,12 +256,12 @@ impl ActorState {
         // untouched and the marker round ambers it exactly as today.
         self.rebook_cost_only_moves(&previous, drift);
         self.refresh_stale_markers(drift);
-        // R5 report-only reconcile (ruling 9, 2026-11-01): every catalog
+        // Report-only reconcile: every catalog
         // application — the boot scan and every rescan alike — re-checks which
         // declared container names are running with no claim. Off-thread like
         // every other engine touch; report-only by construction.
         self.spawn_unclaimed_reconcile();
-        // R11 warm fit pass: the same per-application rhythm projects the
+        // Warm fit pass: the same per-application rhythm projects the
         // fit-capable rows (epoch-stamped, so the superseded catalog's probes
         // drop on arrival). Deferred and off-thread like everything that
         // touches a volume; a no-op when the probe is off.
@@ -285,7 +285,8 @@ impl ActorState {
     /// NOT a cost move: the marker round's conservatism stays in charge.
     fn cost_only_move(old: &ModelEntry, new: &ModelEntry) -> bool {
         // The RAM pair belongs to this surface exactly as its VRAM twin does
-        // (W2 step 3): the harness writes it from the working-set fold, and an
+        // exactly as its VRAM twin does: the harness writes it from
+        // the working-set fold, and an
         // operator correcting it is moving a booked number, not a launch
         // flag — ambering it would accuse the resident of a config change its
         // reload would not even re-read. The shared `measured_offload` stamp
@@ -338,7 +339,7 @@ impl ActorState {
     /// The cost half of the reload trap (the readmission incident): a rescan
     /// that moved a loaded row's
     /// cost figures ONLY re-books the resident's slot `need` from the new
-    /// bytes — the release credit, the R3 no-release guard and the eviction
+    /// bytes — the release credit, the no-release floor guard and the eviction
     /// planner stop billing a stranger's paper number — instead of leaving
     /// the operator to unload, edit and reload to move the booking. Runs in
     /// the same pre-gathered-evidence posture as every other drift round:
@@ -402,12 +403,12 @@ impl ActorState {
             {
                 continue;
             }
-            // A RAM resident books no card figure (operator ruling
-            // 2026-11-05, review W1-01): the VRAM ladder must never answer
+            // A RAM resident books no card figure: the VRAM ladder must never
+            // answer
             // for it, and a cost edit it cannot see must not write a VRAM
             // figure its release credit would bill a GPU replacement for —
             // the stranger's-paper-number class the re-book exists to close.
-            // The RAM booking follows only a reload (wave 2 owns its
+            // The RAM booking follows only a reload (the re-gate owns its
             // measured rung); the judged bytes still ride the capture, so a
             // cost-only edit neither re-books nor ambers a healthy resident.
             if occupant.ram_need.is_some() {
@@ -430,7 +431,7 @@ impl ActorState {
                 "cost-only rescan re-booked the loaded resident without a reload"
             );
             occupant.need = need;
-            // Axis 2: this round judged these bytes and adopted them, so the
+            // The stale-config round: this round judged these bytes and adopted them, so the
             // capture rides with the booking — the interlock-5 posture the
             // fold write-back and the flag-edit re-baseline already carry.
             occupant.spawn_config = Some((file, now));
@@ -560,10 +561,9 @@ impl ActorState {
             .collect()
     }
 
-    /// The queued-intent half of reload (Axis 1 = **1b**, operator ruling
-    /// 2026-10-29, `research/reload-slot-drift-2026-10-28.md` rows 12-13): a
+    /// The queued-intent half of reload (operator ruling): a
     /// rescan retires parked/queued load rows whose model bytes moved or whose
-    /// model left the catalog — with the blessed `superseded` vocabulary (19[5]),
+    /// model left the catalog — with the blessed `superseded` vocabulary,
     /// named reason, and the same release path every other queued retirement
     /// takes. A **no-change rescan never drops a queue**.
     ///
@@ -675,13 +675,13 @@ impl ActorState {
         self.pending_reload = keep;
     }
 
-    /// R5 report-only reconcile trigger (boot scan and every rescan alike): name
+    /// Report-only reconcile trigger (boot scan and every rescan alike): name
     /// the running containers whose exact name a catalog row declares as
     /// `ninfer_container` while the claim ledger holds no claim — the stranded
     /// VRAM the ownership-scoped reaping may never address. The probe runs
     /// off-thread (no I/O in the actor loop), one at a time, and its result is
     /// a warning through [`ActorState::on_reconcile_done`] and nothing else:
-    /// never a kill, never an eviction, never a gate (G4; ruling 9 — foreign
+    /// never a kill, never an eviction, never a gate (foreign
     /// VRAM is never the harness's own and never a gate guess).
     fn spawn_unclaimed_reconcile(&mut self) {
         let declared: Vec<String> = self
@@ -707,7 +707,8 @@ impl ActorState {
         let runtime = Arc::clone(&self.runtime);
         let tx = self.tx.clone();
         handle.spawn(async move {
-            // RAII release (the R9 C1 rule): the in-flight mark clears on EVERY
+            // RAII release (the release-per-exit rule): the in-flight mark
+            // clears on EVERY
             // exit — a panic in the probe reports as a failed probe (silence),
             // never as a mark wedged for the process lifetime.
             let mut release = ReconcileRelease { tx, outcome: None };
@@ -715,7 +716,7 @@ impl ActorState {
         });
     }
 
-    /// The R5 report itself: one `warn` per stranded name — and only when the
+    /// The reconcile report itself: one `warn` per stranded name — and only when the
     /// stranded SET changed, so repeated rescans of the same stranded container
     /// never spam the ring (the warn IS the ring event: the observability ring
     /// layer captures every tracing event for the UI log panel). A failed probe

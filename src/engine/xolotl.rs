@@ -750,7 +750,7 @@ fn validate_rendered(json: &str) -> Result<(), XolotlRowError> {
 /// Every string under every key is judged; the `log` key is exempt (its
 /// target's existence is irrelevant to loading) and so is the top-level
 /// `env` map (the DSpark door judges it). Relative paths stay exempt (the
-/// engine resolves those against the tree root — the chunk 10 backlog rule).
+/// engine resolves those against the tree root — the custody backlog rule).
 /// The host separator (`;` on Windows, `:` on Linux) splits the engram
 /// file-list shape inside one string, so each element is judged on its own.
 fn missing_rendered_path(root: &serde_json::Value) -> Option<(String, String)> {
@@ -1149,7 +1149,7 @@ impl EngineAdapter for XolotlAdapter {
         let row = super::policy::engine_policy("xolotl")
             .expect("the compiled-in table ships a xolotl row");
         let v = validate_row(model).map_err(XolotlRowError::into_engine_error)?;
-        // Location custody (the row's executed-path roots, §20-9 Fork C):
+        // Location custody (the row's executed-path roots, Fork C):
         // while the cells are open it admits everything (ruling 5), and it
         // will enforce unchanged once a later copy-in slice populates them
         // (the strata posture).
@@ -1196,7 +1196,7 @@ impl EngineAdapter for XolotlAdapter {
                 text: v.text,
             }),
             // The xolotl launch rides the custody sidecar exactly as strata
-            // does (slice 10b): the shim spawns the engine as a child, so a
+            // does: the shim spawns the engine as a child, so a
             // crashed run's orphan tree is provably ours to reap at the next
             // boot purely from the harness's own record.
             custody: Some("xolotl".to_string()),

@@ -172,7 +172,7 @@ pub(super) async fn run_control_command(program: &str, args: &[String]) -> Contr
 }
 
 /// [`run_control_command`] with an explicit deadline — the ONE control-command
-/// builder shared by the WSL commands and the R11 fit probes, so a probe gets
+/// builder shared by the WSL commands and the fit probes, so a probe gets
 /// the same hidden / kill-on-drop / scrubbed-environment posture and only the
 /// timeout is the caller's (the fit probes outlive the 10 s WSL default only
 /// by operator calibration, never by a new spawn path).

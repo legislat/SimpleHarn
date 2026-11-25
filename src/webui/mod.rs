@@ -1,4 +1,4 @@
-//! Control page (DESIGN Step 14, operator mockup 2026-10-25): Pico CSS + vanilla
+//! Control page (operator mockup): Pico CSS + vanilla
 //! JavaScript, assets embedded with `include_str!` — the page only renders `/har/*`
 //! JSON and every action is a headless API call. The header is persistent (the
 //! merged slot/tab strip and the memory bars never scroll away, compacted
@@ -188,7 +188,7 @@ mod tests {
 
     /// The header badge reads the two verdicts `/har/status` computes
     /// and no longer decodes the serde shape of `listeners` in the browser. The
-    /// stranded-reservation badge (R5) rides the same rule: it reads
+    /// stranded-reservation badge rides the same rule: it reads
     /// `status.stranded_containers` and names only what the harness lists.
     ///
     /// Nature, declared: a source-content assertion over the exact `include_str!`
@@ -247,7 +247,7 @@ mod tests {
         );
     }
 
-    /// Cost provenance is colour, not prose (operator 2026-11-01): the served
+    /// Cost provenance is colour, not prose: the served
     /// page paints a gate-validated figure green and an unchecked one yellow,
     /// and the CSS rules both colours need exist in the served stylesheet —
     /// untestable in the DOM stub (GOTCHAS [ui][test]), so pinned byte-level.
@@ -314,7 +314,7 @@ mod tests {
         );
     }
 
-    /// The working-model dot, made bright (operator 2026-11-05): the matte
+    /// The working-model dot, made bright: the matte
     /// olive served-dot read as nothing at 9px, so serving takes the bright
     /// green `--sh-dot-live` (#22c55e) with a 1px ring of its deep shade
     /// `--sh-dot-live-ring` (#14532d) - a non-text graphic held to >= 3:1 on
@@ -627,7 +627,7 @@ mod tests {
         );
     }
 
-    /// The error banner's shape (operator 2026-11-10): it lives in flow between
+    /// The error banner's shape: it lives in flow between
     /// the header (whose bottom is the tab strip) and the model table, never as a
     /// fixed overlay, and it is opaque. The 1.5.1.2 fixed, transparent banner
     /// painted its text over the page text and read as garbled duplication.

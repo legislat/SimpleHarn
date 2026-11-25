@@ -1,4 +1,4 @@
-//! The llama.cpp adapter (DESIGN Step 7, Appendix A.7).
+//! The llama.cpp adapter.
 //!
 //! The flag map is *data*, byte-equivalent in semantics to the operator's
 //! llama.cpp `start.ps1` (Appendix A.7, lines 45-63) — the script is the source
@@ -14,10 +14,10 @@
 //! `off`, case-sensitively like the true words) render the harness's own
 //! `--no-jinja` — the pair is a harness-emitted decision from `jinja:`, never
 //! operator text, and the switch covers both directions (audit 2026-11-15
-//! §2.3-4 closed the one-way gap).
+//! closed the one-way gap).
 //!
-//! `extra_args` is an open, policy-filtered passthrough (gate ruling
-//! 2026-11-15: a documented knob needing an adapter hotfix is a HIGH defect;
+//! `extra_args` is an open, policy-filtered passthrough (gate ruling:
+//! a documented knob needing an adapter hotfix is a HIGH defect;
 //! a knob the operator can add back by editing the row "still gets the job
 //! done"). An option token reaches the argv unless it names a word of the
 //! reviewed `crate::engine::policy::LLAMA_FORBIDDEN_EXTRA_WORDS` record
@@ -63,8 +63,7 @@ pub const LLAMA_ENGINE_HOST: &str = "127.0.0.1";
 /// option passes
 /// through. The extension direction is deliberately NOT refused: the engine
 /// defines the longer option, and blocking `--model-draft`-class knobs from a
-/// row was the documented-knob-needs-a-hotfix class the 2026-11-15 ruling
-/// closed.
+/// row was the documented-knob-needs-a-hotfix class this rule closes.
 fn forbidden_extra_word(name: &str) -> Option<&'static str> {
     crate::engine::policy::LLAMA_FORBIDDEN_EXTRA_WORDS
         .iter()
@@ -85,7 +84,7 @@ fn valid_extra_value(value: &str) -> bool {
 
 /// The refusal voice for every `extra_args` verdict: the typed [`EngineError::Rejected`]
 /// naming the offending word — and, for a record word or abbreviation, the owner
-/// sentence of the mechanism that made it harness-owned (slice 10c) — so a
+/// sentence of the mechanism that made it harness-owned — so a
 /// refused launch says what to delete (G6) and the operator edits the live
 /// yaml key instead of the code. The passthrough rule closes the message, so
 /// an operator can tell a harness-owned word from a typo the engine itself
@@ -300,7 +299,7 @@ fn rejected_table_value(
     }
 }
 
-/// Engine ids for which `cpu_offload` is a live concept. Since slice 10c the
+/// Engine ids for which `cpu_offload` is a live concept. The
 /// single source is the rows' `knobs` cell; this record stays only as the
 /// page's gate-list parity partner (`webui` pins the served JS list against
 /// it), and `the_knob_table_owns_every_engine_scoped_yaml_key` in the policy
@@ -309,8 +308,8 @@ fn rejected_table_value(
 pub(crate) const OFFLOAD_ENGINES: &[&str] = &["llama"];
 
 /// Whether `engine` reads `cpu_offload` anywhere (spawn, stamp, void): the
-/// `llama` row's `knobs` cell is now the one source (slice 10c retired the
-/// const's authority — "chunk 10 replaces one lookup rather than a scatter").
+/// `llama` row's `knobs` cell is now the one source (it retired the
+/// const's authority — replacing one lookup rather than a scatter).
 /// An absent `engine:` key resolves to `"llama"`
 /// ([`crate::model::ModelEntry::from_flat`]), the scan default, so it is in
 /// scope through that default. `mock` is deliberately outside: it impersonates
@@ -347,7 +346,7 @@ pub fn jinja_on(value: &str) -> bool {
 /// The harness's own falsy set for `jinja`: exactly `false`, `0`, `off`,
 /// **case-sensitively** — the mirror of [`jinja_on`]'s narrow truth set.
 /// Because the pinned build defaults jinja to enabled, the off direction only
-/// ever exists as the harness-emitted `--no-jinja` (audit 2026-11-15 §2.3-4);
+/// ever exists as the harness-emitted `--no-jinja` (audit 2026-11-15);
 /// operator `extra_args` still cannot spell the pair — both spellings are
 /// forbidden-record words.
 #[must_use]
@@ -490,7 +489,7 @@ pub(crate) fn build_args(
 #[derive(Debug, Clone)]
 pub struct LlamaAdapter {
     /// Global `llama-server.exe` default (config `llama_server_exe`); a row's
-    /// own `llama_server_exe:` key overrides it per row (FR-13). `None` — the
+    /// own `llama_server_exe:` key overrides it per row. `None` — the
     /// shipped default — means every llama row must name its own binary or its
     /// load refuses.
     pub exe: Option<PathBuf>,
@@ -504,14 +503,14 @@ impl LlamaAdapter {
         LlamaAdapter { exe: Some(exe) }
     }
 
-    /// Creates the adapter from the config's optional global default (FR-13):
+    /// Creates the adapter from the config's optional global default:
     /// `None` leaves no global binary, so each llama row must carry its own
     /// `llama_server_exe:` key.
     pub fn from_config(exe: Option<PathBuf>) -> Self {
         LlamaAdapter { exe }
     }
 
-    /// The one binary a row launches with (FR-13): the row's trimmed
+    /// The one binary a row launches with: the row's trimmed
     /// `llama_server_exe:` override when it carries a non-blank one, else the
     /// global default. `None` is the refusal state — [`EngineError::MissingField`].
     #[must_use]
@@ -535,7 +534,7 @@ impl EngineAdapter for LlamaAdapter {
     }
 
     fn spec(&self, model: &ModelEntry, port: u16) -> Result<LaunchSpec, EngineError> {
-        // FR-13: the row's own `llama_server_exe:` outranks the global default;
+        // The row's own `llama_server_exe:` outranks the global default;
         // with neither, the launch refuses naming the key, and a row override
         // must be an absolute existing regular file — the same
         // doomed-spawn-before-eviction posture the scan's existence traces
@@ -950,7 +949,7 @@ mod tests {
         }
     }
 
-    /// The pass-through half of the 2026-11-15 gate ruling: unmodeled long
+    /// The pass-through half of the forbidden-words rule: unmodeled long
     /// options reach the engine — including the offload-granularity, cache,
     /// and speculative-decoding knobs the closed list hid — and the engine,
     /// not the catalog, judges them. `--model-draft` rides the admit side on
@@ -1085,7 +1084,7 @@ mod tests {
         assert!(reason.contains("inline value"), "{reason}");
     }
 
-    /// Falsifier for the whole record (2026-11-15 gate ruling): every
+    /// Falsifier for the whole forbidden-word record: every
     /// forbidden word refuses by name, abbreviation probes resolve to their
     /// record word, and no recommended word is ever refused — a word deleted
     /// from the record, a matcher that forgot the abbreviation direction, or
@@ -1198,7 +1197,7 @@ mod tests {
                 "{on} must not disable jinja"
             );
         }
-        // The mirror set switches the other way (audit 2026-11-15 §2.3-4):
+        // The mirror set switches the other way (audit 2026-11-15):
         // the pinned build defaults jinja ON, so `false`/`0`/`off` render the
         // harness's own `--no-jinja`.
         for off in ["false", "0", "off"] {
@@ -1458,7 +1457,7 @@ mod tests {
         );
     }
 
-    /// FR-13: the shipped default is no global binary. A row that names none
+    /// The shipped default is no global binary. A row that names none
     /// refuses with the key — never a hidden author-machine path. Falsifier:
     /// restore a hard-coded default and this leg launches against `""`/a ghost.
     #[test]
@@ -1473,7 +1472,7 @@ mod tests {
         assert_eq!(field, "llama_server_exe");
     }
 
-    /// FR-13: a row's `llama_server_exe:` overrides the global default, and
+    /// A row's `llama_server_exe:` overrides the global default, and
     /// argv[0] AND the spawn cwd follow the override — the calculator sibling
     /// and the weights base both move with the binary that actually runs.
     #[test]
@@ -1514,7 +1513,7 @@ mod tests {
         );
     }
 
-    /// FR-13: the row override is refused before victims are evicted when it
+    /// The row override is refused before victims are evicted when it
     /// is relative or names no existing regular file — the key, never a bare
     /// OS spawn error, carries the answer.
     #[test]

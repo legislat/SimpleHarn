@@ -85,7 +85,7 @@ impl KillGroup {
 /// refused, walk broken at any point — answers an empty Vec: absence is
 /// reported, never a guess (doctrine 4).
 ///
-/// FR-04 truncation contract: the answer is bounded at `DESCENDANT_CAP`, and
+/// Truncation contract: the answer is bounded at `DESCENDANT_CAP`, and
 /// an answer whose length reaches that bound is the walk saying *I stopped* —
 /// it is a partial list. A caller that must not treat a partial tree as
 /// complete (working-set sums, process-tree measurements) checks
@@ -401,7 +401,7 @@ fn file_time_ticks(low: u32, high: u32) -> u64 {
 
 /// The creation-time token of the process behind an open handle: the same
 /// value [`ProcessIdentity::start_token`] answers for a live pid, read straight off
-/// the launch handle (slice 10b: the spawn path records what the sweep will
+/// the launch handle (the spawn path records what the sweep will
 /// later verify — one token rule, one spelling).
 ///
 /// The token is a process creation FILETIME: same for one process's whole

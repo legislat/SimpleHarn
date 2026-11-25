@@ -1,17 +1,17 @@
-//! Park-ladder pins (operator rulings 2026-11-10 and 2026-11-22): the gate parks
+//! Park-ladder pins (operator rulings): the gate parks
 //! a short load instead of refusing when the deficit is covered by waitable
 //! sources - other loads' in-flight bookings and/or a release already in
 //! progress - and the launch floor is reachable. A release wait additionally
-//! requires every named blocker to be a releasing resident; the 2026-11-10
+//! requires every named blocker to be a releasing resident; the
 //! booking park keeps no blocker gate. Every other short stay keeps its named
 //! refusal. The pins share the fixtures owned by the parent test module.
 
 use super::*;
 use crate::scheduler::{AdmissionError, Event, Reclaim, SchedulerError, Victim};
-/// Shared fixture for the 2026-11-22 in-progress-release park pins: a WORK
+/// Shared fixture for the in-progress-release park pins: a WORK
 /// slot holding a resident whose operator `Unload` job is in progress (a
 /// non-terminal unload row on the slot, driver release not yet confirmed —
-/// the 2026-11-22 solar shape), plus a free RP slot where the row under test
+/// the solar shape), plus a free RP slot where the row under test
 /// arms, on a 72 GiB card with the 2 GiB reserve and the 2 GiB tolerance.
 /// `resident` is the occupant's booked and live-folded GiB (the figure the
 /// release projects); `aux` (when given) seats an AUX resident the RP row
@@ -155,7 +155,7 @@ fn release_short_fixture(
     (state, waiting, unload, rp_slot)
 }
 
-/// The solar case of the 2026-11-22 park matrix, row 8 (jobs 4/15/17): the
+/// The solar park case (jobs 4/15/17): the
 /// only memory the RP row lacks is a WORK resident whose operator unload is
 /// in progress. Pre-fix the park guard's first leg (`in_flight > 0`) was
 /// false — an unload is not a load — and the row died `AdmitFail
@@ -294,10 +294,10 @@ async fn a_load_short_on_an_in_progress_release_waits_then_admits() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Cell 4 option B, case b: an evictable candidate exists, but the release
+/// Release-park case: an evictable candidate exists, but the release
 /// alone covers the deficit, so the candidate is NOT needed: the row parks on
 /// the release and the candidate keeps serving. Pre-fix the
-/// `considered.is_empty()` leg refused this exact shape (the matrix's false
+/// `considered.is_empty()` leg refused this exact shape (a false
 /// refusal) and the operator had to retry after the release even though
 /// nothing needed to be killed. Falsifier: restore
 /// `considered.is_empty()` in the release arm and this row takes
@@ -349,7 +349,7 @@ async fn a_release_park_ignores_a_candidate_it_does_not_need() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Cell 4 option B, case c — the trap: the release covers only part of the
+/// Release-park trap case: the release covers only part of the
 /// deficit and the evictable candidate IS needed after the wait. Parking here
 /// would turn the wait into a deferred eviction (the re-gate would have to
 /// kill the candidate), so the row refuses with its named blockers and the
@@ -415,12 +415,12 @@ async fn a_release_that_leaves_a_candidate_needed_still_refuses() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Cell 2: a resident a live job has already committed to release is a
+/// Blocker-gate leg: a resident a live job has already committed to release is a
 /// blocker, never a victim — but the release park waits only when EVERY
 /// named blocker is a releasing resident. A second, non-releasing blocker
 /// survives the release, so this row refuses with both named instead of
-/// parking on a wait that cannot clear it. (The 2026-11-10 booking park keeps
-/// no blocker gate; row 9 is that behavior, not an over-park.) Falsifier:
+/// parking on a wait that cannot clear it. (The booking park keeps
+/// no blocker gate; that behavior is the rule, not an over-park.) Falsifier:
 /// drop `blockers_are_releasing` from the release arm and this row parks on a
 /// foreign, unreleasable holder: the `terminal` and `Insufficient` legs go red
 /// and `pending` grows.
@@ -474,7 +474,7 @@ async fn a_second_non_releasing_blocker_refuses_the_release_park() {
         Some(SchedulerError::Admission(AdmissionError::Insufficient {
             blockers, facts, ..
         })) => {
-            // Falsifier for the 2026-11-22 cell-2 fix: without crediting the
+            // Falsifier for the release-credit fix: without crediting the
             // in-progress release in the refusal account, `unreleasable` is
             // the whole occupied card (70.5); with it, the release projection
             // (70.1) leaves only the driver-side remainder.
@@ -514,7 +514,7 @@ async fn a_second_non_releasing_blocker_refuses_the_release_park() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Cell 3, first leg: the floor is out of reach today, but the in-progress
+/// Floor-reach leg one: the floor is out of reach today, but the in-progress
 /// release projection lifts `best_free` to the floor, so the row parks — a
 /// floor the release CAN reach is a reachable floor. Falsifier: drop
 /// `releasing_credit` from `best_free` and `no_releases_reach` flips this row
@@ -548,7 +548,7 @@ async fn a_release_that_reaches_the_launch_floor_parks() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Cell 3, second leg: even the release projection cannot lift `best_free`
+/// Floor-reach leg two: even the release projection cannot lift `best_free`
 /// to the floor, so `no_releases_reach` still refuses before any wait — a
 /// park would end only in the same refusal, late and un-named. Falsifier:
 /// park whenever `releasing > 0` regardless of the floor guard and this row
@@ -594,7 +594,7 @@ async fn a_release_that_cannot_reach_the_launch_floor_refuses() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Cell 6: the release terminalizes UNCONFIRMED and the resident stays
+/// Unconfirmed release: the release terminalizes UNCONFIRMED and the resident stays
 /// installed (G12). The parked row re-gates — the terminal funnel cannot tell
 /// a dead release from a live one — and now refuses with the named,
 /// unreleasable blocker: terminal, answered once, no re-park, no second wait,

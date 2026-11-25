@@ -1,13 +1,14 @@
-//! The ninfer engine adapter (DESIGN Step 7; port of the working v3.3 path).
+//! The ninfer engine adapter: a port of the working v3.3 launch path.
 //!
-//! Ninfer engines are GPU containers living inside WSL. Since the template-adoption
-//! ruling (operator, 2026-10-31) the harness launches only its own script: a model
+//! Ninfer engines are GPU containers living inside WSL. Since the
+//! template-adoption ruling the harness launches only its own script: a model
 //! that declares `ninfer_image` gets the canonical script below rendered from its
 //! yaml, staged content-addressed into the distro by [`crate::process`], and
 //! launched from the staged copy, so every ninfer start complies with what the
 //! harness can check and expect (`--restart no`, loopback-only publish, bounded
 //! logs, pre-reap). The legacy `ninfer_autostart` operator-script path was removed
-//! after a green Wave C (ruling 18b): a row that still declares it is refused at
+//! once its removal passed a full card window: a row that still declares it is
+//! refused at
 //! scan and at launch with `legacy_removed_sentence`, never published. Because
 //! the container outlives the short-lived `wsl.exe` client, the spec carries the
 //! container name so the runtime reaps it with `docker rm -f` on release (v3.3
@@ -66,7 +67,7 @@ pub struct NinferAdapter {
 /// (`/home/...`), and profile words never need it. What this rule still does NOT do
 /// is bound *which* absolute paths are admissible: the distro-side root allow-list
 /// is the ninfer `custody_exec_roots` cell of the [`crate::engine::policy`]
-/// `EnginePolicy` table (still open admission in 10a; the custody slice enforces it).
+/// `EnginePolicy` table (still open admission at the table level; the custody slice enforces it).
 fn valid_word(value: &str) -> bool {
     !value.is_empty()
         && !value.starts_with('-')
@@ -86,7 +87,7 @@ const BUILT_IN_PROFILES: [(&str, &str, &str, &str, &str); 5] = [
 ];
 
 /// The profile a ninfer row selects when its yaml names none (the autostart
-/// scripts' own default, operator decision 2026-10-28 "LEAVE AS-IS"). One home:
+/// scripts' own default, kept as-is). One home:
 /// the spawn resolution, the template render and the void-rule identity in
 /// [`profile_stamp`] must resolve the default identically or a `ninfer_profile`
 /// change would compare two different resolutions and mis-void an
@@ -173,9 +174,9 @@ fn env_pair_problem(token: &str) -> Option<&'static str> {
 /// the SE container-internal number, 8808 — the harness's own 87xx family at a
 /// +100 offset, owned by nobody else (not the manual 80xx world, not the 87xx
 /// listeners, not the 181xx engine plan; a later hand must keep it clear of all
-/// three, which `AppConfig::port_claim` enforces for declared values). R10
-/// (operator 2026-11-01: "8003-8005 are manual only", default amended the same
-/// day: "8080 — bad", closer to the harness ports): the container inside is a
+/// three, which `AppConfig::port_claim` enforces for declared values). Port
+/// separation: 8003-8005 are manual only, and 8080 sits too close to the
+/// harness ports: the container inside is a
 /// third namespace, and reusing 8004 internally was what misdirected the whole
 /// 8004 post-mortem, while `PUBLISH="${3:?…}"` removed the last path where a
 /// missing publish argument could host-publish the internal number itself.
@@ -356,7 +357,7 @@ fn valid_serve_arg(token: &str) -> bool {
 /// `ninfer_serve_args` value: the same whitespace tokenization the template
 /// render uses, so the scan refuses exactly the words the launch would have
 /// refused. A word that collides with a harness-owned flag (spelling or unique
-/// abbreviation) also names the mechanism that owns the decision (slice 10c);
+/// abbreviation) also names the mechanism that owns the decision;
 /// a word that is merely not shell-bare keeps the shape refusal.
 ///
 /// [`ExtraWordsContract`]: crate::engine::policy::ExtraWordsContract
@@ -589,7 +590,7 @@ fn template_params(
     let row = super::policy::engine_policy(NINFER_ENGINE)
         .expect("the compiled-in table ships a ninfer row");
     // The one directory a key file may live in is the row's data-custody root,
-    // not a literal repeated in code: single-source per §20-9 Fork C.
+    // not a literal repeated in code: single-source per the Fork C rule.
     let keys_root = row
         .custody_data_roots
         .first()
@@ -617,7 +618,7 @@ fn template_params(
             "`ninfer_artifact` must be a plain word without `..` traversal: {artifact}"
         )));
     }
-    // Optional since R10 (operator 2026-11-01: "8003-8005 are manual only"):
+    // Optional since the port separation ("8003-8005 are manual only"):
     // the container's inside is its own namespace, so the default is the SE
     // internal number rather than any borrowed manual one, and
     // `AppConfig::port_claim` refuses manual/harness numbers at the gate. The
@@ -689,7 +690,7 @@ fn template_params(
     // an arbitrary path would let a yaml export any distro secret (`.ssh/id_rsa`)
     // into `docker run` argv — the key lives in exactly one custody root,
     // `$HOME/.simpleharn/keys/<file>.key`, with `<file>` a single bare word
-    // (chunk-10 custody doctrine: engines obey only harness-owned locations).
+    // (custody doctrine: engines obey only harness-owned locations).
     let key_file = optional_param(model, "ninfer_key_file")
         .unwrap_or_else(|| format!("{keys_root}/{container}.key"));
     // Membership flows through the shared custody admission mechanism (slice
@@ -845,7 +846,7 @@ fn render_canonical(params: &NinferParams) -> Result<String, EngineError> {
 }
 
 /// The one migration sentence for the removed legacy `ninfer_autostart` launch
-/// path (ruling 18b removal, green Wave C). Every naming of the four required
+/// path (the legacy-removal ruling). Every naming of the four required
 /// template keys lives here, so the scan and the adapter answer identically
 /// (the strata `superseded_sentence` precedent): one home, one voice.
 pub(crate) fn legacy_removed_sentence(script: &str) -> String {
@@ -931,7 +932,7 @@ impl EngineAdapter for NinferAdapter {
             model: model.name.clone(),
             field: field.to_string(),
         };
-        // Ruling 18b removal (green Wave C): the legacy operator-script path is
+        // The legacy-removal ruling: the legacy operator-script path is
         // gone. A row that still declares `ninfer_autostart` is refused here and
         // at scan with one migration sentence. There is no fallback behind it,
         // the harness never runs an operator file.
@@ -1207,7 +1208,7 @@ mod tests {
 
     #[test]
     fn container_names_docker_could_resolve_as_an_id_are_refused() {
-        // Chunk 10 [4]: `docker rm -f <hex>` is resolved as a container-**ID prefix**, so
+        // The ID-prefix rule: `docker rm -f <hex>` is resolved as a container-**ID prefix**, so
         // a name of that shape must die here — the same validator the boot reclaim and
         // the claim ledger use — before it can reach the pre-reap argv and delete an
         // unrelated container in the operator's distro.
@@ -1312,8 +1313,8 @@ mod tests {
     /// the extension direction blocked it — reaches the launch line, while
     /// `--host` and the abbreviation `--hos` are refused by name. Falsifier:
     /// restore `name.starts_with(flag)` in the matcher and the legitimate
-    /// knob dies again — the documented-knob-needs-a-hotfix class the
-    /// 2026-11-15 gate ruling calls a HIGH defect.
+    /// knob dies again — a documented-knob-needs-a-hotfix class, a HIGH
+    /// defect.
     #[test]
     fn a_longer_option_extending_a_reserved_name_still_launches() {
         let mut pairs = template_pairs();
@@ -1539,7 +1540,7 @@ mod tests {
         );
     }
 
-    /// R10 (operator 2026-11-01): the container's inside is a third namespace. A
+    /// Port separation: the container's inside is a third namespace. A
     /// row without `ninfer_internal_port` renders the SE internal number (8808,
     /// the harness's 87xx family at +100), and the gate's namespace helper
     /// reports exactly the number the template would bind — never inventing one
@@ -1572,7 +1573,7 @@ mod tests {
         );
     }
 
-    /// The review-wave duplicate, closed by one authority (`resolve_internal_port`):
+    /// The duplicate, closed by one authority (`resolve_internal_port`):
     /// what the canonical script renders and what the gate reports are the SAME
     /// resolution for every row shape — a declared number, the default, and a
     /// broken row — so a future edit to key, default, or range cannot move the
@@ -1896,7 +1897,7 @@ mod tests {
 /// Bytes in one GiB.
 const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 
-/// The device VRAM the engine reported reserving for itself at startup (R9). Parsed
+/// The device VRAM the engine reported reserving for itself at startup. Parsed
 /// from `docker logs <name>` — the only place the `MemorySummary` survives for a
 /// detached container (the harness client log holds just the dead `wsl.exe` client).
 #[derive(Debug, Clone, PartialEq)]
@@ -1985,7 +1986,8 @@ fn gib_in_line(line: &str, label: &str) -> Option<f64> {
 /// `available_after_startup_bytes` (a container can restart in place, so the newest
 /// startup wins). `None` when no such record is present — the caller then falls back
 /// to a labelled, never-booked total-diff (§5.2). This is the engine-specific half of
-/// R9; `ProcessRuntime::container_report` stays a generic `docker logs` passthrough.
+/// the container-report rule; `ProcessRuntime::container_report` stays a generic
+/// `docker logs` passthrough.
 #[must_use]
 pub fn parse_startup_memory(log: &str) -> Option<EngineReport> {
     let mut found: Option<EngineReport> = None;
@@ -2026,7 +2028,7 @@ pub fn parse_startup_memory(log: &str) -> Option<EngineReport> {
     }
     // Both shipped builds write the startup JSON only to the
     // `--request-log-jsonl` ops log, which never reaches `docker logs`
-    // (review M-2, live proof 2026-11-01): without this branch the
+    // (review, live proof 2026-11-01): without this branch the
     // post-ready booking would be dead code on the very boxes it was made
     // for. The implied total comes from the engine's own three post-ready
     // figures, so even the clamp stays the engine's own word.
@@ -2087,7 +2089,7 @@ fn json_objects(log: &str) -> Vec<serde_json::Value> {
 
 /// Walk a JSON object by key path and read a non-negative integer, tolerating a
 /// float or a numeric string (the engine's serialization has not been runtime-
-/// confirmed yet — see the Wave C confirmatory capture).
+/// confirmed yet — see the confirmatory card capture).
 fn lookup_u64(value: &serde_json::Value, path: &[&str]) -> Option<u64> {
     let mut node = value;
     for segment in path {

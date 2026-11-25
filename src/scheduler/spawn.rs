@@ -22,9 +22,9 @@ impl ActorState {
     /// `total - reserve - observed_used + credits`, and this window is the physical
     /// half of that same decision) — within the witness tolerance before the spawn
     /// fires. This is where a replacement load proves the card truly emptied (operator
-    /// 2026-10-26: the stopper is observed VRAM, judged after release). The compare
-    /// stays physical free against `max(need, launch floor) + vram_reserve_gb` with the
-    /// ruled 2026-10-26 one-sided tolerance: no ledger baseline is consulted — an
+    /// the stopper is observed VRAM, judged after release). The compare
+    /// stays physical free against `max(need, launch floor) + vram_reserve_gb`
+    /// with a one-sided tolerance: no ledger baseline is consulted — an
     /// unattributable desktop floor is not a leak — but the config guard band is, so a
     /// swap cannot reach the card state the no-release path refuses.
     ///
@@ -114,7 +114,7 @@ impl ActorState {
                                 observed_free, required, reserve, sample.used_gib, sample.total_gib
                             );
                             // The load that never spawned must still be readable
-                            // in the ring (§0.3 evidence, operator 2026-10-26).
+                            // in the ring.
                             tracing::warn!(
                                 %job_id,
                                 %model,
@@ -262,7 +262,7 @@ impl ActorState {
     /// the slot's engine port, and the adapter's own validation of the entry.
     ///
     /// A pure function of state — it mutates nothing, kills nothing and spawns
-    /// nothing — so the actor can settle every launch-time refusal (chunk 10 [2])
+    /// nothing — so the actor can settle every launch-time refusal
     /// while the resident model and the planned victims are still alive. `begin_spawn`
     /// calls the same helper, so the pre-eviction refusal and the spawn cannot drift.
     ///
@@ -445,7 +445,7 @@ impl ActorState {
     ///
     /// A stale ticket means the process this job meant is already gone — there is nothing
     /// left to reap for that target, and aborting here would strand the job's OTHER
-    /// target, its own live engine (chunk 2, 2026-10-27). Any other failure is real and
+    /// target, its own live engine (2026-10-27). Any other failure is real and
     /// must surface.
     pub(super) fn reap_should_continue(error: &SpawnError) -> bool {
         matches!(error, SpawnError::StaleTicket { .. })
@@ -676,7 +676,7 @@ impl ActorState {
     ///
     /// The task is deliberately NOT parked on `job.tasks`: `finish` aborts those on the
     /// very step that terminalizes the job, which is the instant this watch starts (the
-    /// same reason as the R9 C1 snapshot). Its bound is one `release_timeout_s` window
+    /// same reason as the failed-launch snapshot). Its bound is one `release_timeout_s` window
     /// polled at `RELEASE_POLL`, and a hard outer timeout of
     /// the same window plus one poll wraps the loop, so even a `release_confirmed`
     /// that never returns

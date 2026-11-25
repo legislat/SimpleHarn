@@ -1,4 +1,4 @@
-//! The NVML witness (DESIGN Step 4, item 5 approved).
+//! The NVML witness.
 //!
 //! NVML in-process is the primary source (no process spawn per sample, per-process
 //! attribution where the driver offers it). When the NVML library or a sample fails,
@@ -463,7 +463,7 @@ mod tests {
         }
     }
 
-    /// The RAM settle compare (W2 step 2, the `MemorySample::freed_for` twin):
+    /// The RAM settle compare (the `MemorySample::freed_for` twin):
     /// free is clamped at zero, the tolerance band is one-sided, and reaching
     /// the target exactly passes. Falsifier: clamp-free the free side and the
     /// nonsense reading passes; drop the tolerance and the exact-minus-band

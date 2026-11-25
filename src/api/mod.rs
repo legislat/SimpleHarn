@@ -1,4 +1,4 @@
-//! HTTP surface (DESIGN Steps 11-12): per-category listeners, the control plane, and
+//! HTTP surface: per-category listeners, the control plane, and
 //! the proxy.
 //!
 //! Locked rules implemented here:
@@ -156,7 +156,7 @@ pub enum ApiError {
     #[error("upstream failure: {reason}")]
     Upstream { reason: String },
     /// A load whose engine never answered readiness inside `load_timeout_s` —
-    /// `502` with a distinct code (RC-01), so a caller can tell "the engine
+    /// `502` with a distinct code, so a caller can tell "the engine
     /// never came up" from a generic forward failure. The client-facing message
     /// names the deadline and a sanitized description of the last probe
     /// outcome; the probe's OS/URL text stays in the harness log through
@@ -319,7 +319,7 @@ fn router_error_body(code: &'static str, message: String) -> Value {
     })
 }
 
-/// The client-facing answer for a readiness-deadline load failure (RC-01): the
+/// The client-facing answer for a readiness-deadline load failure: the
 /// deadline figure and a sanitized description of the last probe outcome. It
 /// recognizes exactly the shape the spawn path composes in
 /// `crate::scheduler::spawn::ActorState::spawn_probe_task`
@@ -477,7 +477,7 @@ impl From<SchedulerError> for ApiError {
                 reason: reason.to_string(),
                 wait_hint: None,
             },
-            // A readiness deadline the engine start path missed (RC-01) answers
+            // A readiness deadline the engine start path missed answers
             // its own named code with the deadline and a sanitized probe
             // outcome; the probe's OS/URL text reaches the log, not the client.
             // Every other spawn/readiness failure keeps the generic `upstream`
@@ -1254,7 +1254,7 @@ async fn har_load(
 }
 
 /// `POST /har/unload` — `{"category": "WORK"}` one category, `{"model": name}`
-/// one slot (T12.1), `{}` every occupied slot (T12.4, the explicit unload-all),
+/// one slot, `{}` every occupied slot (the explicit unload-all),
 /// garbage `400` (the v3.3 CRITICAL fix was about *unparseable* bodies, never an
 /// implicit unload-all), and both scopes at once `400` rather than a silently
 /// wider category kill. Unloading a loading slot cancels the
@@ -1488,7 +1488,7 @@ async fn envelope_router_errors(
 ///   project envelope, never axum's plain-text rejection. The branch stays
 ///   defensive: the 0.8 form decoder is lossy and the map type accepts every
 ///   pair, so the extractor rarely rejects on this surface.
-/// * FR-05 (live arm): `limit` is parsed by the handler, not the decoder. A
+/// * The live arm: `limit` is parsed by the handler, not the decoder. A
 ///   `limit` that is present but not a whole number — `limit=abc`, `limit=`,
 ///   `limit=-1` — is a request-shape error answered `400 bad_request` in the
 ///   same dual envelope (flat + OpenAI), never silently swallowed into the

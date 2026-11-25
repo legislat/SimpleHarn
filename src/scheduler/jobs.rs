@@ -132,18 +132,18 @@ pub fn booking_gibs(jobs: &[JobStatus]) -> f64 {
         .sum()
 }
 
-/// FR-01 ledger retention (code constant, never a config key): the newest
+/// Ledger retention (code constant, never a config key): the newest
 /// retired terminal rows the ledger keeps. Live (non-terminal) rows and the
 /// terminal rows still in service — an installed occupant's own load row, which
 /// the serve-window measured fold and `container_reported_gb` read by its spawn
 /// ticket — stand outside this bound; see `ActorState::prune_terminal_ledger`.
 pub(super) const TERMINAL_ROW_KEEP: usize = 200;
 
-/// The pure retention rule behind FR-01: given the ids of the **droppable**
+/// The pure retention rule: given the ids of the **droppable**
 /// terminal rows in ledger order (oldest first — `BTreeMap` order is `JobId`
 /// order, and ids mint monotonically), the ids that leave the ledger so at most
 /// [`TERMINAL_ROW_KEEP`] retired terminal rows stand. Never called with live or
-/// in-service rows: those are not droppable (FR-01).
+/// in-service rows: those are not droppable.
 #[must_use]
 pub(super) fn terminal_rows_to_prune(droppable: &[JobId]) -> &[JobId] {
     let drop_upto = droppable.len().saturating_sub(TERMINAL_ROW_KEEP);
@@ -177,8 +177,8 @@ pub(super) struct Victim {
     /// The slot the victim occupies, cleared when its release is confirmed.
     pub(super) slot: usize,
     /// Admission cost freed by this release, in the resource the drain plans
-    /// (RAM booking on the RAM ladder, W21-01 ruling; ledger arithmetic, Step 6
-    /// re-check).
+    /// (RAM booking on the RAM ladder; the ledger
+    /// re-check owns the arithmetic).
     pub(super) cost: f64,
     /// True when this victim was a cross-category eviction (vs a same-slot
     /// replacement); recorded in the job ledger (G13).
@@ -275,15 +275,15 @@ pub(super) struct Job {
     /// The `available` value (free_at_admit + released, each credit counted once) the
     /// release-minimality re-check must reach before spawning: `max(need, floor)` at
     /// plan time (floor alone for greedy). Without it, a greedy job whose booked need
-    /// was clamped small would skip floor victims after the first release (review
-    /// CRITICAL, 2026-10-26). The physical settle gate in
+    /// was clamped small would skip floor victims after the first release
+    /// (review, 2026-10-26). The physical settle gate in
     /// [`ActorState::spawn_settle_task`] compares this same figure plus
     /// `vram_reserve_gb` against the card, so both halves apply one guard band.
     pub(super) gate_target: Option<f64>,
     pub(super) free_at_admit: Option<Gibibytes>,
     /// Observed physical free (total - used) at admit; `None` when the witness
     /// was down. The release re-check and the settle gate take the more
-    /// conservative figure against this (operator 2026-10-26).
+    /// conservative figure against this.
     pub(super) observed_at_admit: Option<f64>,
     /// This same-slot swap already took the
     /// release-first path — it destroyed its victim on the booked credit and
@@ -311,8 +311,8 @@ pub(super) struct Job {
     /// Cross-category victims queued by the eviction planner (Step 6), released
     /// one at a time after the same-slot replacement (if any).
     pub(super) victims: Vec<Victim>,
-    /// The expert-offload RAM reclaim planned at admission (operator ruling
-    /// 2026-11-06): CPU residents drained after the deficit queue, the rows
+    /// The expert-offload RAM reclaim planned at admission:
+    /// CPU residents drained after the deficit queue, the rows
     /// skipped with their reasons, and the booked host GiB. Empty on every
     /// load the ruling does not address.
     pub(super) reclaim: Reclaim,
@@ -349,7 +349,7 @@ impl Job {
     /// this answers "a reap target exists", not "a task is parked on it". It is
     /// deliberately independent of `state`: its only caller (`cancel_job`) asks it while
     /// it is moving the job out of that state, and a cancel that arrives in `Dispose`
-    /// must still kill and confirm the victim (chunk 4 [1]).
+    /// must still kill and confirm the victim (the committed-release rule).
     pub(super) fn victim_release_pending(&self) -> bool {
         self.victim.is_some()
     }
@@ -365,7 +365,7 @@ mod retention_tests {
 
     #[test]
     fn the_retention_bound_is_two_hundred_in_code() {
-        // FR-01: the constant is code, not config — pin the figure itself so a
+        // The constant is code, not config — pin the figure itself so a
         // silent edit moves a test, not just every count downstream.
         assert_eq!(TERMINAL_ROW_KEEP, 200);
     }

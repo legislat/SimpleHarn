@@ -138,7 +138,7 @@ fn seed_one_model(dir: &std::path::Path, name: &str) {
     .expect("model yaml");
 }
 
-/// Test double for the R5 reconcile probe (ruling 9): canned `docker ps`
+/// Test double for the reconcile probe: canned `docker ps`
 /// answers consumed one per probe (`None` = docker could not answer) and
 /// the declared-name lists it was asked about. Everything else keeps the
 /// NeverRuntime posture: a load reaching this runtime is a test bug.
@@ -200,7 +200,7 @@ impl crate::engine::EngineRuntime for ReconcileRuntime {
     }
 }
 
-/// State shaped for the R5 pins: `on_reconcile_done` is called directly, so
+/// State shaped for the reconcile pins: `on_reconcile_done` is called directly, so
 /// the runtime is never reached and the actor channel never read.
 fn reconcile_state() -> ActorState {
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
@@ -271,7 +271,7 @@ async fn the_reconcile_warns_once_and_an_unchanged_set_never_re_warns() {
     );
 }
 
-/// The `/har/status` rider of the R5 report: the SAME dedupe state backs the
+/// The `/har/status` rider of the reconcile report: the SAME dedupe state backs the
 /// payload, so page and log can never disagree. Polarity pinned both ways
 /// (the inverted-`skip_serializing_if` GOTCHAS class): an empty last-reported
 /// set normalizes to `None` and the key is ABSENT from the serialized
@@ -1412,7 +1412,7 @@ async fn only_offload_engines_stamp_measured_offload() {
     };
     let mut stampy = entry("stampy", "llama");
     // `on` is in the engine truth set: the stamp must follow it, not a
-    // third reading of the token (HANDOFF §6).
+    // third reading of the token.
     stampy
         .raw
         .insert("cpu_offload".to_string(), "on".to_string());
@@ -1529,8 +1529,8 @@ fn rescan_entry(path: &std::path::Path, name: &str) -> ModelEntry {
     entry
 }
 
-/// The `cpu_offload` flip that starts this whole investigation
-/// (`research/reload-slot-drift-2026-10-28.md` §1 rows 6, 7, 9): the knob changes
+/// The `cpu_offload` flip that starts this whole investigation:
+/// the knob changes
 /// in the yaml while the engine still serves under the old argv. The stamp must
 /// keep describing the launch that ran — a stamp rewritten to agree with the new
 /// bytes silently disarms the flip-void rule, which compares the range with those
@@ -1604,7 +1604,7 @@ async fn a_mid_serve_offload_flip_stamps_the_launch_that_ran() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// R9 (ruling 15 (ii)): the container's own reserved-footprint report books for an
+/// The container's own reserved-footprint report books for an
 /// `exact` row that declared nothing — the one class the GGUF fallback must never
 /// guess for — fixes BOTH ends of the pair (`measured_gb_min` never understates the
 /// declared KV), carries the launch's profile stamp, and outranks every later
@@ -1668,7 +1668,7 @@ async fn an_engine_report_books_an_exact_row_and_the_witness_never_clobbers_it()
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The per-slot carrier behind the API's R9 memory-bar sum: the figure reaches
+/// The per-slot carrier behind the API's memory-bar sum: the figure reaches
 /// the snapshot ONLY through the spawn anchor of the very job that produced this
 /// occupant — engine ninfer, container-backed, attribution `engine_report` — so
 /// `/har/status` and the SSE push quote the identical number (review
@@ -1738,7 +1738,7 @@ async fn only_an_engine_report_anchor_reaches_the_snapshot_slot() {
 /// A report equal to the freshly-persisted stamp must still anchor THIS launch:
 /// the persisted pair proves an earlier launch spoke, not this one. The fold's
 /// row-idempotence used to return before the anchor promotion, so the live
-/// container never displayed as self-reported (card runs 2026-11-02: C2 polled
+/// container never displayed as self-reported (a card run polled
 /// `container_reported_gb` for 150 s through a ninfer serve whose 43.8 GiB
 /// report matched the stamp `ninfer-swift-fp8.yaml` already carried).
 /// Falsifier: the pre-fix row-only idempotence guard in `fold`.
@@ -1780,11 +1780,11 @@ async fn a_report_equal_to_the_persisted_stamp_still_promotes_the_anchor() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// R9 (§5.2) + F1(b): a container that never yielded a parsable memory record
+/// A container that never yielded a parsable memory record
 /// still gets measured — but the reading is stamped `total_diff`, and a
 /// `total_diff` displays without ever booking. When the report does land (a later
 /// startup), it supersedes the witness figure outright. Falsifier: minting the
-/// witness stamp as `None` (the pre-R9 shape) books the 12.0 GiB total-diff as if
+/// witness stamp as `None` (the pre-report shape) books the 12.0 GiB total-diff as if
 /// it were a footprint.
 #[tokio::test]
 async fn a_total_diff_fold_displays_but_never_books_until_the_report_lands() {
@@ -2034,7 +2034,7 @@ async fn a_refused_measurement_never_consumes_the_sampler() {
 /// bytes, the one-shot sums the engine pid plus its DIRECT children only
 /// (the 9999 twin belongs to nobody here) and sends the `ProcessTreeNvml`
 /// measurement ONCE with the live card total the witness just read
-/// (ORCHESTRATION §1/§3, doctrine 4).
+/// (doctrine 4).
 #[tokio::test]
 async fn the_tree_fallback_sums_the_engine_and_its_direct_children() {
     let (tx, mut rx) = mpsc::unbounded_channel::<ActorMsg>();
@@ -2059,7 +2059,7 @@ async fn the_tree_fallback_sums_the_engine_and_its_direct_children() {
     );
     assert_eq!(
         ActorState::report_measurement(&runtime, &tx, &ctx, &witness).await,
-        // Phase 4: the landing now reports the booked figure it seeded the
+        // The elastic booking: the landing now reports the booked figure it seeded the
         // actor with (the same rounded value the fold will land), so the
         // elastic refresh can judge its hysteresis against the truth — the
         // tree sum of the engine plus its direct children, 20 + 10.
@@ -2179,7 +2179,7 @@ async fn an_engine_status_measurement_books_over_the_declared_value() {
 }
 
 /// The `ProcessTreeNvml` source folds as the existing `PerProcess`
-/// footprint — persisted under the old token (ORCHESTRATION §2: no new yaml
+/// footprint — persisted under the old token (no new yaml
 /// keys), replacing the spawn's range outright, and NOT overriding the
 /// declared value (only the engine-spoken reports get max truth).
 #[tokio::test]
@@ -2285,7 +2285,7 @@ async fn a_nonsense_process_measurement_books_nothing_and_names_itself() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// R3 ruling 10: a total-diff read on a foreign-dominated card mints nothing.
+/// A total-diff read on a foreign-dominated card mints nothing.
 /// The card holds far more than this engine plus the other occupants can
 /// account for, so the delta is someone else's story — absence, labelled by
 /// the warn, never a 23.8–59.3 stand-in. Falsifier: deleting the
@@ -2336,7 +2336,7 @@ async fn a_foreign_dominated_card_mints_no_total_diff() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// R1 + R9: a detached container's ticket pid is the dead `wsl.exe` client, so a
+/// A detached container's ticket pid is the dead `wsl.exe` client, so a
 /// container spawn may NEVER claim `per_process` — even a witness reading that
 /// carries concrete bytes for that pid is a lie waiting to be stamped. The
 /// falsifier is minting the stamp from `own` alone: the container row would book
@@ -2458,7 +2458,7 @@ fn a_refused_persist_drains_the_provenance_stamps_with_the_pair() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The sampler's fallback shape (R9 §5.2): with no container report seeded, the
+/// The sampler's fallback shape: with no container report seeded, the
 /// one-shot finds nothing, the witness loop still runs, and what lands is stamped
 /// `total_diff` — displayed, never booked. A regression that swallows the report
 /// path entirely looks exactly like this pin from the outside, which is why the
@@ -3202,7 +3202,7 @@ fn restoring_identical_bytes_does_not_clear_the_stale_verdict() {
     let original = std::fs::read(&yaml).expect("read");
     std::fs::write(
         &yaml,
-        // The `cpu_offload` flag key (phase 4): a PURE cost edit is now
+        // The `cpu_offload` flag key (elastic booking): a PURE cost edit is now
         // re-booked without a reload, so an amber pin must edit a flag —
         // the launch config the running engine never read — to earn the
         // verdict this pin then defends against a byte-identical restore.
@@ -3313,7 +3313,7 @@ fn the_harness_own_write_rebaselines_a_clean_resident_captured_spawn_side() {
     // capture been moved under an earned amber).
     std::fs::write(
         &yaml,
-        // The `cpu_offload` flag key (phase 4): a pure cost edit is now
+        // The `cpu_offload` flag key (elastic booking): a pure cost edit is now
         // re-booked without a reload; this leg needs a real amber, earned
         // by a config move the running engine never read.
         "engine: mock\ncost: fixed\nmeasured_gb: 120.0\nmeasured_gb_min: 8.0\ncpu_offload: true\n",
@@ -3362,9 +3362,9 @@ fn the_harness_own_write_rebaselines_a_clean_resident_captured_spawn_side() {
 // cost figures re-books (or invalidates) the resident without a reload.
 // ---------------------------------------------------------------------
 
-/// Phase-4 seam (`on_process_measurement`): the fold moves the row's max
+/// The `on_process_measurement` seam: the fold moves the row's max
 /// truth, and the slot booking must follow in the same turn — otherwise
-/// the release credit and the R3 no-release floor guard keep billing the
+/// the release credit and the no-release floor guard keep billing the
 /// paper figure (the Strata 55 / 70.4 incident). Falsifiers: dropping the
 /// `rebook_after_measurement` call (the first assert stays at the paper
 /// 55), and booking the raw measurement instead of the ONE decision
@@ -3486,7 +3486,7 @@ fn strata_vram_status(expert_cache_mib: u64) -> serde_json::Value {
     })
 }
 
-/// Phase-4 elastic refresh (`ActorState::elastic_refresh`), the asymmetric
+/// The elastic refresh (`ActorState::elastic_refresh`), the asymmetric
 /// band: starting booked at 62.0 on the scripted 72 GiB card, the polls
 /// answer equal (62.0 — nothing moves), rise (62.5 — re-books at once,
 /// under-booking is over-commitment), small fall (62.0 — inside the
@@ -3748,7 +3748,7 @@ fn bump_mtime(path: &std::path::Path) {
     .expect("force the mtime forward");
 }
 
-/// A cost-only rescan (phase 4, `rebook_cost_only_moves`): the loaded
+/// A cost-only rescan (elastic booking, `rebook_cost_only_moves`): the loaded
 /// resident's booking follows the new bytes WITHOUT a reload, the capture
 /// rides with it so the marker round stays green, and the next unchanged
 /// rescan confirms the re-baseline. Falsifiers: no re-book (need stays at
@@ -3876,13 +3876,13 @@ fn an_earned_amber_survives_a_later_cost_only_edit() {
     assert_eq!(after.slots[0].need_gib, Some(4.0));
 }
 
-/// The DESIGN-5 ledger-boundary pin (review W1-02): a cost-only rescan of a
+/// The ledger-boundary pin: a cost-only rescan of a
 /// live CPU-resident row must not move it between the ledgers. Adding
 /// `vram_gb` to the loaded row is a pure COST_KEYS move, so the re-book
 /// classifier fires — and must find nothing to re-book: the VRAM ladder's
 /// figure may never be written into a RAM resident's `need`, where the
 /// same-slot release credit would bill a GPU replacement GiB the CPU engine
-/// never held (W1-01, the stranger's-paper-number class). The bytes are
+/// never held (the stranger's-paper-number class). The bytes are
 /// still adopted (a cost edit neither re-books nor ambers a healthy
 /// resident), and a later flag edit still earns the amber.
 /// Falsifier: with the guard dropped, `booking_need` answers the VRAM ladder
@@ -4108,7 +4108,7 @@ fn admit_round(state: &mut ActorState, entry: &ModelEntry, used_gib: f64) -> sup
 /// 67.4 replacement with a 65 GiB launch floor must be REFUSED with the
 /// incident's own verdict — no release the harness may perform reaches the
 /// floor (54.6 credited free vs a 63 floor after tolerance). Once the
-/// engine's own status figure has folded (phase-4 seam), the SAME load on
+/// engine's own status figure has folded (the elastic seam), the SAME load on
 /// the SAME card names the resident as its victim and arms. The red leg is
 /// the falsifier for the whole feature: a booking policy that ignores the
 /// engine's word keeps this refusal forever.
@@ -4189,7 +4189,7 @@ async fn a_strata_resident_releases_for_basalt_only_once_its_measured_footprint_
 /// T2 (the mirror, Basalt→Strata): paper 60 held 67.4, the incoming Strata
 /// row needs 70.0 with the same 65 floor — red the need deficit (7.4) is
 /// even LARGER than the floor deficit (2.4), and the guard still shapes
-/// the refusal as the floor verdict, exactly as the 2026-11-01 ruling
+/// the refusal as the floor verdict, exactly as the ruling
 /// demands. After the fold (67.4 credited, free 70.0) it admits.
 #[tokio::test]
 async fn a_basalt_resident_releases_for_strata_only_once_its_measured_footprint_is_booked() {
@@ -4411,7 +4411,7 @@ async fn a_rebooked_row_lets_the_strata_replacement_in_without_touching_the_resi
 /// row (DOCTRINE 12), so this stale-looking credit is the honest one. A
 /// fixed Strata replacement with a 65 floor is judged against the booked
 /// room: red while free+credit misses the floor-after-tolerance (49.6 vs
-/// 63) with the R3 verdict `no_releases_reach`, exactly as a fixed
+/// 63) with the floor verdict `no_releases_reach`, exactly as a fixed
 /// resident would take; a 70.4 fold changes nothing on the greedy slot;
 /// and once the card reading lets the booked room alone carry the floor
 /// (free 30 without the victim credit, 80 with it) the replacement admits
@@ -4586,7 +4586,7 @@ async fn a_greedy_residents_folded_footprint_credits_the_same_slot_release() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// T6-b (the stale-credit falsifier): the same shape, but THIS spawn never
+/// The stale-credit falsifier: the same shape, but THIS spawn never
 /// folded — and the on-disk row already carries the previous launch's 68.4
 /// pair. A disk figure is not this process's evidence (`live_measured_gb` is
 /// spawn-ticket-scoped and never seeded from disk), so the credit stays the
@@ -4646,7 +4646,7 @@ async fn a_greedy_resident_without_this_spawns_fold_keeps_the_paper_refusal() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// T6-c (the cross-slot falsifier): the projection never crosses a slot. The
+/// The cross-slot falsifier: the projection never crosses a slot. The
 /// card holds a folded greedy Work resident on ANOTHER slot while the load's
 /// own slot is empty; the fold still finds its ticket by spawn match, but the
 /// same-slot lookup finds no victim, nothing the harness may release reaches
@@ -4733,7 +4733,7 @@ async fn a_folded_footprint_never_credits_a_cross_slot_replacement() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// T6-d (GSC-01): the credit is the largest of THIS SPAWN's
+/// The credit is the largest of THIS SPAWN's
 /// own readings, never the range-merge result. The spawn starts on a row that
 /// already carries the previous launch's persisted pair (68.4 / 68.3 — the
 /// `MeasuredAnchor` seeds its range from it), then lands ONE small witness
@@ -5030,7 +5030,7 @@ fn the_writeback_mutator_set_stays_closed_to_the_rebaseline_table() {
 
 #[test]
 fn a_stale_reap_target_does_not_abort_the_rest() {
-    // Chunk 2: aborting the reap on a stale victim ticket stranded the job's own live
+    // The stale-ticket fix: aborting the reap on a stale victim ticket stranded the job's own live
     // engine — the very orphan the multi-target reap exists to prevent.
     use crate::engine::SpawnError;
     assert!(
@@ -5978,7 +5978,7 @@ async fn a_wedged_release_check_cannot_outlive_the_bound() {
     );
 }
 
-/// R10 (operator 2026-11-01: "8003-8005 are manual only"): a ninfer row
+/// Port separation ("8003-8005 are manual only"): a ninfer row
 /// borrowing a manual number as its container-internal port is refused before
 /// spawn, the SE internal default (8808) arms like any ordinary row,
 /// and the rescan twin names the key on the page before any load tries.
@@ -6061,11 +6061,11 @@ async fn a_borrowed_internal_port_is_refused_at_the_gate_and_reported_at_rescan(
     );
 }
 
-/// Row-10 guard (RULED 2026-11-01): a floor the card denies must refuse BEFORE
+/// Launch-floor guard: a floor the card denies must refuse BEFORE
 /// any kill. The release-first ruling buys the victim's bytes only when the
 /// deficit is one a release could actually fix — when freeing everything the
 /// harness may release still leaves the floor out of reach, the cost is not
-/// bought. Field case (GOTCHAS, R5 2026-11-01): foreign residents hold the
+/// bought. Field case (GOTCHAS): foreign residents hold the
 /// card at 70.5/72 and nothing is evictable.
 #[tokio::test]
 async fn a_floor_no_release_can_reach_refuses_before_the_victim_dies() {
@@ -6201,7 +6201,7 @@ async fn a_need_short_swap_still_takes_the_release_first_path() {
     assert_eq!(job.state, SwapState::Dispose);
 }
 
-/// Shared fixture for the gate-park pins (operator 2026-11-10): two
+/// Shared fixture for the gate-park pins: two
 /// empty WORK slots on a 72 GiB card with the 2 GiB reserve, plus `ninfer-like`
 /// — the admitted, non-terminal booking row sitting on slot 0 with its spawn
 /// still in flight and no occupant installed: the witness counts its
@@ -6264,7 +6264,7 @@ fn gate_sample(used_gib: f64) -> crate::budget::MemorySample {
     }
 }
 
-/// Operator 2026-11-10, the incident shape: `Ninfer-nvfp4` was
+/// The incident shape: `Ninfer-nvfp4` was
 /// installing (booking 29.8), the witness already counted its allocation and
 /// the gate also debited its booking, and RP-1 (need 29) saw free
 /// 72 - 2 - 23.8 - 29.8 = 16.4 and died `AdmitFail` three times - while the
@@ -6375,7 +6375,7 @@ async fn a_load_short_only_on_an_in_flight_booking_waits_then_admits() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The second arm of the drain's re-gate (operator 2026-11-10): the blocking
+/// The second arm of the drain's re-gate: the blocking
 /// booking terminalises, the drain re-arms the parked row, but the card no
 /// longer has the room - the witness now reads 60 of 72 GiB used, foreign
 /// bytes the dead booking never held - so `in_flight` is zero, the park
@@ -6507,7 +6507,7 @@ async fn foreign_memory_short_of_need_still_refuses() {
 /// The floor leg of the same ruling: the in-flight booking numerically covers
 /// this floor deficit (`deficit 19.8 <= in_flight 29.8`), but even releasing
 /// everything the harness may touch leaves the launch floor out of reach
-/// (`no_releases_reach`), and the Row-10 guard refuses before any wait.
+/// (`no_releases_reach`), and the launch-floor guard refuses before any wait.
 /// Falsifier: drop `!no_releases_reach` from the park guard and this row
 /// parks on a floor the card denies: `terminal` and the `BelowLaunchFloor` leg
 /// go red - a wait would end only in the same refusal, late and un-named.
@@ -6898,7 +6898,7 @@ async fn a_launch_refused_row_keeps_the_rung_the_gate_decided() {
     }];
     let job_id = state.register_queued_load(0, &entry, Vec::new());
     state.start_queued_load(job_id, 0, entry.clone());
-    // The launch preflight (chunk 10 [2]) reads the catalog at refusal
+    // The launch preflight reads the catalog at refusal
     // time, after the gate and the rung derivation: an emptied catalog
     // drives the `SchedulerError::Spawn` refusal exactly like a row
     // deleted between scan and spawn. The roomy card lets the gate
@@ -6950,7 +6950,7 @@ async fn a_launch_refused_row_keeps_the_rung_the_gate_decided() {
 /// tail, carrying the rung under the field `path`. The scan covers the whole
 /// file and counts the emissions, so a second `admission path` emission
 /// anywhere (a re-gated card leg, a RAM leg deciding its own rung) reddens
-/// this pin (W1-04 closure: the tail re-anchor alone was narrower than the
+/// this pin (the tail re-anchor alone was narrower than the
 /// intent; exactly-one-emission plus the site-inside-the-tail check is the
 /// complete scope, because both ladders funnel their gate through
 /// `finish_admit_tail` and no other line may speak the rung). A
@@ -7614,7 +7614,7 @@ fn only_a_later_same_model_success_clears() {
     );
 }
 
-/// Test double for the R11 fit probe: records every (program, argv) it is
+/// Test double for the fit probe: records every (program, argv) it is
 /// asked to run and answers from two canned queues — one per `--version`
 /// call, one per row call, in arrival order; an exhausted queue answers
 /// `None` (the tool did not answer). It NEVER spawns: `cargo test` must
@@ -7687,7 +7687,7 @@ impl crate::engine::EngineRuntime for FitProbeRuntime {
     }
 }
 
-/// The live probe's captured answer (Search#40 §2): the same fixture the
+/// The live probe's captured answer: the same fixture the
 /// parser pins, so the end-to-end expectation is the ruling's own number.
 const FIT_CAPTURED: &str = "CUDA0 21484 8853 1380\nHost 994 0 296\n";
 
@@ -7839,8 +7839,8 @@ async fn a_cpu_row_admits_on_ram_and_books_no_vram() {
 
 /// Falsifier (2): a CPU row over the RAM floor refuses naming its need,
 /// free, reserve and blockers with the standard wait fields — the same
-/// contract `Insufficient` has, judged on host RAM (operator ruling
-/// 2026-11-05). The named blocker here is a GPU resident: its host RAM
+/// contract `Insufficient` has, judged on host RAM (operator ruling).
+/// The named blocker here is a GPU resident: its host RAM
 /// rides the witness and is never under the RAM gate's control.
 #[tokio::test]
 async fn a_cpu_row_over_the_ram_floor_refuses_naming_its_numbers() {
@@ -8099,7 +8099,7 @@ async fn a_whole_gpu_row_never_sees_a_ram_resident_as_a_holder() {
             job: None,
         },
     ];
-    // The W1-03 leg: an admitted-not-installed RAM row — booked, reserving,
+    // The holder-scan leg: an admitted-not-installed RAM row — booked, reserving,
     // never installed, the row half of the holder scan.
     let ram_row = state.register_queued_load(2, &cpu, Vec::new());
     state.jobs.get_mut(&ram_row).expect("row").need = Some(Gibibytes(0.0));
@@ -8558,7 +8558,7 @@ async fn the_ram_settle_waits_for_the_witness_before_the_spawn() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// W2 step 2, the window's deadline: a host that never frees the gate target
+/// The window's deadline: a host that never frees the gate target
 /// plus `ram_reserve_gb` within `settle_timeout_s` fails the incoming load
 /// with `SettleTimeout` and its own numbers (G13) — it never spawns, and the
 /// proven release stays proven: the victim slot stays clear and its debit
@@ -8720,7 +8720,7 @@ async fn a_ram_eviction_with_an_unconfirmed_release_installs_nothing_and_keeps_t
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// W21-01 closure (review W2 step 1): the same-slot release figure a RAM row
+/// The same-slot release figure a RAM row
 /// plans with is the holder's RAM booking — credited once, never doubled —
 /// and a GPU holder credits 0.0 on the RAM ladder (its host RAM is real but
 /// unbooked; the settle witness reads the freed bytes instead). A VRAM row's
@@ -9281,7 +9281,7 @@ async fn a_ram_short_admission_with_no_evictable_ram_resident_refuses_naming_hol
 /// Falsifier: with the RAM planner seeing all occupants (the resource filter
 /// reverted in place), the GPU job becomes the covering candidate — the row
 /// drains instead of refusing and the tail names it as considered. Against
-/// the wave-1 tree (planner absent) the refusal shape is the same; the
+/// the planner-absent tree the refusal shape is the same; the
 /// pin's weight is the mutation red.
 #[tokio::test]
 async fn the_ram_planner_never_considers_a_gpu_occupant_as_a_victim() {
@@ -10051,7 +10051,7 @@ fn fit_verdict_warns(capture: &Arc<Mutex<Vec<CapturedWarn>>>, name: &str, needle
         .count()
 }
 
-/// R11 session cross-check: a witness reading that survived every fold gate
+/// Session cross-check: a witness reading that survived every fold gate
 /// and lands inside the projection's session tolerance (margin 0.5 + slack)
 /// stamps the row for the session — and the stamp stays in-process: the
 /// folded measured pair is the only figure this reading ever writes.
@@ -10133,7 +10133,7 @@ async fn an_out_of_tolerance_reading_warns_once_and_can_still_earn_the_stamp() {
     );
 }
 
-/// R3's `ForeignDominated` grade runs BEFORE the cross-check: memory that
+/// The `ForeignDominated` grade runs BEFORE the cross-check: memory that
 /// moved across the window is someone else's story, so a total-diff reading
 /// that the fold itself refuses must never stamp a projection green — the
 /// green would vouch for a number the fold refused to mint.
@@ -10203,7 +10203,7 @@ async fn an_uncalibrated_margin_never_validates_and_never_says_so() {
 /// Pin: the session tolerance is exactly `fit_margin_gb` +
 /// [`FIT_VALIDATE_SLACK_GIB`], that default slack is exactly 2.0 GiB, and
 /// an absent or non-finite margin leaves NO defined tolerance (the row
-/// never validates, silently). The C1 evidence figures live once, in the
+/// never validates, silently). The calibration figures live once, in the
 /// calibration pin in `src/engine/fit.rs`.
 #[test]
 fn the_fit_validation_tolerance_is_the_margin_plus_the_pinned_default_slack() {
@@ -10683,7 +10683,7 @@ async fn an_admit_hit_books_the_projection_a_proven_change_voids_it() {
 
     // A PROVEN model-file change (both fingerprints known, differing) is the
     // only thing that voids the hit — and this admit books the ladder now
-    // while the refresh re-projects. FR-02: the admit never stats; the proven
+    // while the refresh re-projects. The admit never stats; the proven
     // change reaches it the way production delivers it — the rescan re-read
     // the file and left the fresh reading on the scan-carried table.
     std::fs::write(dir.join("turbo.gguf"), b"weights").expect("model file");
@@ -10876,7 +10876,7 @@ fn a_refusal_quotes_a_place_only_behind_real_loads() {
 /// the CPU gate wrote at admit, on both the job row and the occupant. Also
 /// swaps the working-set probe for a call-counting fake: a seated pin then
 /// structurally cannot reach the live Win32 query, so "no gate test calls the
-/// real API" is a fact of the seam, not a cadence inference (W23-02 fold).
+/// real API" is a fact of the seam, not a cadence inference.
 /// The returned handle lets the pin assert the fake's call count too.
 fn seat_ram_spawn(
     state: &mut ActorState,
@@ -11260,15 +11260,15 @@ async fn a_ram_reading_below_the_declared_floor_persists_without_undercutting() 
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// W3 surface join: the snapshot carries a CPU-resident occupant's RAM
+/// Surface join: the snapshot carries a CPU-resident occupant's RAM
 /// booking — the ledger figure plus the rung and source labels read from the
 /// catalog row's ONE ladder — each rung with its own words, and a row the
 /// catalog no longer names proves nothing: all three RAM fields stay absent
-/// together (W3-01 presence rule). A GPU occupant and an empty slot carry no
+/// together (the presence rule). A GPU occupant and an empty slot carry no
 /// RAM keys at all (their snapshot shape is exactly the pre-RAM one).
 /// Falsifiers: dropping the `ram_need` filter gives the GPU leg a label;
 /// reading the figure from the card `need` fails the booked compare on every
-/// rung; making the agree check always-true lets the two W3-01 transition
+/// rung; making the agree check always-true lets the two transition
 /// pins below print the stale rung.
 #[test]
 fn the_snapshot_labels_a_ram_resident_booking_with_its_ladder_basis() {
@@ -11380,13 +11380,13 @@ fn the_snapshot_labels_a_ram_resident_booking_with_its_ladder_basis() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// W3-01 transition leg (a): a cost-only pair edit under a loaded CPU
+/// Transition leg (a): a cost-only pair edit under a loaded CPU
 /// resident moves the row's rung off the ledger booking, and the join must
 /// not re-label the stale figure. The resident books 9.4 on a row whose
 /// trusted pair decides the rung — while ladder and ledger agree the labels
 /// ride and are true. The operator then deletes the pair keys and the
-/// rescan lands under the resident: the move is cost-only (the W1-01 guard
-/// neither re-books nor ambers), so the resident keeps 9.4 while the row
+/// rescan lands under the resident: the move is cost-only (the ledger-boundary
+/// guard neither re-books nor ambers), so the resident keeps 9.4 while the row
 /// answers the 2 GiB floor. The snapshot now omits all three RAM fields:
 /// absence is "no claim" — the ledger figure stays the gate's truth, the
 /// row's new rung must not speak for it. Falsifier: make the agree check
@@ -11442,7 +11442,7 @@ fn the_snapshot_drops_the_ram_labels_when_a_cost_only_edit_moves_the_rung() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// W3-01 transition leg (b): the same model resident in two slots, and the
+/// Transition leg (b): the same model resident in two slots, and the
 /// fold that moves the row's rung re-books only the resident whose ticket
 /// produced the reading (the `(model, ticket)` guard in
 /// `rebook_ram_after_measurement`). The re-booked twin agrees with the row
@@ -11525,7 +11525,7 @@ async fn the_snapshot_drops_the_ram_labels_for_a_twin_the_fold_never_rebooked() 
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The drain's pair discipline (W2 step 3): a refused RAM persist clears
+/// The drain's pair discipline: a refused RAM persist clears
 /// exactly the RAM pair and keeps the shared stamp the card ladder may still
 /// read; a refused card persist does the mirrored thing to its own pair.
 /// Falsifier: a drain that ignores `pair` clears both on either failure.
@@ -12154,7 +12154,7 @@ async fn the_expert_offload_drain_kills_only_large_cpu_residents_before_the_spaw
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The RC-02 pins' runtime: the death report's reap always lands. `kill`
+/// The death-report pins' runtime: the death report's reap always lands. `kill`
 /// records the `(port, generation)` of every ticket it reaped;
 /// `release_confirmed` answers confirmed on the first poll — a dead engine's
 /// refused port is the harness's own release evidence. Spawn, probe and
@@ -12255,7 +12255,7 @@ async fn drive_death_release(
     job
 }
 
-/// RC-02: a resident the proxy witnessed dead leaves `Serving` behind only
+/// A resident the proxy witnessed dead leaves `Serving` behind only
 /// until the death report runs. After it: the slot is empty, the owning load
 /// row is terminal and no longer claims it serves, and the release row names
 /// the cause of death. Falsifier: make the handler's match always take the
@@ -12328,7 +12328,7 @@ async fn a_witnessed_engine_death_empties_its_slot_and_terminalizes_its_load_row
     );
 }
 
-/// RC-02's refusal legs: a report naming a port no job-free slot of the
+/// The death report's refusal legs: a report naming a port no job-free slot of the
 /// category serves — the witness was stale, a successor took another port —
 /// arms nothing, touches no row and reaps nobody, and an already-emptied slot
 /// answers the same report idempotently. Falsifier: matching on the model
@@ -12393,7 +12393,7 @@ async fn a_death_report_naming_a_port_no_job_free_slot_serves_arms_nothing() {
     );
 }
 
-/// RC-02's blast-radius leg: the report names ONE resident. A sibling
+/// The death report's blast-radius leg: the report names ONE resident. A sibling
 /// occupant in another slot of the same category — its own ticket, its own
 /// port — keeps its slot, its row and its engine. Falsifier: unloading the
 /// whole category on a death report kills the sibling's occupant and turns

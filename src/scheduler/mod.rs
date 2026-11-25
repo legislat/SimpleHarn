@@ -1,4 +1,4 @@
-//! The scheduler actor (DESIGN Step 2, choice C LOCKED): one task owns all slot and
+//! The scheduler actor (choice C LOCKED): one task owns all slot and
 //! budget state; everyone else sends commands and holds a oneshot waiter.
 //!
 //! Invariants encoded here:
@@ -10,7 +10,7 @@
 //!   in-flight job instead of racing it;
 //! - a same-category load with a different model supersedes: the running job is
 //!   cancelled and the new one starts when the slot returns to `Idle` ("rapid A->B
-//!   ends with exactly B", T3.4);
+//!   ends with exactly B");
 //! - every exit path installs an occupant or reports an error — never neither —
 //!   enforced by walking only [`transition_allowed`] edges.
 
@@ -180,8 +180,8 @@ struct Occupant {
     /// (the operator can always see the model's launch time).
     launched_at_wall: std::time::SystemTime,
     /// The model's yaml as this launch came from: the fold anchor's file paired with
-    /// its install-time stat — the spawn-side half of the `stale_config` verdict
-    /// (Axis 2 = B). Composed with the anchor, not copied from it: the fold keeps
+    /// its install-time stat — the spawn-side half of the `stale_config` verdict.
+    /// Composed with the anchor, not copied from it: the fold keeps
     /// writing through its own handle. `None` = no backing file, or the stat was
     /// unreadable at install: no capture, and the verdict never accuses on absence
     /// of evidence (same posture as the queued row's KEEP legs).
@@ -218,13 +218,13 @@ struct ActorState {
     /// for RAM.
     ram_witness: Arc<dyn crate::witness::RamWitness>,
     /// The per-pid working-set reader the CPU-resident serve sampler drives
-    /// (W2 step 3): the tree probe behind the `measured_ram_gb` pair. The
+    /// (the tree probe behind the `measured_ram_gb` pair. The
     /// live default is `GetProcessMemoryInfo`; tests swap it in place, so
     /// no gate run ever calls the real API.
     working_set_probe: Arc<dyn crate::process::WorkingSetProbe>,
     events: tokio::sync::broadcast::Sender<SchedulerStatus>,
     tx: mpsc::UnboundedSender<ActorMsg>,
-    /// Containers with a detached failed-launch log snapshot in flight (R9 C1).
+    /// Containers with a detached failed-launch log snapshot in flight.
     /// The task must survive `finish`'s `job.tasks` abort to land the evidence the
     /// next launch's pre-reap destroys, so its bound is this set — one fetch per
     /// container, never a pile of concurrent `docker logs` clients from a
@@ -237,31 +237,31 @@ struct ActorState {
     serve_id_refresh: HashSet<(u16, u64)>,
     /// `(port, generation)` of every occupant whose re-discovery silence has
     /// already been named: the warn marks the CHANGE into
-    /// silence, the same doctrine as the R5 reconcile dedupe — a permanently
+    /// silence, the same doctrine as the reconcile dedupe — a permanently
     /// silent engine hammered by resolves logs one warn per spawn, never one
     /// per probe. A landed id clears the mark (the silence state ended, so a
     /// return to silence is news again), and every new generation is a fresh
     /// mark; `clear_occupant` retires it with the occupant.
     serve_id_silence_warned: HashSet<(u16, u64)>,
-    /// R5 report-only reconcile: a probe per catalog application, never two at
-    /// once (the R9 in-flight bound) — a rescan landing mid-probe is answered
+    /// Report-only reconcile: a probe per catalog application, never two at
+    /// once (the one-probe in-flight bound) — a rescan landing mid-probe is answered
     /// by the next application, never by a pile of concurrent `docker ps`.
     reconcile_in_flight: bool,
-    /// The stranded-container set the reconcile last warned about (R5 dedupe).
+    /// The stranded-container set the reconcile last warned about.
     /// `None` = no successful probe yet — absence of a report is not an empty
     /// report. Warn fires only when the set CHANGES, so repeated rescans of the
     /// same stranded container never spam the ring.
     last_reported_stranded: Option<BTreeSet<String>>,
-    /// R11 fit cache (in-process only, never persisted): `(fit tool, probe argv
+    /// Fit cache (in-process only, never persisted): `(fit tool, probe argv
     /// hash)` → the projection and the model-file fingerprint it was computed
     /// against. A figure is valid precisely while its argv AND the calculator
     /// that minted it are unchanged — the version epoch and fingerprint checks
-    /// are the two halves of that identity. The tool joins the key (FR-13):
+    /// are the two halves of that identity. The tool joins the key:
     /// rows served by different `llama_server_exe` binaries never share a
     /// figure, because each binary's sibling calculator minted its own.
     fit_cache: HashMap<(PathBuf, u64), FitEntry>,
     /// The version line each fit tool answered when its current cache was
-    /// minted (FR-13: one entry per tool, keyed by the tool itself). A tool
+    /// minted (one entry per tool, keyed by the tool itself). A tool
     /// absent from the map is never confirmed; a version change voids that
     /// tool's cache (a figure belongs to the calculator that minted it).
     fit_versions: HashMap<PathBuf, String>,
@@ -270,7 +270,7 @@ struct ActorState {
     /// catalog is dropped at the handler instead of patching rows that may no
     /// longer describe it.
     fit_epoch: Arc<AtomicU64>,
-    /// R11 session cross-check verdicts (display-only): model → (fit epoch the
+    /// Session cross-check verdicts (display-only): model → (fit epoch the
     /// verdict was earned under, whether the witness fell inside the session
     /// tolerance). A verdict counts only while its epoch stands, so a rescan
     /// retires every session stamp; a calculator swap clears the map outright.
@@ -281,10 +281,10 @@ struct ActorState {
     jobs: BTreeMap<JobId, Job>,
     /// Last proxy-side use per model (idle sweep input, Step 5).
     last_used: HashMap<String, Instant>,
-    /// Slots holding a queued (parked) load, T3.4, mapped to the ledger row registered
+    /// Slots holding a queued (parked) load, mapped to the ledger row registered
     /// when it parks: its model, waiters and state all live on that
     /// row, and [`ActorState::start_pending`] arms the same row rather than creating
-    /// a second one. Since the 2026-11-10 ruling a gate-parked row lives here too:
+    /// a second one. A gate-parked row lives here too:
     /// a load the gate found short only on in-flight bookings and/or an
     /// in-progress release parks with state `Idle`
     /// on its (otherwise free) slot, and [`ActorState::finish`] re-gates it when any
@@ -519,7 +519,7 @@ impl ActorState {
             // sampler only ever runs it for a CPU-resident occupant, and every
             // pin that seats one swaps this default for its counting fake —
             // structurally, not by cadence — so no gate test reaches the real
-            // API (W2 step 3, made structural by the W23-02 fold).
+            // API (made structural by the probe-fake fold).
             working_set_probe: Arc::new(crate::process::Win32WorkingSetProbe),
             events: tokio::sync::broadcast::channel(64).0,
             tx,
@@ -691,7 +691,7 @@ impl ActorState {
             // The reap decision belongs to the job as it was when the cancel landed,
             // so it is taken before the state moves: this abort just destroyed the only
             // task that could confirm the victim's release, and an unconfirmed victim
-            // stays installed in its slot (chunk 4 [1]).
+            // stays installed in its slot.
             spawned = job.spawned.is_some() || job.victim_release_pending();
             if vocab::transition_allowed(job.state, SwapState::CancelRequested) {
                 job.state = SwapState::CancelRequested;
@@ -832,14 +832,14 @@ impl ActorState {
                 self.begin_unload_slot(slot, "unloaded");
             }
         }
-        // Operator 2026-11-10: this funnel is the one moment another
+        // This funnel is the one moment another
         // load's paper booking can leave the gate, and a gate-parked row waits
         // on exactly such a release. Re-gate every parked row whose slot is
         // free through the ordinary `start_pending` arm path: the fresh gate
         // re-reads the live witness, a row still short only on bookings parks
         // again, and a row the card cannot hold now takes the named `AdmitFail`
         // - so waiting cannot spin forever and never credits paper with
-        // physical bytes. Rows parked behind a running job (the T3.4 shape)
+        // physical bytes. Rows parked behind a running job (the queued shape)
         // keep waiting for their own slot: the filter requires a slot with
         // neither occupant nor job, and the block above already answered or
         // started the finishing slot's queued row, so nothing is double-armed
@@ -861,13 +861,13 @@ impl ActorState {
                 self.start_pending(slot, queued);
             }
         }
-        // FR-01: this is the one funnel every job exits through (the only writer of
+        // This is the one funnel every job exits through (the only writer of
         // `terminal = true`), so one prune here bounds the ledger and, with it, the
         // `jobs` array every `/har/status` publish re-serializes.
         self.prune_terminal_ledger();
     }
 
-    /// FR-01 job-ledger retention, run at the terminal funnel: keep every live
+    /// Job-ledger retention, run at the terminal funnel: keep every live
     /// (non-terminal) row — the single writer is mid-swap on it — and every
     /// terminal row still **in service**: the load row whose spawn is an
     /// installed occupant's ticket. The in-service row is not history: the
@@ -879,7 +879,7 @@ impl ActorState {
     /// the newest [`jobs::TERMINAL_ROW_KEEP`] stand, older ones leave, oldest
     /// first (`BTreeMap` order is `JobId` order, and ids mint monotonically).
     /// Pruning never strands a reader: `apply_event` returns on a missing row,
-    /// the EVID-01 victim-row rewrite is a `get`/skip, and idempotency answers
+    /// the victim-row rewrite is a `get`/skip, and idempotency answers
     /// `Already` from the slot table and `on_swap`'s in-flight attach reads only
     /// live rows (`commands.rs`) — no decision consults a retired row.
     fn prune_terminal_ledger(&mut self) {
@@ -908,7 +908,7 @@ impl ActorState {
         }
     }
 
-    /// FR-03 rescan-failure retention: a failed rescan **replaces** the previous
+    /// Rescan-failure retention: a failed rescan **replaces** the previous
     /// failure row for this models directory carrying the same reason, so a
     /// disconnected volume retried forever leaves exactly one honest row in
     /// `catalog_errors`, not one per attempt. A different reason is different
@@ -929,7 +929,7 @@ impl ActorState {
         self.catalog_errors.push(row);
     }
 
-    /// Arms the load queued on `slot` (T3.4), reusing the ledger row registered at
+    /// Arms the load queued on `slot`, reusing the ledger row registered at
     /// park time. A model that left the catalog since it parked is answered and
     /// terminalized like any other load that never started.
     fn start_pending(&mut self, slot: usize, job_id: JobId) {
@@ -977,8 +977,8 @@ impl ActorState {
 
     /// A refusal is the product's headline event (G6): it reaches the ring whatever
     /// the extended-logging switch says, because a load that never spawned would
-    /// otherwise leave no trace there at all (operator 2026-10-26: five refusals in
-    /// one session, zero lines at `/har/log`).
+    /// otherwise leave no trace there at all (five refusals in
+    /// one session once, zero lines at `/har/log`).
     fn log_refusal(&self, job_id: JobId, error: &SchedulerError, stage: &str) {
         let Some(job) = self.jobs.get(&job_id) else {
             tracing::warn!(
@@ -1037,7 +1037,7 @@ impl ActorState {
     /// installed occupants. The card cannot account for them yet (their engines are
     /// still spawning), so without this debit two concurrent loads in different
     /// categories both spend the same free bytes — the retired ledger never covered
-    /// it either, it summed installed occupants only (operator 2026-10-26).
+    /// it either, it summed installed occupants only.
     ///
     /// A `greedy` load still in `Admit` has no `need` yet and contributes 0; it is
     /// protected by its launch floor, and once the greedy booking is recorded it is
@@ -1081,8 +1081,7 @@ impl ActorState {
     }
 
     /// GiB projected to free through releases already **in progress** — the
-    /// release credit of the gate's park arm (operator 2026-11-22, park matrix
-    /// cell 1): a non-terminal [`JobKind::Unload`] row whose slot still holds
+    /// release credit of the gate's park arm: a non-terminal [`JobKind::Unload`] row whose slot still holds
     /// that model's GPU occupant. Per resident the credit is
     /// `max(booked need, live folded footprint)` — the same max truth as the
     /// same-slot release projection — summed over residents; the caller clamps
@@ -1102,7 +1101,7 @@ impl ActorState {
     ///   bytes, so its GiB are not waitable future free.
     ///
     /// The returned list names the releasing residents with their projected
-    /// GiB for the park log (cell 10: the wait names what it waits on).
+    /// GiB for the park log (the wait names what it waits on).
     fn releasing_vram_need(&self, except: JobId) -> (f64, Vec<String>) {
         let own_slot = self.jobs.get(&except).and_then(|job| job.slot);
         let mut total = 0.0;
@@ -1170,8 +1169,8 @@ impl ActorState {
     }
 }
 
-/// Falsifiable pins for the two 1.4 findings owned here: FR-01 job-ledger
-/// retention and FR-03 `catalog_errors` growth. Self-contained fixtures: the
+/// Falsifiable pins for the two retention findings owned here: job-ledger
+/// retention and `catalog_errors` growth. Self-contained fixtures: the
 /// runtime is never reached, no scan, no engine, no channel read.
 #[cfg(test)]
 mod retention_tests {
@@ -1305,7 +1304,7 @@ mod retention_tests {
         }
     }
 
-    /// FR-01 pin: 250 terminal rows plus one fresh finish (251 terminal) leave
+    /// Pin: 250 terminal rows plus one fresh finish (251 terminal) leave
     /// exactly the newest 200 — through the terminal funnel, not the pure rule.
     #[test]
     fn two_hundred_fifty_terminal_rows_leave_the_newest_two_hundred() {
@@ -1323,7 +1322,7 @@ mod retention_tests {
         assert_eq!(ids.last(), Some(&250), "the newest row stands");
     }
 
-    /// FR-01 pin: a live (non-terminal) row is never pruned, not even as the
+    /// Pin: a live (non-terminal) row is never pruned, not even as the
     /// single oldest row while 251 terminal rows pile up behind it.
     #[test]
     fn a_live_row_is_never_pruned() {
@@ -1346,7 +1345,7 @@ mod retention_tests {
         assert_eq!(state.jobs.len(), TERMINAL_ROW_KEEP + 1);
     }
 
-    /// FR-01 pin: the `/har/status` view IS the retained view — the published
+    /// Pin: the `/har/status` view IS the retained view — the published
     /// `jobs` array carries exactly the ledger rows, so every publish serializes
     /// the bounded set, never the pruned history.
     #[test]
@@ -1368,7 +1367,7 @@ mod retention_tests {
         );
     }
 
-    /// FR-01 in-service exception: the terminal row of an installed resident
+    /// In-service exception: the terminal row of an installed resident
     /// stands past the cap — its ticket match against the slot occupant keeps
     /// it, because the serve-window measured fold reads its anchor by exactly
     /// that ticket on every sample (`measured.rs` finds the row by
@@ -1401,7 +1400,7 @@ mod retention_tests {
         );
     }
 
-    /// FR-01 idempotency pin: a repeated load answers `Already` from the slot
+    /// Idempotency pin: a repeated load answers `Already` from the slot
     /// table, and keeps answering `Already` after the ledger row that once
     /// produced the resident is gone — the exact shape a pruned row leaves. The
     /// receipt never depends on a terminal ledger row surviving.
@@ -1429,7 +1428,7 @@ mod retention_tests {
             "the loaded resident answers Already while its row still stands"
         );
 
-        // The FR-01 shape: retention removed the row. The decision reads the
+        // The retention shape: retention removed the row. The decision reads the
         // slot table (`commands.rs`), so the repeat is answered identically.
         state.jobs.remove(&produced);
         let (reply, mut receipt) = oneshot::channel();
@@ -1443,7 +1442,7 @@ mod retention_tests {
         }
     }
 
-    /// FR-03 pin: three identical failed rescans of the same models directory
+    /// Pin: three identical failed rescans of the same models directory
     /// leave ONE row, not three.
     #[test]
     fn three_identical_failed_rescans_leave_one_row() {
@@ -1463,7 +1462,7 @@ mod retention_tests {
         assert_eq!(snapshot.catalog_errors.len(), 1, "the published view too");
     }
 
-    /// FR-03 pin: a changed failure reason is different news and stays visible
+    /// Pin: a changed failure reason is different news and stays visible
     /// beside the previous one; repeating either still never duplicates.
     #[test]
     fn a_changed_failure_reason_stays_visible() {
@@ -1485,7 +1484,7 @@ mod retention_tests {
         assert!(reasons.iter().any(|r| r.contains("read_dir denied")));
     }
 
-    /// FR-03 pin: a successful rescan replaces the failure rows — the scan that
+    /// Pin: a successful rescan replaces the failure rows — the scan that
     /// proves the directory readable again leaves no stale failure behind.
     #[test]
     fn a_successful_rescan_clears_the_failure_rows() {
@@ -1508,7 +1507,7 @@ mod retention_tests {
         );
     }
 
-    /// FR-03 pin: a rescan failure never masks the per-file scan errors a
+    /// Pin: a rescan failure never masks the per-file scan errors a
     /// successful scan reported — the replace is scoped to the identical
     /// directory-failure row only.
     #[test]

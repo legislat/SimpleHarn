@@ -103,8 +103,7 @@ pub enum SchedulerError {
     /// The job was cancelled by request or superseded by a newer load.
     #[error("cancelled: {0}")]
     Cancelled(String),
-    /// The card (or, for a CPU-resident row, the host RAM — W2 ruling
-    /// 2026-11-05) had not physically freed the gate target within
+    /// The card (or, for a CPU-resident row, the host RAM) had not physically freed the gate target within
     /// `settle_timeout_s` after a confirmed release; nothing was double-spawned
     /// (§0.3). The reason is the witness's own numbers, composed once at the emit
     /// site and carried structurally — the gate never re-parses a human string.
@@ -240,7 +239,7 @@ impl SchedulerHandle {
     }
 
     /// Restarts `model` in `category`: kills the (dead) occupant and loads it
-    /// fresh — the T10.1 crash-retry primitive. `failed_port` is the engine port
+    /// fresh — the crash-retry primitive. `failed_port` is the engine port
     /// the caller's request refused to connect on (the proxy knows it): the
     /// identity of the corpse. A Restart naming a port the slot no longer serves
     /// describes a crash a previous retry already recovered, and is answered
@@ -263,7 +262,7 @@ impl SchedulerHandle {
         .await
     }
 
-    /// Reports a witnessed engine death for terminalization (RC-02): the proxy
+    /// Reports a witnessed engine death for terminalization: the proxy
     /// calls this when its forward refused a SECOND connection on `port` after
     /// the crash-retry reload — the resident there is a corpse by witness. The
     /// actor arms the standard confirmed-release path on the matching slot: the
@@ -290,8 +289,8 @@ impl SchedulerHandle {
         .await
     }
 
-    /// Unloads one model's slot (T12.1). A loading swap for it is cancelled
-    /// first (cleanup still completes, Step 3).
+    /// Unloads one model's slot. A loading swap for it is cancelled
+    /// first (cleanup still completes).
     ///
     /// # Errors
     ///
@@ -303,7 +302,7 @@ impl SchedulerHandle {
         .await
     }
 
-    /// Unloads every occupied slot across all categories (T12.4). Loading jobs
+    /// Unloads every occupied slot across all categories. Loading jobs
     /// are cancelled; cleanup completes.
     ///
     /// # Errors

@@ -1,10 +1,9 @@
-//! Scheduler vocabulary: commands, job ids, and the swap state machine graph
-//! (DESIGN Steps 2-3).
+//! Scheduler vocabulary: commands, job ids, and the swap state machine graph.
 
 use crate::config::CategoryId;
 use serde::Serialize;
 
-/// Identity of one swap job, observable at `GET /har/jobs` (Step 2/12).
+/// Identity of one swap job, observable at `GET /har/jobs`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct JobId(pub u64);
 
@@ -14,17 +13,17 @@ impl std::fmt::Display for JobId {
     }
 }
 
-/// Commands into the scheduler actor (Step 2). A dropped waiter (client disconnect)
+/// Commands into the scheduler actor. A dropped waiter (client disconnect)
 /// drops the oneshot, never the in-flight work.
 ///
-/// Register/unregister (externals display list) are v0-deferred (§0.4).
+/// Register/unregister (externals display list) are v0-deferred.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     /// Load `model` into `category`; same-slot policy is supersede, queue is FIFO
-    /// otherwise (Step 2).
+    /// otherwise.
     Swap { model: String, category: CategoryId },
     /// Kill the occupant of `model`'s slot (dead engine) and load it fresh —
-    /// the T10.1 crash-retry primitive: reap + reload in one command.
+    /// the crash-retry primitive: reap + reload in one command.
     /// `port` is the engine port the caller's forward refused to connect on:
     /// the identity of the corpse it witnessed. A `Restart` naming a
     /// port the slot no longer serves describes a crash a previous retry already
@@ -35,14 +34,14 @@ pub enum Command {
         category: CategoryId,
         port: u16,
     },
-    /// Terminalize a resident the proxy witnessed dead (RC-02): the forward
+    /// Terminalize a resident the proxy witnessed dead: the forward
     /// refused a SECOND connection on `port` — after the `Restart` reload had
     /// already installed a successor — so nobody can reach that engine any
     /// more. The actor arms the standard confirmed-release path on the slot
     /// matching `model` + `category` + the occupant's own `port` and no live
     /// job: the corpse is reaped under its own ticket, the slot frees on the
     /// driver-confirmed release, and the owning load row terminalizes at the
-    /// same commit point (EVID-01). A report naming a port the slot no longer
+    /// same commit point. A report naming a port the slot no longer
     /// serves, or a slot a live job owns, moves nothing: the successor and the
     /// in-flight job are not this death, and no other resident is ever
     /// touched. The reply reports what the command actually armed, like every
@@ -56,14 +55,14 @@ pub enum Command {
     /// (Step 3 — never a dropped task).
     Cancel { job: JobId },
     /// Unload every occupant of a category; a loading slot in it is cancelled
-    /// first and unloaded when that cancel terminalizes (T8 semantics: unload
-    /// during load = cancel, cleanup completes \[2]: never cancel
+    /// first and unloaded when that cancel terminalizes (unload
+    /// during load = cancel, cleanup completes — never cancel
     /// *or* unload, always both).
     Unload { category: CategoryId },
-    /// Unload one model's slot (T12.1); a loading swap for it is cancelled, and
+    /// Unload one model's slot; a loading swap for it is cancelled, and
     /// whatever the cancel leaves installed is unloaded after it.
     UnloadModel { model: String },
-    /// Unload every occupied slot across all categories (T12.4, the tray's
+    /// Unload every occupied slot across all categories (the tray's
     /// Unload All); loading jobs are cancelled and their slots unloaded after them.
     UnloadAll,
     /// Re-scan `ModelConf` (hot reload, Step 9).
@@ -79,7 +78,7 @@ pub enum Command {
 pub enum SwapState {
     /// No job on the slot.
     Idle,
-    /// Budget gate against the card's own reading (Step 4, as amended 2026-10-26).
+    /// Budget gate against the card's own reading (as amended 2026-10-26).
     Admit,
     /// Admission refused; terminal until the slot returns to `Idle`.
     AdmitFail,
@@ -129,15 +128,15 @@ impl SwapState {
 /// - any non-idle state may observe `CancelRequested`, and cancel always ends in
 ///   `Reap`, never in `Spawn`;
 /// - `AdmitFail`, `Failed`, and `Reap` return the slot to `Idle`;
-/// - the gate may also park instead of refusing (operator rulings
-///   2026-11-10 and 2026-11-22): a load short only on waitable sources —
+/// - the gate may also park instead of refusing (operator rulings): a
+///   load short only on waitable sources —
 ///   another load's paper booking and/or a release already in progress —
 ///   returns `Admit -> Idle` as a parked row (it lives in `pending`, books
 ///   nothing, answers nothing) and re-enters through the ordinary
 ///   `Idle -> Admit` edge when a booking clears or a release terminalizes.
 ///   The blocker gate — every named blocker must be a releasing resident —
-///   is release-park only; the booking park keeps its 2026-11-10 rule. The
-///   card ladder only: the RAM park matrix is deferred, so the RAM gate
+///   is release-park only; the booking park keeps its original rule. The
+///   card ladder only: RAM park behaviour is deferred, so the RAM gate
 ///   keeps refusing.
 pub fn transition_allowed(from: SwapState, to: SwapState) -> bool {
     use SwapState::*;
@@ -147,14 +146,14 @@ pub fn transition_allowed(from: SwapState, to: SwapState) -> bool {
             | (Admit, Quiesce)
             | (Admit, AdmitFail)
             | (AdmitFail, Idle)
-            // Gate-short park (operator rulings 2026-11-10 and 2026-11-22): a
+            // Gate-short park (operator rulings): a
             // deficit covered only by waitable sources — in-flight bookings
-            // (the 2026-11-10 rule) and/or a release already in progress,
+            // (the booking-park rule) and/or a release already in progress,
             // where the release park additionally requires every named blocker
             // to be a releasing resident — waits in `pending` instead of
             // terminalizing; the row never spawned and owes no reap, so the
             // return to `Idle` needs no `Reap` leg (same shape as a queued
-            // row). The card ladder only; the RAM park matrix is deferred.
+            // row). The card ladder only; RAM parking is deferred.
             | (Admit, Idle)
             | (Quiesce, Dispose)
             | (Quiesce, Failed)
@@ -169,7 +168,7 @@ pub fn transition_allowed(from: SwapState, to: SwapState) -> bool {
             | (Failed, Reap)
             | (Reap, Idle)
             | (CancelRequested, Reap)
-            // Unload jobs (2026-10-25 amendment): a deliberate unload ends with its
+            // Unload jobs (unload amendment): a deliberate unload ends with its
             // release confirmed in Dispose and teardown complete in Reap — the one
             // edge the swap graph shares with unload.
             | (Dispose, Reap)

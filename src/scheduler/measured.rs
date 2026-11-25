@@ -21,7 +21,7 @@ use std::path::PathBuf;
 pub(super) const MEASURED_DRIFT_FLOOR_GB: f64 = 2.0;
 
 /// The two witness numbers for one fold: what the card grew by since this spawn's
-/// baseline, and what the driver attributed to the engine's own pids (R1: `None`
+/// baseline, and what the driver attributed to the engine's own pids (`None`
 /// means per-process attribution was unavailable, so the fold may only ever be
 /// stamped `total_diff` — which displays but never books).
 #[derive(Debug, Clone, Copy)]
@@ -59,13 +59,14 @@ pub(super) struct FoldPlan {
     pub(super) attribution: crate::model::MeasuredAttribution,
     pub(super) profile: Option<String>,
     pub(super) fold_range: bool,
-    /// Which ledger's pair this reading describes (W2 step 3).
+    /// Which ledger's pair this reading describes.
     pub(super) pair: MeasuredPair,
 }
 
 /// Everything one fold wrote to the catalog row: the pair and the provenance
 /// stamps, kept together so a refused persist drains exactly what it wrote
-/// (Fork C extended to the R9 stamps — a drain that forgot `measured_attribution`
+/// (the drain must also carry the container-report stamps — a drain that forgot
+/// `measured_attribution`
 /// would leave the file and the memory disagreeing about who owns the number).
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct MeasuredData {
@@ -74,7 +75,7 @@ pub(super) struct MeasuredData {
     pub(super) offload: Option<bool>,
     pub(super) attribution: Option<crate::model::MeasuredAttribution>,
     pub(super) profile: Option<String>,
-    /// Which pair these bytes were (W2 step 3): the persist-failure drain
+    /// Which pair these bytes were: the persist-failure drain
     /// must clear exactly the pair the write owned, never the stranger.
     pub(super) pair: MeasuredPair,
 }
@@ -119,7 +120,7 @@ impl MeasuredData {
 /// never reaches back into actor state: the `(model, ticket)` pair a reading is
 /// stamped with, the pids the witness may attribute (empty for a container spawn —
 /// its ticket pid is the dead `wsl.exe` client), and the container whose own
-/// startup report the sampler fetches once before falling back to the witness (R9).
+/// startup report the sampler fetches once before falling back to the witness.
 #[derive(Debug, Clone)]
 pub(super) struct SamplerCtx {
     pub(super) model: String,
@@ -131,8 +132,7 @@ pub(super) struct SamplerCtx {
 
 /// What the measured fold is allowed to say about a running engine, and where it may
 /// write it. Captured at `begin_spawn` from the catalog row the launch was built from,
-/// never re-read at sample time (`research/reload-slot-drift-2026-10-28.md` §1 rows
-/// 6-10): `reload()` replaces `self.catalog` wholesale while the process keeps the argv
+/// never re-read at sample time: `reload()` replaces `self.catalog` wholesale while the process keeps the argv
 /// it started with, so a fold that consulted the live catalog would stamp a range for a
 /// launch that never happened — and because the flip-void rule compares that very stamp
 /// with the same live bytes, it would also disarm the rule built to catch the lie.
@@ -146,7 +146,7 @@ pub(super) struct MeasuredAnchor {
     pub(super) file: Option<PathBuf>,
     /// The `cpu_offload` the engine actually started under, already gated through
     /// [`crate::engine::llama::offload_live`]: an engine that never reads the key keeps
-    /// `None` and mints no meaningless stamp (§20-9 Fork C knob-table row 1).
+    /// `None` and mints no meaningless stamp (Fork C knob table).
     pub(super) offload: Option<bool>,
     /// The range folded across this spawn's samples, seeded from the row's persisted
     /// pair at spawn. Seeding is what keeps a mid-life reload — which drops the
@@ -159,7 +159,7 @@ pub(super) struct MeasuredAnchor {
     /// inside the cold-start window must not manufacture or erase the warning, and a
     /// same-name twin must not lend this one its id.
     pub(super) serve_model: Option<String>,
-    /// How the figure this spawn has folded was obtained (R9). `None` until the first
+    /// How the figure this spawn has folded was obtained. `None` until the first
     /// fold lands: a reload's `read_measured` drops the in-memory stamp together with
     /// the range it describes, and the next fold re-mints both from this spawn — the
     /// stamp is never a leftover from a process that is gone.
@@ -175,7 +175,7 @@ pub(super) struct MeasuredAnchor {
     /// spawn never claims per-process attribution — its ticket pid is the dead
     /// `wsl.exe` client — so witness readings can only ever be `total_diff` there.
     pub(super) container: bool,
-    /// The Fit projection (R11) that actually BOOKED this spawn: the figure
+    /// The Fit projection that actually BOOKED this spawn: the figure
     /// `cost_source()` answered `Fit` with at spawn time. `None` = this load was
     /// not Fit-booked, so the session cross-check has nothing to confirm. Captured
     /// at spawn like every other anchor field: the cross-check must compare the
@@ -351,11 +351,11 @@ impl ActorState {
         // Same-slot release credit: a greedy row books its nominal `vram_gb`
         // (DOCTRINE 12), so
         // the booking can badly understate what releasing this resident would
-        // physically free, and a replacement swap dies on paper (field incident
-        // 2026-11-06: booked 12.0, held 68.4). Stamp the largest of THIS SPAWN's
+        // physically free, and a replacement swap dies on paper (a field
+        // incident: booked 12.0, held 68.4). Stamp the largest of THIS SPAWN's
         // OWN readings (`plan.high` of each fold, running max) on the slot
         // occupant, matched by spawn ticket: the persisted seed the range merge
-        // above uses is excluded, so a stale pair can never be credited (GSC-01) —
+        // above uses is excluded, so a stale pair can never be credited —
         // the merged `high` stays exactly where it belongs,
         // in the catalog row and the persist. Admission projects the release from
         // the own-reading figure; placed before the row-idempotence early return
@@ -391,8 +391,7 @@ impl ActorState {
                     && entry.measured_profile == data.profile
             }
             // The RAM pair carries no attribution or profile stamp, so its
-            // on-disk identity is the pair plus the shared offload stamp
-            // (W2 step 3).
+            // on-disk identity is the pair plus the shared offload stamp.
             MeasuredPair::Ram => {
                 entry.measured_ram_gb == Some(high)
                     && entry.measured_ram_min_gb == Some(low)
@@ -403,7 +402,7 @@ impl ActorState {
         // reads THIS launch's spawn anchor. Row-idempotence alone would hide a
         // lagging anchor whenever a fresh reading equals what an earlier launch
         // persisted — the same engine_report figure across boots is the standing
-        // case (card runs 2026-11-02: C2 polled a null `container_reported_gb` for
+        // case (a card run polled a null `container_reported_gb` for
         // 150 s through a ninfer serve whose 43.8 GiB report matched the stamp).
         let anchor_same =
             anchor.attribution == data.attribution && anchor.range == Some((high, low));
@@ -413,7 +412,7 @@ impl ActorState {
         if !entry_same && matches!(pair, MeasuredPair::Vram) {
             // The drift voice belongs to the card ladder: the RAM pair's
             // comparison figure is `ram_gb`, and the RAM ladder quotes its
-            // own numbers at the gate, so no warning rides here (W2 step 3).
+            // own numbers at the gate, so no warning rides here.
             if let Some(declared) = entry.vram_gb {
                 if Self::measured_drift_warns(self.cfg.measured_drift_warn_ratio, declared, high) {
                     tracing::warn!(
@@ -441,7 +440,7 @@ impl ActorState {
                 entry.measured_ram_gb = Some(high);
                 entry.measured_ram_min_gb = Some(low);
                 // The same launch-describing stamp the VRAM pair writes: one
-                // word for the `cpu_offload` this launch ran under (W2 step 3).
+                // word for the `cpu_offload` this launch ran under.
                 entry.measured_offload = data.offload;
             }
         }
@@ -542,7 +541,7 @@ impl ActorState {
     /// admission consults when the provenance lets it book — and `measured_gb_min` the
     /// low end the page shows, plus the stamps that make the figure comparable to a
     /// future launch: the `cpu_offload` setting (the knob table's owners only), and
-    /// the `measured_attribution:` provenance this reading really earned (R1/R9).
+    /// the `measured_attribution:` provenance this reading really earned.
     /// `own` carrying bytes is the only route to `per_process`; everything the card
     /// could not attribute is stamped `total_diff` — displayed, never booked. A
     /// container spawn can never claim `per_process`: its ticket pid is the dead
@@ -618,22 +617,22 @@ impl ActorState {
             // that overshot — or a sub-quantum wobble. Absence, never a fake number.
             return;
         };
-        // The provenance a witness reading may claim (R1 doctrine: metadata only —
+        // The provenance a witness reading may claim (metadata doctrine —
         // this never touches the physical gate). Concrete bytes for the engine's own
         // pids are the only route to `per_process`.
         let attribution = match (own.is_some(), anchor.container) {
             (true, false) => crate::model::MeasuredAttribution::PerProcess,
             _ => crate::model::MeasuredAttribution::TotalDiff,
         };
-        // R3 ruling 10 (operator GO 2026-11-01): a total-diff is a footprint only
+        // A total-diff is a footprint only
         // while the unaccounted remainder of the card stands still. A static
         // foreign holder is already discounted by the admit baseline; memory that
-        // MOVES inside the window is what turned qwen-turbo's range into the
+        // MOVES inside the window is what turned one resident's range into the
         // 23.8–59.3 noise (blanked by the operator). When the
         // unaccounted movement exceeds what this engine's own growth explains,
         // the fold is someone else's story and nothing is minted — a labelled
         // blank beats a stand-in lie. A witness that never answered at admit has
-        // no baseline to move from, and keeps the pre-R3 behavior.
+        // no baseline to move from, and keeps the prior behavior.
         if attribution == crate::model::MeasuredAttribution::TotalDiff {
             if let Some(free_at_admit) = observed_at_admit {
                 let foreign_at_admit = (total_gib - free_at_admit - at_admit).max(0.0);
@@ -657,7 +656,7 @@ impl ActorState {
                 }
             }
         }
-        // R11 session cross-check (rule 2026-11-01, display-only): a Fit-booked
+        // Session cross-check (display-only): a Fit-booked
         // load gets its projection confirmed by THIS reading — it reached here
         // only by surviving every fold gate, including the `ForeignDominated`
         // grade above, so a contaminated window can never stamp it green.
@@ -681,7 +680,7 @@ impl ActorState {
         });
     }
 
-    /// Folds the container's one-shot startup `MemorySummary` figure (R9): the
+    /// Folds the container's one-shot startup `MemorySummary` figure: the
     /// engine's own reserved footprint — weights + KV at *declared* capacity +
     /// graphs + reservations + slack — as computed by the engine from its own
     /// `cudaMemGetInfo`, with no cross-tenant noise. It books (ruling 15 (ii)),
@@ -751,12 +750,12 @@ impl ActorState {
     /// and the figure must be one this card could carry. The two sources keep
     /// their own provenance and never upgrade each other (doctrine 12): the
     /// engine's status answer folds under `EngineStatus` with
-    /// `EngineReport`-class trust — above the declared floor as max truth per
-    /// the 2026-11-04 ruling — and the tree sum folds as the existing
+    /// `EngineReport`-class trust — above the declared floor as max truth —
+    /// and the tree sum folds as the existing
     /// `PerProcess` footprint. Neither averages into witness history
     /// (`fold_range: false`): each is this launch's footprint, not a noisy
     /// sample. Neither mints a profile stamp: the profile identity is ninfer's
-    /// alone (ORCHESTRATION §2). Booking then flows unchanged through
+    /// alone. Booking then flows unchanged through
     /// `cost_source()`'s max truth.
     pub(super) fn on_process_measurement(
         &mut self,
@@ -807,7 +806,7 @@ impl ActorState {
         });
         // The readmission incident: the fold moved the row's max truth, but
         // the resident's
-        // booking lives on the SLOT — the same-slot release credit, the R3
+        // booking lives on the SLOT — the same-slot release credit, the
         // no-release floor guard and the eviction planner all read that
         // figure, and an occupant left holding the paper number hands a
         // same-slot replacement the stale credit (Strata booked 55, held
@@ -970,7 +969,7 @@ impl ActorState {
                 entry.measured_attribution = None;
                 entry.measured_profile = None;
             }
-            // The RAM drain clears only its own pair (W2 step 3): the shared
+            // The RAM drain clears only its own pair: the shared
             // `measured_offload` stamp describes the launch, not the pair, and
             // the RAM ladder books its pair with or without it — while the
             // card ladder's grandfather rule reads an un-stamped `measured_gb`
@@ -994,7 +993,7 @@ impl ActorState {
     /// the engine's own bytes — a `total_diff` host delta names no process,
     /// so it never books, never persists, and the shared `measured_offload`
     /// stamp keeps the pair honest across a `cpu_offload` flip exactly as it
-    /// does the VRAM pair (DOCTRINE 12 amended ruling, operator 2026-11-05);
+    /// does the VRAM pair (DOCTRINE 12, as amended);
     /// the spawn must still own an uncontested serving window; and the figure
     /// must be one this host could carry — the bound is the live RAM witness,
     /// never the card, and a witness that does not answer is absence, so the
@@ -1042,7 +1041,7 @@ impl ActorState {
             attribution,
             // The profile stamp is ninfer's card-side identity; the RAM pair
             // carries none, and its provenance needs no stamp either — this
-            // guard is the only writer and it has just ruled (W2 step 3).
+            // guard is the only writer and it has just ruled.
             profile: None,
             // A serve-window reading: the pair keeps the window's extremes,
             // the same accumulator the witness range averages for the card.

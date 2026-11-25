@@ -599,17 +599,17 @@ pub(super) async fn har_config_model(
     state.scheduler.reload().await.map_err(ApiError::from)?;
 
     // A model whose category actually changed must move slots, not lie in place
-    // (v3.3 §-behavior, kept). Only ITS OWN slot: `unload(old_category)` freed every
+    // (the v3.3 behavior, kept). Only ITS OWN slot: `unload(old_category)` freed every
     // occupant of the old category, so retagging one AUX model killed the other
     // five's engines and whatever WORK held, in-flight generations included
     // A retag of a never-loaded model is the idempotent `Done`
-    // the actor already guarantees for `unload_model` (pinned by scheduler_actor's
-    // T12.2 test), which is why the old inner catalog-name test — meant to skip
+    // the actor already guarantees for `unload_model` (pinned by scheduler_actor
+    // tests), which is why the old inner catalog-name test — meant to skip
     // that no-op — is gone: it never asked whether the moved model was loaded, only
     // whether SOME entry shared its name in a different category, so the duplicate
-    // name of chunk 7 [9] was enough to trigger the collateral kill. If the moved
+    // name in the fixture was enough to trigger the collateral kill. If the moved
     // model was its old category's default, that default now dangles — clear it too
-    // (operator finding #1, 2026-10-26).
+    // (operator finding, 2026-10-26).
     //
     // Both follow-ups are part of the change the operator asked for (README: a
     // category change on a loaded model frees the slot), so their outcome belongs

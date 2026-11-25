@@ -277,8 +277,8 @@ fn strata_import(profile_path: &Path) -> Result<StrataImport, String> {
             // token for an absent key is the explicit false the engine ran.
             None => tokens.push("gpu=false".to_string()),
         }
-        // The three numeric keys of the server's vision contract (ruling
-        // 2026-11-02): a present value the token shape cannot carry is
+        // The three numeric keys of the server's vision contract (ruling):
+        // a present value the token shape cannot carry is
         // reported, never dropped (the same rule as the root keys).
         for key in ["max_tokens", "min_tokens", "threads"] {
             match vision.get(key) {

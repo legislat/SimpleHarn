@@ -33,7 +33,7 @@ pub struct ProbeResults {
     /// conservative direction for an admission ceiling), or `None` when the probe
     /// failed or answered garbage.
     pub vram_total_gb: Option<f64>,
-    /// An existing `llama-server.exe` found on PATH (FR-13: PATH only — there
+    /// An existing `llama-server.exe` found on PATH (PATH only — there
     /// is no hard-coded install directory), or `None` when PATH holds none.
     pub llama_server_exe: Option<PathBuf>,
 }
@@ -279,7 +279,7 @@ mod tests {
         );
         assert_eq!(applied.len(), 1, "a real exe fills");
         assert_eq!(cfg.llama_server_exe, Some(real));
-        // The default is already `None` (FR-13); spelling it names the posture.
+        // The default is already `None`; spelling it names the posture.
         let mut none = AppConfig {
             llama_server_exe: None,
             ..AppConfig::default()

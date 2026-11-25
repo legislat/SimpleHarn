@@ -9,13 +9,13 @@
 //! Nothing here spawns anything — the probe rides the runtime's control-command
 //! seam, and the scheduler owns the cache, the warm queue and the ladder.
 //!
-//! Doctrine pins (DECISIONS 2026-11-01, Search#40 handoff §7):
+//! Doctrine pins (DECISIONS 2026-11-01):
 //! - **never persisted**: the figure is recomputed per proven change; nothing in
 //!   this module reads or writes yaml, and no `ModelEntry` field set from a
 //!   probe ever joins `raw` (the write-back source).
 //! - **Host excluded**: the `Host` row is RAM-side, never VRAM-booked.
 //! - **constants are calibration, not defaults**: margin/surcharge are
-//!   Wave-C-calibrated config values; an unset required constant is
+//!   card-calibrated config values; an unset required constant is
 //!   *unconfigured* (ladder fallback), never a silent zero that pretends to be
 //!   calibrated.
 //! - **max truth**: the ladder comparison lives in `ModelEntry::cost_source`;
@@ -50,7 +50,7 @@ pub(crate) const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// fallback, never a fabricated number.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum FitError {
-    /// `fit_probe` is on but a Wave-C-calibrated constant it demands is unset:
+    /// `fit_probe` is on but a card-calibrated constant it demands is unset:
     /// the operator has not calibrated, so nothing may book a pretence of one.
     #[error(
         "fit_probe is on but `{key}` is not configured; the constants are Wave-C-calibrated, \
@@ -168,7 +168,7 @@ pub(crate) fn resolve_tool(llama_server_exe: &Path) -> PathBuf {
 
 /// The yaml keys whose flags the projection must see, in [`super::llama::FLAG_TABLE`]
 /// order. This is the exact set the policy row declares as memory-relevant —
-/// the long-form spellings of the set Search#40 probed live (`-c -ngl -b -ub
+/// the long-form spellings of the set probed live (`-c -ngl -b -ub
 /// -fa -ctk -ctv -np`). Deliberately ABSENT: `model` (handled as `-m` first),
 /// `mmproj` and `jinja` (fit-params rejects them outright), the `fit*` knobs
 /// (they steer the server's adjustment, not the deterministic projection), and
@@ -369,7 +369,7 @@ mod tests {
     }
 
     /// The exact captured stdout of the live probe, trailing space per line
-    /// included (Search#40 §2 bytes, re-confirmed 2026-11-02 when the harness
+    /// included (bytes re-confirmed 2026-11-02 when the harness
     /// refused every projection for exactly this space): the parse fixture and
     /// its 31 717 MiB device sum are pinned together.
     const CAPTURED: &str = "CUDA0 21484 8853 1380 \nHost 994 0 296 \n";
@@ -410,9 +410,9 @@ mod tests {
         assert_eq!(vision, 31_717.0 / 1024.0 + 1.25 + 0.5);
     }
 
-    /// Calibration pin: the captured rows booked with the Wave-C card
+    /// Calibration pin: the captured rows booked with the card-calibrated
     /// constants (`fit_margin_gb` 3, `mmproj_surcharge_gb` 2) equal EXACTLY
-    /// the figure the live C1 evidence row recorded as `fit_gb`.
+    /// the figure the live card capture recorded as `fit_gb`.
     /// The device count is ONE (only `CUDA0` is active; the `Host` row is
     /// RAM-side and excluded) and the row carries `mmproj:`, so the booking
     /// formula reads: 31 717 MiB / 1024 + surcharge 2.0 + margin 3.0 x 1 device

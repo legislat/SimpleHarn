@@ -326,7 +326,7 @@ pub(crate) fn validate_row(model: &ModelEntry) -> Result<BasaltRow, BasaltRowErr
 /// `serve.server` parser runs with `allow_abbrev=False`, so a unique
 /// prefix like `--hos` is an *unknown* option to the server, never an
 /// alias for `--host`. A `--flag` entry whose name is forbidden is refused
-/// naming the mechanism that owns the decision (slice 10c voice); a
+/// naming the mechanism that owns the decision; a
 /// single-dash or whitespace-bearing entry is refused as shape. Bare
 /// entries are values — data for an allowed flag, like the llama arity rule.
 ///
@@ -601,7 +601,7 @@ impl EngineAdapter for BasaltAdapter {
 /// answers `None` — absence, never a guess — and the sampler then takes the
 /// witness-based process-tree fallback (doctrine 4).
 ///
-/// The capture retired the phase-2 path: `GET /status` is liveness only and
+/// The capture retired the old status path: `GET /status` is liveness only and
 /// `GET /v1/status` has no `engine.info.vram` (its `vram` object is
 /// `{"elastic": false}` and `machine.gpu` is null on this serve). The only
 /// engine-own figure is `expert_cache_mib` in the `engine` block of
@@ -627,7 +627,7 @@ impl EngineAdapter for BasaltAdapter {
 /// captured RAM figure rides `/v1/status.machine.ram`, not the metrics
 /// block, and this parser never sees it.
 ///
-/// Fall-through rule (task non-goal, ORCHESTRATION: "Basalt never use the
+/// Fall-through rule ("Basalt never use the
 /// Python parent's per-process figure"): when this parse refuses, the
 /// sampler's fallback sums the witness's per-process bytes over the engine
 /// pid and ALL its descendants — the tree sum is allowed (the engine hangs
@@ -1191,7 +1191,7 @@ mod tests {
         serde_json::from_str(CAPTURED_METRICS).expect("the captured body parses")
     }
 
-    /// Phase-5 pin (capture): the real captured `/metrics` body books
+    /// Capture pin: the real captured `/metrics` body books
     /// `expert_cache_mib` ONLY — 61,363 MiB = 59.9 GiB — not the component
     /// sum: expert + arena (20,288) + conversation (4,096) would sum to
     /// 83.7 GiB, over the 72 GiB card, because this serve offloads to RAM
@@ -1224,7 +1224,7 @@ mod tests {
         );
     }
 
-    /// Phase-5 pin: the shipped phase-2 routes answer nothing. The real
+    /// Pin: the shipped engine's routes answer nothing. The real
     /// `/status` body is liveness only and the real `/v1/status` body has no
     /// footprint member (its `engine` member is the version STRING, which
     /// the pointer refuses as a non-object). Falsifier: read
@@ -1245,7 +1245,7 @@ mod tests {
         }
     }
 
-    /// Phase-5 chain pin on the captured body: fake axum server serving the
+    /// Chain pin on the captured body: fake axum server serving the
     /// capture at `/metrics`, the runtime's generic GET, then this parse —
     /// the route the sampler's path map now reads for basalt.
     #[tokio::test]
@@ -1286,7 +1286,7 @@ mod tests {
         assert_eq!(measurement.ram_gib, None, "no RAM figure in this body");
     }
 
-    /// Phase-5 pin: the engine's error envelope is absence, even when it
+    /// Pin: the engine's error envelope is absence, even when it
     /// rides next to figures that would otherwise parse — a refusal voice
     /// never doubles as a footprint. The error text is the real 2026-11-04
     /// v1-pack refusal; the poisoned body is the REAL capture.
@@ -1309,7 +1309,7 @@ mod tests {
 
     /// Absence pins for the shapes around the metrics block: empty roots, a
     /// null or absent engine, the `/v1/status` engine-as-version-string, and
-    /// the DEAD phase-2 path (the shipped `engine.info.vram` triple answers
+    /// the DEAD old status path (the shipped `engine.info.vram` triple answers
     /// nothing now) — the sampler keeps its fallback legs, never a
     /// zero-booked footprint.
     #[test]

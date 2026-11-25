@@ -10,7 +10,7 @@
 /// so any reachable tree this large is a pathological one and the walk stops
 /// rather than spin.
 ///
-/// FR-04: this constant is also the truncation signal. The walk NEVER returns
+/// This constant is also the truncation signal. The walk NEVER returns
 /// more than `DESCENDANT_CAP` pids, and the only way an answer reaches exactly
 /// that length is the walk stopping at the bound (or a pathologically complete
 /// tree of exactly cap size). Consumers therefore treat an answer of this

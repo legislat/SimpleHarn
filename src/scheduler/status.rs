@@ -20,7 +20,7 @@ pub struct SchedulerStatus {
     pub jobs: Vec<JobStatus>,
     /// Catalog problems from the last scan (bad files, unresolved defaults).
     pub catalog_errors: Vec<ScanError>,
-    /// R5 report-only reconcile (ruling 9): running containers matching a catalog
+    /// Report-only reconcile: running containers matching a catalog
     /// `ninfer_container` row while the claim ledger holds no claim — the SAME set
     /// the reconcile warned about, carried on this one snapshot so the page and the
     /// log can never disagree. Absent from `/har/status` until a probe reports a
@@ -30,7 +30,7 @@ pub struct SchedulerStatus {
     /// set, exactly like the warn dedupe.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stranded_containers: Option<BTreeSet<String>>,
-    /// R11 session cross-check (rule 2026-11-01, display-only): the models whose
+    /// Session cross-check (display-only): the models whose
     /// Fit booking a usable witness reading confirmed inside the session
     /// tolerance while the current fit epoch stands — the page turns those rows
     /// green. In-memory actor stamps filtered to the epoch, never persisted and
@@ -93,17 +93,17 @@ pub struct SlotStatus {
     /// page prints this string verbatim — no date math in the browser). Empty slot:
     /// absent.
     pub launched_at: Option<String>,
-    /// The server-computed `stale_config` verdict for the occupant (Axis 2 = B):
+    /// The server-computed `stale_config` verdict for the occupant:
     /// `true` when the model's yaml differs — by the install-time fingerprint —
     /// from the bytes this engine launched from. Refreshed only at install, on the
     /// reload turn, and on harness write-backs; reading it performs no stat.
     /// Empty slot: absent.
     pub stale_config: Option<bool>,
     /// What this container occupant's own startup `MemorySummary` said it reserves
-    /// (R9), straight from its spawn anchor — `None` for a child-process spawn, a
+    /// said it reserves, straight from its spawn anchor — `None` for a child-process spawn, a
     /// container that never reported, or a report the anchor refused. Carried on
-    /// the snapshot so BOTH `/har/status` and SSE quote the same number (review
-    /// 2026-10-31: threading it only through the SSE build made the memory-bar
+    /// the snapshot so BOTH `/har/status` and SSE quote the same number
+    /// (threading it only through the SSE build made the memory-bar
     /// annotation unreachable for a token-gated, poll-only page); display only,
     /// never a gate input.
     pub container_reported_gb: Option<f64>,
@@ -146,7 +146,7 @@ pub struct SlotStatus {
 }
 
 impl ActorState {
-    /// What the occupant's own container reported it reserves (R9), read off the
+    /// What the occupant's own container reported it reserves, read off the
     /// spawn anchor of the job that produced this exact occupant (`model` + `ticket`
     /// — never the model name alone, which a re-minted twin can steal): Some only
     /// for a ninfer container spawn whose anchor folded an `engine_report` figure.
@@ -155,7 +155,7 @@ impl ActorState {
     /// build left the poll path — the only path a token-gated page has — forever
     /// null, and a fixture carrying the value hid it.
     /// Whether the catalog row's RAM ladder figure still describes this
-    /// occupant's ledger booking (W3-01). Equal means equal within the
+    /// occupant's ledger booking. Equal means equal within the
     /// project's GiB epsilon — the same band that decides when two figures
     /// are worth naming apart (`budget::DISAGREE_GIB`). NaN never agrees: a
     /// NaN difference fails the band, so a garbage figure silences the
@@ -189,7 +189,7 @@ impl ActorState {
                 .as_ref()
                 .filter(|names| !names.is_empty())
                 .cloned(),
-            // R11: only stamps earned under the CURRENT epoch answer — the page
+            // Only stamps earned under the CURRENT epoch answer — the page
             // must never show a green carried across a rescan, and reading this
             // is pure memory (no fs, no clock), like every other snapshot field.
             fit_validated: self
@@ -202,7 +202,7 @@ impl ActorState {
                 .slots
                 .iter()
                 .map(|s| {
-                    // The RAM booking story (W3, W3-01 ruling): the figure is
+                    // The RAM booking story: the figure is
                     // the actor's own `ram_need` (ledger truth) and the labels
                     // are the catalog row's one ladder derivation, joined in
                     // pure memory — the same snapshot-purity rule every other

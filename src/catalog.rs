@@ -1,4 +1,4 @@
-//! Model identity and alias resolution (DESIGN Step 10).
+//! Model identity and alias resolution.
 //!
 //! The harness name (`name:`) is canonical. Accepted aliases, kept from v3.3 (G5):
 //! the GGUF file name with or without extension, all case-insensitive. A query

@@ -1,14 +1,15 @@
-//! Provenance-typed ownership (DESIGN Step 1, LOCKED: B + C).
+//! Provenance-typed ownership: a resource is either harness-owned or it is
+//! invisible to the kill path.
 //!
 //! Every owned resource carries a [`SpawnTicket`]. "The harness never kills what it did
 //! not start" is a *type*, not a check at the kill site: the kill path accepts a
 //! [`Provenance::Owned`] ticket and nothing else — there is no API to kill "whatever is
-//! on port X". Adoption is scrapped (operator 2026-10-24): a slot occupant is always
+//! on port X". Adoption is scrapped: a slot occupant is always
 //! harness-spawned; externals are display-only and can never enter a slot.
 //!
 //! Containers outlive the process that started them, so their provenance must too:
 //! [`ContainerClaims`] is the persisted claim ledger, and [`boot_reap_decision`] is
-//! the single rule the boot reclaim evaluates against it (chunk 10 \[1], 2026-10-27).
+//! the single rule the boot reclaim evaluates against it (2026-10-27).
 //! Both reaping paths — the spawn-time pre-reap and the boot reclaim — address a
 //! name only if the ledger rules accept it: the pre-reap is gated on the shared
 //! [`valid_container_name`] rule alone (it must stay able to destroy a stale
@@ -24,13 +25,13 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 /// The engine id whose models may own docker containers: the **only** engine boot
-/// reclaim may ever address (operator policy, chunk 10 \[1]). The ninfer adapter's
+/// reclaim may ever address (operator policy). The ninfer adapter's
 /// `engine_id` returns this constant, so registry, scanner, and reclaim compare the
 /// same token.
 pub const NINFER_ENGINE: &str = "ninfer";
 
 /// Shortest argument docker tries to resolve as a container **ID prefix** instead of a
-/// name (chunk 10 [4]): `docker rm -f 1234abc` deletes whichever unrelated container's
+/// name: `docker rm -f 1234abc` deletes whichever unrelated container's
 /// id happens to start with those characters, in the operator's distro, with workloads
 /// on it. A name of that shape is therefore never claimable and never reaped, whatever
 /// the ledger says.
@@ -43,7 +44,7 @@ fn id_shaped(name: &str) -> bool {
 
 /// Docker's own name rule plus the ID-prefix-shape exclusion, applied as a
 /// defense-in-depth guard before the value ever reaches `docker rm -f` argv (review,
-/// 2026-10-26; chunk 10 \[1] and \[4], 2026-10-27). Lives here — not in the adapter —
+/// 2026-10-26, defense scoped 2026-10-27). Lives here — not in the adapter —
 /// because the spawn path (`NinferAdapter::spec`), the spawn-time pre-reap through
 /// [`ContainerClaims::claim`], and the boot reclaim decision must all validate through
 /// this one function, so no reaping path can accept a name another one refuses.
@@ -80,7 +81,7 @@ pub const SKIP_INVALID_NAME: &str =
 pub const SKIP_UNCLAIMED: &str = "no harness spawn claim on record for this name";
 
 /// The boot-reclaim rule, evaluated once per catalog-declared container name. Firing
-/// requires all three gates (chunk 10 \[1], operator policy 2026-10-27): (a) the
+/// requires all three gates (operator policy 2026-10-27): (a) the
 /// declaring model runs on the ninfer engine, (b) the name passes the very validation
 /// the spawn path applies — docker-legal and not a container-ID shape, through
 /// [`valid_container_name`] — and (c) [`ContainerClaims`] positively records that this
@@ -225,7 +226,7 @@ pub enum ResourceKind {
     ChildProcess,
     /// A docker container started through the operator's WSL scripts. The label
     /// is the reap authority: the runtime removes exactly this name on release
-    /// and reconciles it pre-spawn (Step 8 D, ninfer port 2026-10-26).
+    /// and reconciles it pre-spawn (ninfer port policy, 2026-10-26).
     Container { name: String },
 }
 
@@ -319,7 +320,7 @@ mod tests {
 
     #[test]
     fn boot_reap_skips_a_container_it_never_claimed() {
-        // The chunk-10 [1] defect: a hand-started container whose name happens to sit
+        // The ownership defect: a hand-started container whose name happens to sit
         // in some yaml must NEVER be destroyed. Absence of a claim is absence of
         // permission.
         assert_eq!(
@@ -347,7 +348,7 @@ mod tests {
 
     #[test]
     fn boot_reap_skips_a_name_the_spawn_path_would_refuse() {
-        // The same validation the spawn path applies (chunk 10 [1] gate b): an
+        // The same validation the spawn path applies: an
         // illegal shape cannot slip through boot even if a claim existed.
         for name in ["", "-v", "_x", "a b", "1234abc; rm -rf /"] {
             assert_eq!(
@@ -362,7 +363,7 @@ mod tests {
 
     #[test]
     fn boot_reap_skips_a_name_docker_would_resolve_as_a_container_id() {
-        // Chunk 10 [4]: `docker rm -f 1234abc` deletes whichever *unrelated* container's
+        // The ID-prefix rule: `docker rm -f 1234abc` deletes whichever *unrelated* container's
         // id merely starts with those characters, so an ID-shaped name is refused by the
         // one rule the spawn path and the reclaim share. A short hex string stays legal:
         // docker only attempts id-prefix resolution from `MIN_ID_PREFIX_LEN` up, and the

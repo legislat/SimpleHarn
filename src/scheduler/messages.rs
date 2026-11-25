@@ -1,7 +1,7 @@
 //! The wire half: the mailbox vocabulary, the step-result events, and the three
 //! release guards. Pure data plus Drop: the only reach is the channel send.
 //!
-//! Owns the release-per-exit rule (R9 C1, R5): each guard is
+//! Owns the release-per-exit rule: each guard is
 //! the sole sender of its `*Done` answer, so every exit of a spawned task lands
 //! exactly one release message and an in-flight mark can never wedge.
 
@@ -15,7 +15,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::{Command, DriftStats, JobId, MeasuredData, SchedulerStatus, Waiter};
 
-/// Releases a detached failed-launch snapshot's in-flight mark on drop (R9 C1):
+/// Releases a detached failed-launch snapshot's in-flight mark on drop:
 /// constructed inside the spawned fetch, dropped by every exit path (normal end,
 /// early return, panic unwind), so a wedged mark can never permanently blind the
 /// next failure of the same container name.
@@ -30,7 +30,7 @@ impl Drop for SnapshotRelease {
     }
 }
 
-/// R5 reconcile release: every exit of the probe task — normal end, panic,
+/// Reconcile release: every exit of the probe task — normal end, panic,
 /// cancellation — lands exactly one [`ActorMsg::ReconcileDone`], so the
 /// in-flight mark can never wedge. An outcome the probe never filled reports
 /// as a failed probe (silence), never as an empty set.
@@ -116,7 +116,7 @@ pub(super) enum ActorMsg {
         total_gib: f64,
         used_gib: f64,
     },
-    /// The container's own startup `MemorySummary` figure (R9): one shot per launch,
+    /// The container's own startup `MemorySummary` figure: one shot per launch,
     /// fetched from `docker logs` at readiness. The reserved footprint is static for
     /// the life of the engine, so it fixes the range outright instead of folding.
     MeasuredEngineReport {
@@ -153,10 +153,10 @@ pub(super) enum ActorMsg {
         ram_gib: crate::budget::Gibibytes,
         attribution: crate::model::MeasuredAttribution,
     },
-    /// A detached failed-launch log snapshot (R9 C1) has finished; release its
+    /// A detached failed-launch log snapshot has finished; release its
     /// in-flight mark so a later failure of the same container name re-snapshots.
     SnapshotDone(String),
-    /// An R5 report-only reconcile probe has finished. `Some` = docker answered
+    /// A report-only reconcile probe has finished. `Some` = docker answered
     /// with the stranded set (possibly empty); `None` = the probe could not run
     /// — silence, and the last-reported set stands untouched.
     ReconcileDone(Option<BTreeSet<String>>),
@@ -170,11 +170,11 @@ pub(super) enum ActorMsg {
         generation: u64,
         discovered: Option<String>,
     },
-    /// The R11 fit version probe finished (warm pass and every fit admit lead
+    /// The fit version probe finished (warm pass and every fit admit lead
     /// with it): `Some` = the calculator's version line, `None` = the tool did
     /// not answer and the fit pass stays silent. `gen` is the catalog epoch the
     /// probe was born in — a stale epoch's answer is dropped at the door.
-    /// `program` (FR-13) is the fit tool the answer describes — a version
+    /// `program` is the fit tool the answer describes — a version
     /// belongs to one calculator, so it voids that tool's cache, not every
     /// tool's.
     FitVersionDone {
@@ -182,10 +182,10 @@ pub(super) enum ActorMsg {
         program: PathBuf,
         version: Option<String>,
     },
-    /// An R11 fit row probe finished: `Ok` = (booked GiB, the model file's
+    /// A fit row probe finished: `Ok` = (booked GiB, the model file's
     /// fingerprint at computation); `Err` = why (warn + ladder, never a
     /// fabricated figure). `key` is the probe argv hash the figure was computed
-    /// for and `program` (FR-13) the tool that computed it — together they are
+    /// for and `program` the tool that computed it — together they are
     /// the cache identity (a figure belongs to the calculator that minted it).
     FitRowDone {
         gen: u64,

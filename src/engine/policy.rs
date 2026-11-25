@@ -1,4 +1,4 @@
-//! The `EnginePolicy` table (DESIGN §20-9, Fork C; chunk 10 slice 10a).
+//! The `EnginePolicy` table: one data row per engine, the single decision owner.
 //!
 //! Doctrine: *"external engines obey only harness-owned configuration"*. This is
 //! the single-source, compiled-in data table behind the L1/L2/L3 layering — one
@@ -11,13 +11,13 @@
 //! degenerate case (a hostile L1 renders to a refusal, so its words can never
 //! appear in L3).
 //!
-//! Cell rule (10a): a cell exists only where a real row populates it AND a
+//! Cell rule: a cell exists only where a real row populates it AND a
 //! reader consumes it — `serve_template` for ninfer, the name-refused
-//! `forbidden_words` for llama (open, policy-filtered `extra_args` passthrough
-//! per the 2026-11-15 gate ruling) and for ninfer, `path_markers` for the
+//! `forbidden_words` for llama (open, policy-filtered `extra_args` passthrough)
+//! and for ninfer, `path_markers` for the
 //! runtime's early-exit diagnosis, `custody_data_roots` for the ninfer key
 //! file. Cells
-//! the §20-9 ruling listed but today's code holds no per-engine fact for
+//! the table ruling listed but today's code holds no per-engine fact for
 //! (`stop_grace`, `cost_default`) are absent, not stubbed. The custody
 //! enforcement the later slices owe (config wiring, strata sidecar, root
 //! admission) lands on the populated custody cells without moving the data.
@@ -36,7 +36,7 @@ pub(crate) const NINFER_STAGED_SCRIPTS_ROOT: &str = ".simpleharn/autostart";
 /// `cat`s this file into `--api-key`, so an arbitrary path would let a yaml
 /// export any distro secret (`.ssh/id_rsa`) into `docker run` argv — the key
 /// lives in exactly one custody root, `<root>/<file>.key`, with `<file>` a
-/// single bare word (chunk-10 custody doctrine: engines obey only
+/// single bare word (custody doctrine: engines obey only
 /// harness-owned locations).
 pub(crate) const NINFER_KEYS_ROOT: &str = "$HOME/.simpleharn/keys";
 
@@ -74,7 +74,7 @@ pub(crate) const MAYA_RENDERED_PROFILES_ROOT: &str = ".simpleharn/maya-profiles"
 pub(crate) const XOLOTL_RENDERED_PROFILES_ROOT: &str = ".simpleharn/xolotl-profiles";
 
 /// The RECOMMENDED surface of `extra_args` option words for llama — recorded,
-/// no longer the gate. Since the 2026-11-15 gate ruling
+/// no longer the gate. Since the gate ruling
 /// ("ideally we should never need to hotfix an adapter"; a documented knob
 /// blocked by policy is the HIGH-defect class), `extra_args` is an open,
 /// policy-filtered passthrough ([`crate::engine::llama`]): every option token
@@ -115,7 +115,7 @@ pub(crate) const LLAMA_EXTRA_ARGS: &[(&str, usize)] = &[
 ];
 
 /// The llama `extra_args` words that must never reach the argv — the reviewed
-/// record that filters the open passthrough (2026-11-15 gate ruling: the
+/// record that filters the open passthrough (the
 /// mechanism is this name match, not absence from a closed list). A token
 /// fails when it names one of these words exactly, or is a strict
 /// prefix-abbreviation of one (a defense-in-depth refusal; the pinned llama.cpp
@@ -286,7 +286,7 @@ pub(crate) const NINFER_FORBIDDEN_SERVE_FLAGS: &[&str] = &[
 ];
 
 /// Which harness mechanism owns each flag a refused `ninfer_serve_args` word
-/// names (slice 10c): the refusal must tell the operator where the decision
+/// names: the refusal must tell the operator where the decision
 /// actually lives, not only that the word is refused. One entry per
 /// [`NINFER_FORBIDDEN_SERVE_FLAGS`] member (the table test fails on drift);
 /// abbreviation matches resolve through the same table, so `--max-cont` names
@@ -348,7 +348,7 @@ pub(crate) const NINFER_SERVE_ARG_OWNERS: &[(&str, &str)] = &[
 /// parsers resolve prefixes, so `--max-cont` is `--max-context` to the engine).
 /// The other direction — a token that *extends* a reserved name — is not a
 /// collision: the engine defines the longer option, and refusing it was the
-/// documented-knob-needs-an-adapter-hotfix class the 2026-11-15 gate ruling
+/// documented-knob-needs-an-adapter-hotfix class the gate ruling
 /// calls a defect (`--host-context-mib` is not `--host` to any parser).
 /// `None` = the name is not harness-owned.
 #[must_use]
@@ -572,7 +572,7 @@ pub(crate) fn basalt_server_arg_owner(flag: &str) -> Option<&'static str> {
 }
 
 /// The harness mechanism that owns each decision a refused `extra_args` word
-/// moves (slice 10c): the refusal names the yaml key or forced line that owns
+/// moves: the refusal names the yaml key or forced line that owns
 /// it, so the operator edits the live key instead of fighting the forbidden
 /// record. One entry per [`LLAMA_FORBIDDEN_EXTRA_WORDS`] member (the table
 /// test fails on drift); a word the record does not name passes through and
@@ -844,7 +844,7 @@ pub(crate) fn llama_extra_arg_owner(word: &str) -> Option<&'static str> {
 }
 
 /// The yaml keys this engine's harness-side reads consume: the knob table the
-/// §20-9 Fork C scoping ruling ends with — the row that `OFFLOAD_ENGINES` was
+/// offload scoping ruling ends with — the row that `OFFLOAD_ENGINES` was
 /// the first cell of (2026-10-28) now owns the whole fact, siblings included.
 /// `cpu_offload` on a row without the knob warns via `InertKey` (published,
 /// never refused — ruling D stands); every other member of the table is scoped
@@ -868,7 +868,7 @@ const LLAMA_KNOBS: &[&str] = &[
     "fit",
     "fit_target",
     "fit_ctx",
-    // FR-13: the per-row binary override the adapter reads outside FLAG_TABLE
+    // The per-row binary override the adapter reads outside FLAG_TABLE
     // (the spec's argv[0], never an engine flag).
     "llama_server_exe",
 ];
@@ -965,7 +965,7 @@ pub(crate) fn knob_readers(key: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// Whether the row for `engine` may book from the R11 Fit projection (the
+/// Whether the row for `engine` may book from the Fit projection (the
 /// llama row's `supports_fit` cell is the single answer — the ladder and the
 /// warm queue ask this instead of matching engine ids). An unknown engine id
 /// (no row) is never fit-capable.
@@ -992,10 +992,10 @@ pub(crate) fn expert_offload_engine(engine: &str) -> bool {
 /// values; nothing here reads the network, the catalog, or the harness
 /// environment.
 ///
-/// The three properties the incident review demanded of every launch
-/// (`NINFER-8004-INCIDENT-2026-10-31`): `--restart no` (nothing revives on WSL
+/// The three properties the 2026-10-31 ninfer 8004 incident review demanded of every launch:
+/// `--restart no` (nothing revives on WSL
 /// boot without the harness deciding), loopback-only publish (the served port
-/// never leaves the machine's loopback interface, §5), and bounded container
+/// never leaves the machine's loopback interface), and bounded container
 /// logs (`json-file`; the size and count come from the config keys
 /// `ninfer_log_max_size_mib` and `ninfer_log_max_files`, defaults 25 MiB x 5 —
 /// a week of a serving engine never fills the distro). The pre-reap of our own
@@ -1089,13 +1089,13 @@ pub(crate) struct ForcedField {
 }
 
 /// The row's operator-extra-words surface: the yaml key the words ride and the
-/// row's own refusal voice. Slice 10c (full `extra_args` enforcement): the
+/// row's own refusal voice. Full `extra_args` enforcement: the
 /// scan now runs this check when it validates the file, so a hostile word
 /// refuses the file at rescan — naming the word and the mechanism that owns
 /// the decision — instead of waiting to fail at spawn, after admission may
 /// already have evicted a resident for the doomed launch. The adapter keeps
 /// running the same check at render (defense in depth: a hand-built entry
-/// meets it too), so the L3 guarantee the 10a acceptance test pins stands.
+/// meets it too), so the L3 guarantee the table acceptance test pins stands.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ExtraWordsContract {
     /// The yaml key carrying the operator's extra words.
@@ -1147,7 +1147,8 @@ impl HostPlatform {
     }
 }
 /// One engine's row: every compiled-in fact the harness owns about it. Rows
-/// carry only facts real code reads (10a cell rule); the §20-9 cells whose
+/// carry only facts real code reads (the table-cell rule); the DECISIONS §20-9
+/// cells whose
 /// per-engine fact does not exist in the code yet (`stop_grace`, a per-engine
 /// `cost_default`) are not stubbed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1165,12 +1166,12 @@ pub(crate) struct EnginePolicy {
     /// acceptance test, which proves each word absent from a rendered L3.
     pub forbidden_words: &'static [&'static str],
     /// The RECOMMENDED operator-extra surface: recorded, not the gate since
-    /// the 2026-11-15 gate ruling — enforcement lives in [`Self::forbidden_words`]
+    /// the gate ruling — enforcement lives in [`Self::forbidden_words`]
     /// (see [`LLAMA_EXTRA_ARGS`]). The table test pins the recommendation
     /// against self-contradiction; emptiness means no recommended surface.
     pub allow_words: &'static [(&'static str, usize)],
     /// The operator-extra-words surface the scan enforces at validate time
-    /// (slice 10c); `None` = the engine admits no operator word at all, so
+    /// at validate time; `None` = the engine admits no operator word at all, so
     /// there is nothing to refuse before render.
     pub extra_words: Option<ExtraWordsContract>,
     /// The yaml keys this engine's harness-side reads consume (the knob table;
@@ -1196,7 +1197,7 @@ pub(crate) struct EnginePolicy {
     /// when the config grows an engine-scoped key that joins neither a row nor
     /// the config-only list.
     pub config_knobs: &'static [&'static str],
-    /// Whether this engine has an R11 Fit cost class: its row is the only one
+    /// Whether this engine has a Fit cost class: its row is the only one
     /// whose launches may book from the `llama-fit-params` projection. The
     /// ladder and the scheduler ask this cell instead of matching engine names
     /// (row-scoped, no new match-arm sprawl).
@@ -1255,8 +1256,8 @@ static LLAMA_ROW: EnginePolicy = EnginePolicy {
     custody_exec_roots: &[],
     custody_data_roots: &[],
     serve_template: None,
-    // R11: the Fit probe switch and its calibration constants live in the
-    // harness config `engines:` section (slice 10d idiom), claimed here.
+    // The Fit probe switch and its calibration constants live in the
+    // harness config `engines:` section, claimed here.
     config_knobs: &[
         "llama_server_exe",
         "engines.llama.fit_probe",
@@ -1314,8 +1315,8 @@ static STRATA_ROW: EnginePolicy = EnginePolicy {
     // no longer a launch input at all.
     custody_data_roots: &[STRATA_RENDERED_PROFILES_ROOT],
     serve_template: None,
-    // The harness-side strata defaults live in the config `engines:` section
-    // (slice 10d); the dotted claims are the knob-parity test's pointers into
+    // The harness-side strata defaults live in the config `engines:` section;
+    // the dotted claims are the knob-parity test's pointers into
     // that section, which the test walks in a populated serialization.
     config_knobs: &["engines.strata.python", "engines.strata.cwd"],
     supports_fit: false,
@@ -1559,7 +1560,7 @@ pub(crate) fn path_markers() -> Vec<&'static str> {
 /// Renders the row's forced launch tokens for one slot assignment: each
 /// forced field's flag followed by its value (literal, slot port, or the
 /// operator path this engine inserts between forced pairs). The single code
-/// path the §20-9 ruling names for what the harness always writes.
+/// path the DECISIONS §20-9 ruling names for what the harness always writes.
 ///
 /// # Panics
 ///
@@ -1585,11 +1586,11 @@ pub(crate) fn render_forced(
     out
 }
 
-/// Which custody root class a path is admitted against (slice 10d): executed
+/// Which custody root class a path is admitted against: executed
 /// paths are programs and working directories the harness itself launches into;
 /// data paths are files the engine only reads at launch. The two classes are
 /// deliberately separate cells — a root admitted for one says nothing about the
-/// other (chunk 10 custody ruling 4).
+/// other (the custody ruling).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CustodyClass {
     /// Class (a): the executed-path roots.
@@ -1966,7 +1967,7 @@ mod tests {
             .expect("the canonical script carries the SERVE_ARGS line")
     }
 
-    /// The §20-9 acceptance rule: every `forbidden_words` entry is provably
+    /// The DECISIONS §20-9 acceptance rule: every `forbidden_words` entry is provably
     /// ABSENT from L3 even when present in hostile L1 input. Today every
     /// hostile attempt renders to a refusal (the scrub that refuses); the
     /// assertion is on the artifact, so a future change that ADMITS a forbidden
@@ -2101,8 +2102,8 @@ mod tests {
         // The full struct literals are the forcing function: a new
         // `EnginesConfig`/`StrataEngineConfig` field fails to compile here until
         // this test (and the row's claims) know it. `llama_server_exe` is set
-        // here because FR-13 made it skip-if-none: an unset option is the
-        // ABSENCE of the key, so a claimed plain key must be shown set.
+        // here because the row binary made it skip-if-none: an unset option is
+        // the ABSENCE of the key, so a claimed plain key must be shown set.
         let unset = serde_json::to_value(crate::config::AppConfig {
             wsl_user: Some("ops".to_string()),
             llama_server_exe: Some(std::path::PathBuf::from("D:/llama/llama-server.exe")),
@@ -2192,9 +2193,9 @@ mod tests {
         }
     }
 
-    /// Admission helper (slice 10d): an empty cell is open (ruling 5); a
+    /// Admission helper: an empty cell is open; a
     /// populated root admits at-or-under and refuses outside, at the component
-    /// boundary, and the two classes stay separate (ruling 4) — an exec root
+    /// boundary, and the two classes stay separate — an exec root
     /// never lets a data path through, or the other way.
     #[test]
     fn custody_admission_is_open_when_empty_and_per_class_when_populated() {
@@ -2248,7 +2249,7 @@ mod tests {
         ));
     }
 
-    /// A refusal must teach (slice 10c doctrine applied to custody): the key,
+    /// A refusal must teach (the refusal doctrine applied to custody): the key,
     /// the offending path and the row's roots are all in the sentence; an open
     /// cell refuses nothing.
     #[test]
@@ -2296,7 +2297,7 @@ mod tests {
         }
     }
 
-    /// Custody (slice 10b): the strata and xolotl launches ride the harness
+    /// Custody: the strata and xolotl launches ride the harness
     /// custody sidecar — the runtime records exactly what the spec declares.
     /// (Basalt and maya stage 1 rode the job object alone; their custody
     /// claims land in their own slices.) Ninfer's evidence is the container
@@ -2377,10 +2378,10 @@ mod tests {
         );
     }
 
-    /// The knob table (slice 10c generalization of the `cpu_offload` scoping
-    /// ruling): the llama row owns exactly `FLAG_TABLE` plus the four keys the
+    /// The knob table (the generalization of the `cpu_offload` scoping rule):
+    /// the llama row owns exactly `FLAG_TABLE` plus the four keys the
     /// adapter reads outside it (`cpu_offload`, `jinja`, `extra_args`, and the
-    /// FR-13 row binary `llama_server_exe`) — a new
+    /// row binary `llama_server_exe`) — a new
     /// flag-table key or a new adapter read must join the row, and
     /// `cpu_offload` answers to the llama row alone (the fact
     /// `OFFLOAD_ENGINES` used to hold). Falsifier: dropping a knob from the row
@@ -2428,7 +2429,7 @@ mod tests {
         }
     }
 
-    /// Full `extra_args` enforcement (slice 10c): the scan-facing contract
+    /// Full `extra_args` enforcement: the scan-facing contract
     /// exists exactly on the rows that admit operator words, each on its own
     /// key — and it refuses the same words the render refuses, so the file
     /// dies at rescan rather than at spawn.
@@ -2459,7 +2460,8 @@ mod tests {
     }
 
     /// Every refused word's refusal must be able to name the owning mechanism
-    /// (slice 10c): the owner tables cover the reviewed forbidden records
+    /// (the refusal doctrine): the owner tables cover the reviewed forbidden
+    /// records
     /// exactly — a forbidden word without an owner sentence is a refusal that
     /// cannot teach, and the scan's hostile word would say only "not allowed".
     #[test]
@@ -2487,7 +2489,7 @@ mod tests {
         let abbreviated = forbidden_serve_flag("--max-cont").expect("--max-cont is --max-context");
         assert!(ninfer_serve_arg_owner(abbreviated).is_some());
         assert_eq!(forbidden_serve_flag("--spec"), None);
-        // The extension direction does not refuse (2026-11-15 ruling): a
+        // The extension direction does not refuse: a
         // longer engine option is a different knob, and the matcher must keep
         // the exact-and-abbreviation directions only.
         assert_eq!(
@@ -2544,7 +2546,7 @@ mod tests {
         }
     }
 
-    /// R2/BS-03: the deny-list test above iterates the list itself, so deleting
+    /// The deny-list test above iterates the list itself, so deleting
     /// a member would keep it green. This independent pin names every upstream
     /// `serve.server` option; removing one from the production list, or letting
     /// one past the extra-args check, turns this RED.

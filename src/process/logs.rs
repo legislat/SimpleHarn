@@ -1,5 +1,5 @@
 //! The log-file half of process supervision: where `logs/` lives, the three
-//! log classes, and the per-model and harness-boot-log retention pruners (R9).
+//! log classes, and the per-model and harness-boot-log retention pruners.
 
 use std::path::PathBuf;
 
@@ -63,7 +63,7 @@ fn prune_matching(
     }
 }
 
-/// Whether a path is one of the R9 container-log snapshots (`<model>-<epoch>.container.log`),
+/// Whether a path is one of the container-log snapshots (`<model>-<epoch>.container.log`),
 /// as opposed to a client capture (`<model>-<epoch>.log`).
 fn is_container_log(path: &std::path::Path) -> bool {
     path.file_name()
@@ -72,7 +72,7 @@ fn is_container_log(path: &std::path::Path) -> bool {
         && !is_harness_log(path)
 }
 
-/// Per-model forensic retention (R9): keep the newest `keep` client captures **and**
+/// Per-model forensic retention: keep the newest `keep` client captures **and**
 /// the newest `keep` container snapshots for one model, deleting the older ones of
 /// each class. Scoped to one model so a swap-heavy model can never evict another
 /// model's forensic log — the defect of the old global budget. The scope is the exact

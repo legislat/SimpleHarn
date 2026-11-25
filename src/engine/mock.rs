@@ -1,4 +1,4 @@
-//! The mock engine adapter (DESIGN Step 19): everything in Steps 2-8 is testable
+//! The mock engine adapter: everything the launch paths do is testable
 //! without touching the 72 GB card.
 //!
 //! Test-facing only. Production boot registers this adapter in the scheduler's map solely

@@ -142,12 +142,12 @@ pub(super) async fn render_status_document(state: &ApiState, scheduler: &Schedul
         // invalid field (§0.2 step 1), so a served document starts empty and the
         // write-back validator is the only producer.
         "config_errors": state.config_errors(),
-        // FR-15: unsafe-but-legal postures the operator should see on the page —
+        // Unsafe-but-legal postures the operator should see on the page —
         // cached derivation only, never a stat or a gate.
         "config_warnings": state.config.config_warnings(state.requires_token()),
     });
-    // R5 report-only reconcile (ruling 9): the stranded-container names the
-    // reconcile warned about ride the SAME snapshot, so the page and the log can
+    // The report-only reconcile's stranded-container names it warned about ride
+    // the SAME snapshot, so the page and the log can
     // never disagree. Absent — not empty, not null — whenever nothing is
     // reported: the snapshot already normalizes an empty set to `None`.
     if let Some(names) = scheduler
@@ -242,7 +242,7 @@ pub(super) fn model_json(
         "measured_offload": entry.measured_offload,
         // Which figure admission actually books, stated by the gate's own decision
         // (one derivation; the page renders this and never re-computes the
-        // precedence — the duplication-review rule made visible for R9). On a
+        // precedence — the anti-duplication rule made visible). On a
         // CPU-resident row the figure the gate books is RAM, so the answer
         // names the RAM rung (`declared` | `measured` | `estimate` — the same
         // vocabulary, the resource's own ladder).
@@ -256,7 +256,7 @@ pub(super) fn model_json(
                 crate::model::CostSource::Undeclared => "undeclared",
             },
         },
-        // R9/R1: whose number the measured pair is. The page shows it and admits
+        // Whose number the measured pair is. The page shows it and admits
         // nothing from it — only a `cost_basis: "measured"` row ever renders a
         // provenance tag, which a `total_diff` can never become (it never books),
         // so the token alone is display context, never a booking claim.
@@ -304,13 +304,13 @@ pub(super) fn model_json(
         }
         body["ram_source"] = json!(basis.source());
     }
-    // R11: the Fit projection rides the payload only when it exists — a key
+    // The Fit projection rides the payload only when it exists — a key
     // that is absent is not a key that is null (not-probed is a state), and a
     // fixture row that has never been probed keeps its byte-identical shape.
     if let Some(fit) = entry.fit_gb {
         body["fit_gb"] = json!(fit);
     }
-    // R11 session cross-check: `fit_validated` appears ONLY while the verdict
+    // Session cross-check: `fit_validated` appears ONLY while the verdict
     // stands — absent, never null, never `false` (an unvalidated row's document
     // is byte-identical to a never-checkable one, the same absent-is-not-null
     // rule as `fit_gb`; the fixture-parity pin rides it). The gate answers the
@@ -358,7 +358,7 @@ pub(super) async fn merged_state(state: &ApiState) -> Result<Value, ApiError> {
     Ok(document)
 }
 
-/// The R9 sum for the memory bar: what the running containers said they reserve,
+/// The sum for the memory bar: what the running containers said they reserve,
 /// summed over the loaded occupants' per-slot `engine_report` figures only (the
 /// scheduler snapshot carries each container's own report, so `/har/status` and the
 /// SSE push derive the identical number — threading it only
@@ -430,13 +430,13 @@ async fn mem_section(state: &ApiState, scheduler: &crate::scheduler::SchedulerSt
                 // answered with no usable per-process figures at all (WDDM
                 // degradation): absence, never a fake 0.0 GiB.
                 "attributed_gb": (attributed > 0.0).then_some(attributed),
-                // R1: the witness's own answer to "could per-process bytes be
+                // The witness's own answer to "could per-process bytes be
                 // obtained" — the page's label must come from the witness, never
                 // inferred from whether a number happened to be present (an idle
                 // card legitimately has `attributed_gb: null` and `per_process`
                 // capability at the same time).
                 "attribution": sample.attribution.as_str(),
-                // R9: what the loaded containers said they reserved, summed over
+                // What the loaded containers said they reserved, summed over
                 // the currently loaded models' `engine_report` figures only —
                 // `null` when no loaded model has a self-report. Display and
                 // cross-check against `observed_used_gb`; never a gate input.
@@ -460,7 +460,7 @@ async fn mem_section(state: &ApiState, scheduler: &crate::scheduler::SchedulerSt
     // CPU residents debit (the SAME figures the slot rows carry, so bar and rows
     // cannot quote two numbers), the RAM reserve the gate subtracts before
     // comparing, and the live host reading. `booked_ram_gb` counts installed RAM
-    // residents whose booking their catalog row still proves (W3-01: a resident
+    // residents whose booking their catalog row still proves (a resident
     // the row cannot prove carries no figure on either side) —
     // the RAM twin of `container_reported_gb`'s loaded-sum rule; a GPU row's host
     // RAM rides `ram_used_gb` and never a ledger.

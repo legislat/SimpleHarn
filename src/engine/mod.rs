@@ -1,4 +1,4 @@
-//! Engine adapters and launch specs (DESIGN Step 7 — data-first, code as escape hatch).
+//! Engine adapters and launch specs: data-first, code as the escape hatch.
 //!
 //! The primary artifact is an engine *template* resolved from data; the trait stays
 //! because the mock engine in tests is exactly such an adapter. `LaunchSpec` must be
@@ -123,7 +123,7 @@ pub struct LaunchSpec {
     pub readiness: ReadinessSpec,
     /// Detached WSL container backing this engine (ninfer): the job object kills
     /// only the `wsl.exe` client, so the runtime must additionally `docker rm -f`
-    /// this name (Step 8 extension, 2026-10-26). `None` for process engines.
+    /// this name (container teardown extension, 2026-10-26). `None` for process engines.
     pub container: Option<String>,
     /// A shell script the runtime must stage into the distro and run **instead of**
     /// the script named in argv (template adoption): the
@@ -146,7 +146,7 @@ pub struct LaunchSpec {
     /// spawning. `None` for every other engine.
     pub rendered_profile: Option<RenderedProfile>,
     /// The engine id when this launch must be recorded in the harness custody
-    /// sidecar (chunk 10 slice 10b): the runtime writes the started child's
+    /// sidecar: the runtime writes the started child's
     /// pid + start-time token + slot port + instance name (the model, as
     /// `log_name`) to [`crate::custody::CustodyLedger`] the moment the client
     /// really started, and clears the entry on confirmed release. `None` =
@@ -392,11 +392,11 @@ pub struct Spawned {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MeasurementSource {
     /// The engine's own `/metrics` engine block answered with a footprint
-    /// figure (the 2026-11-04 capture: `/status` is liveness only and
+    /// figure (`/status` is liveness only and
     /// `/v1/status` reports none): the engine speaking about itself, the
     /// process-engine analog of ninfer's `engine_report`. It books as
-    /// `EngineReport`-class trust above the declared floor (the
-    /// 2026-11-04 ruling extends the amended-15(ii) max truth to it).
+    /// `EngineReport`-class trust above the declared floor (the amended
+    /// max truth extends to it).
     EngineStatus,
     /// The metrics endpoint refused, and the witness attributed concrete
     /// bytes to the engine pid plus all its descendants (Toolhelp32 walk:
@@ -432,9 +432,9 @@ pub(crate) struct EngineMeasurement {
     /// The GPU footprint in GiB as the source stated it.
     pub gpu_gib: f64,
     /// The RAM footprint in GiB where the engine states one. No booking path
-    /// reads it in phase 1: the contract carries it now so the phase 2/3
-    /// parsers can hand it over without a new type.
-    #[allow(dead_code)] // read when the RAM booking path lands (phase 4)
+    /// reads it yet: the contract carries it now so the later RAM parsers
+    /// can hand it over without a new type.
+    #[allow(dead_code)] // read when the RAM booking path lands
     pub ram_gib: Option<f64>,
     /// Which source produced `gpu_gib` — the provenance the fold stamps
     /// (doctrine 12).
@@ -490,7 +490,7 @@ pub trait EngineRuntime: Send + Sync {
     /// back to the harness name.
     async fn discover_model_id(&self, port: u16) -> Option<String>;
 
-    /// The raw `docker logs <container>` text for a container-backed engine (R9), so
+    /// The raw `docker logs <container>` text for a container-backed engine, so
     /// the engine-specific parser can read the startup `MemorySummary` that never
     /// reaches the harness-captured client log. Generic passthrough (no engine
     /// knowledge here); `None` when the container cannot be reached or this runtime
@@ -500,19 +500,19 @@ pub trait EngineRuntime: Send + Sync {
         None
     }
 
-    /// Ruling 1(b) evidence-only diagnosis: when readiness of a container-backed
-    /// engine failed, where does `docker` actually publish the container? The
+    /// Evidence-only diagnosis for a failed container readiness: where does
+    /// `docker` actually publish the container? The
     /// "up but published on another port" leg the port-probing probe cannot see
     /// for itself. `None` means nothing to report: this runtime backs nothing
     /// with a container, the container is not this harness's to address, docker
     /// did not answer, or the offered port is among the mappings (the script
     /// honored the `$3` contract). Never a gate — the verdict stays the probe's
-    /// (chunk 10 ruling: evidence, not enforcement).
+    /// (evidence, not enforcement).
     async fn published_elsewhere(&self, _container: &str, _offered: u16) -> Option<String> {
         None
     }
 
-    /// R5 report-only reconcile (ruling 9, 2026-11-01): which of the container
+    /// Report-only stranded reconcile: which of the container
     /// names the catalog declares as `ninfer_container` are *running* in the
     /// container engine right now while the harness's claim ledger records no
     /// claim for them? Such a container strands its VRAM — the ownership-scoped
@@ -527,11 +527,11 @@ pub trait EngineRuntime: Send + Sync {
     }
 
     /// Persist a fetched container log to `logs/<model>-<epoch>.container.log` for
-    /// forensic survival of the next `docker rm -f` (R9), pruning that model's
+    /// forensic survival of the next `docker rm -f`, pruning that model's
     /// container logs to the keep-N. No-op by default (mocks, non-container runtimes).
     async fn save_container_log(&self, _model: &str, _text: &str) {}
 
-    /// R11 Fit seam: run ONE harness-internal probe command — the config's
+    /// Fit seam: run ONE harness-internal probe command — the config's
     /// sibling `llama-fit-params.exe` with a printed projection or `--version`
     /// — and return its stdout, `None` for any failure (spawn refused,
     /// non-zero exit, timeout: the caller warns and falls down the ladder,
@@ -592,7 +592,7 @@ pub trait EngineRuntime: Send + Sync {
 /// resident model untouched. Lives here, not in `main`, so the gate has a test.
 ///
 /// Infallible: every adapter is constructed from already-validated config values,
-/// and no registry check can reject one today. When chunk 10's `EnginePolicy`
+/// and no registry check can reject one today. When the `EnginePolicy`
 /// validation can reject a config-referenced binary, that is the day this signature
 /// gains a `Result` — until then a documented `# Errors` section would describe a
 /// return type this function does not have.
@@ -915,7 +915,7 @@ mod tests {
             None,
             "the dead `context` row key is never a maya display fallback"
         );
-        // FR-08: the carry is the scan-derived config figure, and it is maya's
+        // The carry is the scan-derived config figure, and it is maya's
         // alone — a foreign row never displays it.
         assert_eq!(
             effective_context(&entry("maya", &[("maya_max_context", "131072")])).as_deref(),

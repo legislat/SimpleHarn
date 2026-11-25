@@ -11,7 +11,7 @@
 //!
 //! The rendered profile lives in the harness's own root beside the custody
 //! sidecar (content-addressed name, atomic write, keep-N prune — the runtime
-//! stages it and rewrites `--config` to exactly that path, chunk 10 custody
+//! stages it and rewrites `--config` to exactly that path, the custody
 //! doctrine: engines obey only harness-owned locations). `host`, `port` and key
 //! fields are absent by construction — the bind is the forced loopback
 //! `--host` argv and the port the forced `--port` (server.py resolves both
@@ -42,7 +42,7 @@ use std::path::{Path, PathBuf};
 
 /// Fallback interpreter when a yaml omits `strata_python:` (the main install's
 /// terminal-layout default). The single home of the harness-side defaults is the
-/// config `engines:` section (slice 10d), resolved through
+/// config `engines:` section, resolved through
 /// [`crate::config::AppConfig::strata_python`] into the adapter at
 /// `default_adapters` boot time.
 const DEFAULT_PYTHON: &str = crate::config::STRATA_PYTHON_DEFAULT;
@@ -54,7 +54,7 @@ const DEFAULT_CWD: &str = crate::config::STRATA_CWD_DEFAULT;
 /// Per `DECISIONS` LOCKED "external engines obey only
 /// harness-owned configuration": the bind, the port and the key are forced
 /// from the harness side and are **never obeyed from engine-side files**
-/// (slice 10c enforcement; a docs fix recorded the ruling, this is the
+/// (the enforcement rule; a docs fix recorded it, this is the
 /// refusal). Each entry names the mechanism that owns the decision so the
 /// refusal can teach, not just deny.
 const PROFILE_POLICY_FIELDS: &[(&str, &str)] = &[
@@ -71,7 +71,7 @@ const PROFILE_POLICY_FIELDS: &[(&str, &str)] = &[
 ];
 
 /// The refusal sentence for a profile that claims one or more harness-forced
-/// fields (slice 10c): every claim is named at once, with the mechanism that
+/// fields: every claim is named at once, with the mechanism that
 /// owns it, so the operator's cleanup pass is one edit round, not one refusal
 /// per field. Shared by the scan report and the spawn refusal — the same file
 /// is refused the same way at both doors, and the engine is never silently
@@ -631,7 +631,7 @@ fn uncensored_switch(
 }
 
 /// The profile keys `strata_profile_extra` may never carry, each with the
-/// mechanism that owns it (the slice 10c refusal voice). Three families: the
+/// mechanism that owns it (the refusal voice). Three families: the
 /// harness-forced fields the renderer structurally keeps out (bind, port, key
 /// material, residency, origin policy), the typed keys the row already owns
 /// under its own name (the extra map must not smuggle a second, unchecked
@@ -1023,8 +1023,8 @@ impl EngineAdapter for StrataAdapter {
         };
         let row = super::policy::engine_policy("strata")
             .expect("the compiled-in table ships a strata row");
-        // One profile source, gated before anything else (operator ruling
-        // 2026-11-02 row 19): `strata_exe` selects the harness render, and the
+        // One profile source, gated before anything else (DECISIONS.md row 19):
+        // `strata_exe` selects the harness render, and the
         // external `strata_config` mode is SUPERSEDED — a row still declaring
         // it meets the migration sentence, not a launch. The argv placeholder
         // below is a harness-minted file name, and the runtime rewrites it to
@@ -1047,7 +1047,7 @@ impl EngineAdapter for StrataAdapter {
         // start whatever path happens to exist: an existing FILE (on Windows its
         // name must end in `.exe`), matching how the llama adapter refuses a
         // missing binary.
-        // Location custody (the row's executed-path roots, §20-9 Fork C) rides on
+        // Location custody (the row's executed-path roots, Fork C) rides on
         // top of this shape floor in the `admit_custody_path` call below: while
         // the cells are open it admits everything (ruling 5), and it will enforce
         // unchanged once a later copy-in slice populates them. The shape rule
@@ -1146,7 +1146,7 @@ impl EngineAdapter for StrataAdapter {
             }),
             // The strata router outlives nothing but its own job object unless the
             // harness records it: every strata launch rides the custody sidecar
-            // (chunk 10 slice 10b) so a crashed run's orphan is provably ours to
+            // so a crashed run's orphan is provably ours to
             // reap at the next boot, purely from the harness's own record.
             custody: Some("strata".to_string()),
         })
@@ -1159,7 +1159,7 @@ impl EngineAdapter for StrataAdapter {
 /// witness-based process-tree sum over the engine's full descendant tree
 /// (doctrine 4).
 ///
-/// The capture retired the phase-3 path: `GET /status` is liveness only
+/// The capture retired the old status path: `GET /status` is liveness only
 /// (`{"busy": false, "queued": 0}`) and `GET /v1/status` carries no
 /// `engine.info.vram` — its `vram` object is `{"elastic": true}` and its
 /// `machine.gpu` figures are card-wide reads, not the engine's footprint.
@@ -1185,7 +1185,7 @@ impl EngineAdapter for StrataAdapter {
 /// `--vram-elastic` gates nothing here: this function sees only the response
 /// body, and the reported figure states the components the engine itemizes
 /// whatever the launch argv spells. The flag decides how the footprint
-/// **moves** after this reading (phase 4's hysteresis), not what the figure
+/// **moves** after this reading (the elastic hysteresis), not what the figure
 /// means.
 ///
 /// Refusal is always `None`: an error envelope (a top-level `error`), an
@@ -1968,7 +1968,7 @@ mod tests {
         serde_json::from_str(CAPTURED_METRICS).expect("the captured body parses")
     }
 
-    /// Phase-5 pin (capture): the real captured `/metrics` body books the
+    /// Capture pin: the real captured `/metrics` body books the
     /// captured component sum — `(59832 + 1536 + 0) / 1024` GiB = 59.9 GiB —
     /// and the sum stays the documented LOWER BOUND: below the 67.8 declared
     /// row and below the 69.75 GiB measured hold, so the declared floor keeps
@@ -2006,7 +2006,7 @@ mod tests {
         );
     }
 
-    /// Phase-5 pin: the shipped phase-3 routes answer nothing. The real
+    /// Pin: the shipped engine's routes answer nothing. The real
     /// `/status` body is liveness only, the real `/v1/status` body has no
     /// footprint member (its `engine` member is the version STRING, which
     /// the pointer refuses as a non-object), and the real `/v1/vram` reply
@@ -2030,7 +2030,7 @@ mod tests {
         }
     }
 
-    /// Phase-5 chain pin on the captured body: fake axum server serving the
+    /// Chain pin on the captured body: fake axum server serving the
     /// capture at `/metrics`, the runtime's generic GET, then this parse —
     /// the route the sampler's path map now reads for strata.
     #[tokio::test]
@@ -2071,7 +2071,7 @@ mod tests {
         assert_eq!(measurement.ram_gib, None, "no RAM figure in this body");
     }
 
-    /// Phase-5 pin: the engine's error envelope is absence, even when it
+    /// Pin: the engine's error envelope is absence, even when it
     /// rides next to figures that would otherwise parse — a refusal voice
     /// never doubles as a footprint (poisoned over the REAL captured body).
     #[test]
@@ -2107,7 +2107,7 @@ mod tests {
 
     /// Absence pins for the shapes around the metrics block: empty roots, a
     /// null or absent engine, the `/v1/status` engine-as-version-string, and
-    /// the DEAD phase-3 path (the shipped `info.vram` triple answers nothing
+    /// the DEAD old status path (the shipped `info.vram` triple answers nothing
     /// now) — the sampler keeps its fallback legs, never a zero-booked
     /// footprint.
     #[test]
@@ -2174,7 +2174,7 @@ mod tests {
 
     /// Each member is finite, yet astronomical ones can sum past
     /// `f64::MAX` — the derived figure's own finiteness is the last gate, so
-    /// a giant never reaches the actor as `+inf` (the phase-2 review gate,
+    /// a giant never reaches the actor as `+inf` (the review gate,
     /// now pinned against the three-way sum).
     #[test]
     fn finite_members_that_would_sum_to_infinity_answer_none() {

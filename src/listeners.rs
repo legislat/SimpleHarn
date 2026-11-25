@@ -1,4 +1,4 @@
-//! Listener health registry (DESIGN §0.2 failure contract, §15 red/amber states).
+//! Listener health registry: the failure contract and the red/amber states.
 //!
 //! "Partial availability beats a dead process": a listener that cannot bind (something
 //! else holds the port) or that died and cannot be restarted marks its category

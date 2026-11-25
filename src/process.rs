@@ -1,4 +1,4 @@
-//! Process supervision (DESIGN Step 8, LOCKED C+D, item 6 approved).
+//! Process supervision: Job Object containment plus provenance-verified kill.
 //!
 //! One Win32 Job Object per owned engine tree with
 //! `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: if the harness dies for any reason, the
@@ -123,7 +123,7 @@ use crate::platform::{descendant_pids_of, CREATE_NO_WINDOW};
 
 /// Poll pause between release-evidence checks inside the deadline.
 const RELEASE_POLL: Duration = Duration::from_millis(100);
-/// Per-model forensic retention (R9, operator 2026-10-31): the newest this many
+/// Per-model forensic retention: the newest this many
 /// launches' client captures **and** this many container snapshots survive, per model.
 /// Replaces the old global-50 budget, which let a swap-heavy model evict another
 /// model's forensic log — a failed launch's log must survive the second launch.
@@ -178,7 +178,7 @@ pub struct ProcessRuntime {
     /// Shared so every clone of the runtime reads and writes one claim ledger:
     /// the boot reclaim and the spawn/release paths cannot disagree.
     claims: Arc<Mutex<ContainerClaims>>,
-    /// The custody sidecar (slice 10b): recorded at spawn, cleared on
+    /// The custody sidecar: recorded at spawn, cleared on
     /// confirmed release, swept at boot — one shared record per process
     /// lifetime, the same single-authority rule as the claim ledger.
     custody: Arc<Mutex<CustodyLedger>>,
@@ -214,7 +214,7 @@ pub struct ProcessRuntime {
     /// (see [`ReapSeam`]).
     #[cfg(test)]
     reap_seam: Option<Arc<ReapSeam>>,
-    /// Test seam (R5): the R5 reconcile probe goes through this docker door
+    /// Test seam: the stranded-reconcile probe goes through this docker door
     /// instead of `wsl.exe`, so pins can script `docker ps` and read back the
     /// docker verbs the reconcile actually asked for — the vocabulary bound the
     /// report-only doctrine promises.
@@ -232,7 +232,7 @@ impl ProcessRuntime {
             // claimed at spawn, cleared on confirmed release, consulted at boot.
             claims: Arc::new(Mutex::new(ContainerClaims::load(container_claims_path()))),
             // One custody sidecar per process lifetime, same single-authority
-            // rule (slice 10b): recorded when a custodied launch really
+            // rule: recorded when a custodied launch really
             // started, cleared on confirmed release, swept at boot.
             custody: Arc::new(Mutex::new(CustodyLedger::load(strata_custody_path()))),
             // The platform seams: stateless unit implementations, shared as
@@ -335,7 +335,8 @@ impl ProcessRuntime {
         self
     }
 
-    /// Routes this runtime's R5 reconcile probe through a recorded docker seam
+    /// Routes this runtime's stranded-reconcile probe through a recorded docker
+    /// seam
     /// answering with `outcome` (`None` = docker cannot run). Test-only, the
     /// rule [`Self::with_claims_ledger`] states: pins must neither touch the
     /// operator's WSL nor their docker. The calls handle is shared, so the test
@@ -399,7 +400,7 @@ impl ProcessRuntime {
 
     /// Clears this launch's custody sidecar entry, token-guarded: `None` (the
     /// launch was never recorded) forgets nothing, and a foreign token can
-    /// never erase a later launch's record (slice 10b, engine `drop_record`
+    /// never erase a later launch's record (the engine `drop_record`
     /// rule). Used by the confirmed release.
     fn forget_custody(&self, pid: u32, token: Option<u64>) {
         if let Some(token) = token {
@@ -435,7 +436,7 @@ impl ProcessRuntime {
         reap_container(&self.wsl_distro, &self.wsl_user, name).await
     }
 
-    /// Boot reconcile (deploy review, 2026-10-26; scoped by chunk 10 \[1], 2026-10-27):
+    /// Boot reconcile (deploy review, 2026-10-26, scoped 2026-10-27):
     /// a container this harness started in an earlier lifetime survives a crash holding
     /// tens of GiB, and observed-VRAM admission then refuses every later load with no
     /// pointer to the culprit. A running container is destroyed only when
@@ -515,7 +516,7 @@ impl ProcessRuntime {
             .contains(name)
     }
 
-    /// Boot custody reconcile + orphan sweep (chunk 10 slice 10b, R8): for
+    /// Boot custody reconcile + orphan sweep: for
     /// each custody sidecar entry, act only on a process that provably matches
     /// the recorded identity (pid alive **and** start-time token equal); a
     /// non-matching entry is dropped as stale and whatever lives at that pid
@@ -536,7 +537,7 @@ impl ProcessRuntime {
         custody::reconcile(&ledger, &*crate::platform::custody_os(), grace).await
     }
 
-    /// Test-only read of the custody sidecar behind slice 10b's pins — all of
+    /// Test-only read of the custody sidecar behind the custody pins — all of
     /// which drive Windows-shaped stand-ins.
     #[cfg(all(test, windows))]
     fn custody_entries(&self) -> Vec<custody::CustodyEntry> {
@@ -768,7 +769,7 @@ impl EngineRuntime for ProcessRuntime {
                 .expect("container claim ledger lock")
                 .claim(name);
         }
-        // Custody (slice 10b): a custodied launch's identity enters the sidecar
+        // Custody: a custodied launch's identity enters the sidecar
         // only on the success path — after every spawn-failure return — so a
         // load the harness reports as failed never leaves evidence for the
         // boot sweep to act on. A child whose start time cannot be read records
@@ -1187,7 +1188,7 @@ impl EngineRuntime for ProcessRuntime {
             let claims = self.claims.lock().expect("container claim ledger lock");
             return Some(stranded_plan(&present, declared, &claims));
         }
-        // Blank coordinates never reach `wsl.exe` — and the R5 probe answers
+        // Blank coordinates never reach `wsl.exe` — and the stranded probe answers
         // them SILENTLY, unlike the boot reclaim's pointer line: report-only
         // doctrine, a failed probe is not a warning.
         if self.wsl_distro.trim().is_empty() || self.wsl_user.trim().is_empty() {
@@ -1243,7 +1244,7 @@ impl EngineRuntime for ProcessRuntime {
         args: &[String],
         timeout: Duration,
     ) -> Option<String> {
-        // R11: the fit probes ride the ONE control-command builder — hidden,
+        // The fit probes ride the ONE control-command builder — hidden,
         // kill-on-drop, scrubbed to the OS baseline — never an engine spawn:
         // no ticket, no port, nothing registered. Every failure path warns and
         // answers `None`; the caller falls down the ladder, there is never an

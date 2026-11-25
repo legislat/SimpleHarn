@@ -1,10 +1,9 @@
-//! VRAM admission arithmetic (DESIGN Step 4, as amended by the operator
-//! 2026-10-26: the **card** is authoritative, and the ledger survives only as the
-//! declared source of truth for a `ledger_only` witness).
+//! VRAM admission arithmetic: the **card** is authoritative, and the ledger
+//! survives only as the declared source of truth for a `ledger_only` witness.
 //!
 //! This module owns the need formula and the budget arithmetic. The NVML witness and
-//! the settle-only-after-release gate live with the scheduler milestone; item 5 is
-//! approved (`nvml-wrapper` in-process, `nvidia-smi` fallback when the DLL is absent).
+//! the settle-only-after-release gate live with the scheduler milestone
+//! (`nvml-wrapper` in-process, `nvidia-smi` fallback when the DLL is absent).
 
 use thiserror::Error;
 
@@ -30,7 +29,7 @@ pub struct VictimInfo {
 }
 
 /// The reason a blocker is a resident a live job has already committed to
-/// release (the 2026-11-22 park matrix). One constant, matched at the release
+/// release (the release-park rule). One constant, matched at the release
 /// park guard: a release wait clears only when every named blocker is such a
 /// resident, and the planner names it with this exact reason — the string is
 /// the contract between the two sites, so neither may reword it alone.
@@ -68,21 +67,21 @@ pub struct BudgetFacts {
     pub budget: Option<Gibibytes>,
     /// Physical free the witness saw at decision time; `None` when it was down.
     pub observed_free: Option<Gibibytes>,
-    /// R3 (operator GO 2026-11-01): the share of the card that no eviction the
+    /// The share of the card that no eviction the
     /// harness may perform can reclaim — foreign holders, non-evictable occupants
     /// and the driver's own baseline. On the card-ladder deficit leg, a resident
     /// whose release is already in progress — the victim of a non-terminal
     /// `Unload` row (another job's `Unload` included) — does NOT ride this
-    /// figure
-    /// (2026-11-22): it is leaving the card under command, so it is credited as
+    /// figure:
+    /// it is leaving the card under command, so it is credited as
     /// releasable like a candidate, and a refusal may not call its bytes a dead
     /// end. The whole-machine and RAM accounts are unchanged and still count
     /// such a resident. `None` when the witness was down.
     pub unreleasable: Option<Gibibytes>,
-    /// R3: what the card physically held at decision time (the witness's own
+    /// What the card physically held at decision time (the witness's own
     /// `used_gib`), quoted beside `unreleasable` so the split is checkable.
     pub used_gib: Option<Gibibytes>,
-    /// R3: the harness's whole ledger (Σ occupant bookings) beside the physical
+    /// The harness's whole ledger (Σ occupant bookings) beside the physical
     /// reading, so a paper deficit between the two is visible in the refusal.
     pub booked_total: Option<Gibibytes>,
 }
@@ -97,9 +96,8 @@ impl BudgetFacts {
     }
 
     /// [`Self::detail`] with the holder noun chosen by the refusal: the VRAM
-    /// refusals name the card, the RAM refusals name RAM (operator ruling
-    /// 2026-11-05 — one shape, two resources, never a RAM refusal that
-    /// claims the card holds host memory).
+    /// refusals name the card, the RAM refusals name RAM — one shape, two
+    /// resources, never a RAM refusal that claims the card holds host memory.
     #[must_use]
     pub fn detail_as(&self, compared: Gibibytes, holds: &str) -> String {
         let mut parts = Vec::new();
@@ -120,7 +118,7 @@ impl BudgetFacts {
         } else {
             format!(" ({})", parts.join(", "))
         };
-        // R3: the refusal must name what the operator cannot release, so the
+        // The refusal must name what the operator cannot release, so the
         // dead end ("free 30, need 40 — but WHO holds the 30?") is diagnosable
         // from the message alone. Printed only when the number is real.
         match self.unreleasable {
@@ -145,7 +143,7 @@ impl BudgetFacts {
 }
 
 /// Who holds the card, graded from the **movement** of unaccounted memory across
-/// the sample window (R3, ruling 10). A static foreign holder is not the
+/// the sample window. A static foreign holder is not the
 /// problem — the total-diff rides a baseline that already discounts it; the
 /// problem is foreign memory *moving* while the reading is taken, which turns a
 /// free-memory delta into someone else's story. This grades *trust in a
@@ -185,7 +183,7 @@ pub fn grade_card_occupancy(
 
 /// How far apart two GiB figures must be before the refusal bothers naming both.
 /// The `/har/status` slot-row join reuses this band as the project's GiB
-/// epsilon for "the same figure" (W3-01).
+/// epsilon for "the same figure".
 pub(crate) const DISAGREE_GIB: f64 = 0.05;
 
 /// What the refusal knows about WAITING, beside the named holders: an estimate
@@ -220,8 +218,8 @@ pub enum AdmissionError {
     #[error("cost `exact` requires an explicit `vram_gb` (the engine's computed requirement)")]
     ExactUndeclared,
     /// A ninfer row declared a harness- or manual-owned port number as its
-    /// container-internal port (R10 separation, operator 2026-11-01: "8003-8005
-    /// are manual only"): the container inside is its own namespace and must
+    /// container-internal port (port separation: 8003-8005
+    /// are manual only): the container inside is its own namespace and must
     /// carry its own number — no docker collision is needed to make the
     /// confusion real (the 8004 post-mortem misread exactly such a number).
     #[error("`ninfer_internal_port` {port} claims {claim}: a container's internal port must live in its own namespace")]
@@ -336,8 +334,8 @@ pub enum AdmissionError {
         wait_hint: WaitHint,
     },
     /// The row requested the whole machine
-    /// (`launch_only_with_at_least_vram_free: whole`, operator ruling
-    /// 2026-11-04) and the card is not **fully free**. Fully free, defined
+    /// (`launch_only_with_at_least_vram_free: whole`, operator ruling)
+    /// and the card is not **fully free**. Fully free, defined
     /// once here: no harness slot other than the request's own holds an
     /// occupant (the own-slot occupant is the explicit replacement the
     /// request asked for, already credited in the compared figure); no other
@@ -404,7 +402,7 @@ fn insufficient_tail(victims_considered: &[VictimInfo], blockers: &[BlockerInfo]
     tail
 }
 
-/// GGUF-size fallback factor kept from v3.3 (DESIGN Step 4 rule 1).
+/// GGUF-size fallback factor kept from v3.3.
 const GGUF_FACTOR: f64 = 1.15;
 /// Flat GiB added on top of the GGUF-size estimate (v3.3 formula).
 const GGUF_OVERHEAD: f64 = 2.0;
@@ -443,7 +441,7 @@ pub fn free_gb(total: Gibibytes, reserve: Gibibytes, occupied: Gibibytes) -> Gib
     Gibibytes(total.0 - reserve.0 - occupied.0)
 }
 
-/// Whether the per-process figures on a sample are usable for attribution (R1).
+/// Whether the per-process figures on a sample are usable for attribution.
 ///
 /// A pure, witness-local fact: `PerProcess` iff at least one entry reported a
 /// concrete non-zero byte count; `Unavailable` covers the driver returning no list,
@@ -459,7 +457,7 @@ pub enum AttributionQuality {
 }
 
 impl AttributionQuality {
-    /// The payload token for `/har/status` (R1): the witness's own answer to "could
+    /// The payload token for `/har/status`: the witness's own answer to "could
     /// per-process bytes be obtained", spelled for the page and the operator.
     #[must_use]
     pub fn as_str(self) -> &'static str {
@@ -489,7 +487,7 @@ pub struct MemorySample {
     pub used_gib: f64,
     /// Per-process usage in GiB: `(pid, used)`.
     pub processes: Vec<(u32, f64)>,
-    /// Whether `processes` can be trusted to attribute a footprint (R1).
+    /// Whether `processes` can be trusted to attribute a footprint.
     pub attribution: AttributionQuality,
 }
 
@@ -529,7 +527,7 @@ impl MemorySample {
     /// Whether the card has physically freed to `target_gib` of free space, within
     /// tolerance (§0.3: the settle window is only legal after a release). The
     /// tolerance absorbs driver lag after a kill, so a load may spawn up to
-    /// `witness_tolerance_gb` under the gate — accepted by the operator 2026-10-26
+    /// `witness_tolerance_gb` under the gate — it applies both
     /// for greedy launch floors as well as plain need.
     ///
     /// This replaced the ledger-era form (`used <= ledger + external + tolerance`).
@@ -812,7 +810,7 @@ mod tests {
         ));
     }
 
-    /// R3: the refusal names the memory the operator cannot release, beside the
+    /// The refusal names the memory the operator cannot release, beside the
     /// physical reading and the ledger, so the dead end is diagnosable from the
     /// message alone. A zero or absent figure stays a clean sentence (the
     /// `plain`-refusal rule above).
@@ -859,7 +857,7 @@ mod tests {
         assert!(zero.is_empty(), "{zero}");
     }
 
-    /// R3 ruling 10: the fold grades the window by how far UNACCOUNTED memory
+    /// The fold grades the window by how far UNACCOUNTED memory
     /// moved, not by how much sits there: a static foreign holder is already
     /// discounted by the baseline, and refusing those would blank every honest
     /// co-serve fold. The clamp legs matter: shrinking foreign memory grades

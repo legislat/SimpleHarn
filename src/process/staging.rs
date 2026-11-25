@@ -16,9 +16,9 @@ use super::excerpt;
 /// tree: a staged file can never shadow or be confused with a hand-written one
 /// (template adoption). The value is READ from the
 /// ninfer row's `custody_exec_roots` cell of the [`crate::engine::policy`]
-/// table (slice 10b: the table cell is the single home, not a re-aliased
+/// table (the table cell is the single home, not a re-aliased
 /// constant), so the compiled-in custody root and the staging path cannot
-/// drift apart (§20-9 Fork C).
+/// drift apart (Fork C).
 ///
 /// # Panics
 ///
@@ -324,8 +324,8 @@ fn sidecar_base(prefix: &str, name: &str) -> Option<String> {
 }
 
 /// Keep-N prune of one slug's staged-profile pool, newest by mtime, and the
-/// sidecar sweep that keeps a pruned render from leaving its satellites behind
-/// (FR-09). Entries are matched exactly — `<sanitized-slug>-<16 hex>.json`,
+/// sidecar sweep that keeps a pruned render from leaving its satellites behind.
+/// Entries are matched exactly — `<sanitized-slug>-<16 hex>.json`,
 /// the SAME name [`crate::engine::strata::staged_profile_name`] writes (raw vs
 /// sanitized would prune zero of its own files and grow the
 /// pool without bound) — so a dot-bearing slug (`har.a`) can never prune
@@ -334,7 +334,7 @@ fn sidecar_base(prefix: &str, name: &str) -> Option<String> {
 /// (`a b` / `a_b`) share one pool by construction: the name is the content
 /// address's owner and a launch re-stages its own bytes anyway.
 ///
-/// The sidecar rule (FR-09): a `<pool-name>.<suffix>` file lives and dies with
+/// The sidecar rule: a `<pool-name>.<suffix>` file lives and dies with
 /// its pool file — Maya writes a `shared-settings` sidecar beside the config
 /// it loads, and the old pool-only prune let those accumulate past the bound.
 /// A sidecar whose base is among the newest [`STAGED_PROFILE_KEEP`] renders
@@ -561,7 +561,7 @@ mod tests {
         path
     }
 
-    /// FR-09: a sidecar lives and dies with its pool file. Falsifier: pruning
+    /// A sidecar lives and dies with its pool file. Falsifier: pruning
     /// the pool alone (the pre-fix rule) leaves the stale and orphan sidecars
     /// behind, or a sweep keyed on the sidecars' own mtime drops the live
     /// render's sidecar while keeping a stale one.

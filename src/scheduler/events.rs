@@ -161,7 +161,7 @@ impl ActorState {
                 }
             }
             (SwapState::Spawn, Event::Spawned(Err(error))) => {
-                // R9 (C1): a failed client leaves the container it did start (or a
+                // A failed client leaves the container it did start (or a
                 // half-created one) reachable for exactly one more moment — snapshot
                 // its log before this job's reap and the next launch's pre-reap erase
                 // the engine's own account of the failure.
@@ -211,7 +211,7 @@ impl ActorState {
                 // victim's engine is gone, so its slot must go the way a completed
                 // Dispose release takes it, or the ledger debits a corpse forever
                 // (and the victim's own row keeps claiming a Serving nobody can
-                // serve - EVID-01). Confirmed means measured: the duration joins the
+                // serve). Confirmed means measured: the duration joins the
                 // wait-estimate ring.
                 self.release_samples.push(elapsed);
                 self.commit_victim_release(job_id);
@@ -389,7 +389,7 @@ impl ActorState {
         // victim's whole footprint. The card's per-process attribution is preferred
         // when the driver reports it; the total-diff stands in otherwise, which is what
         // makes a container-backed engine measurable at all (its ticket pid is a
-        // short-lived `wsl.exe` client) — and from R9 the container's own startup
+        // short-lived `wsl.exe` client) — and the container's own startup
         // `MemorySummary` stands in ahead of even that, so the sampler fetches it
         // first. What to charge is the actor's call alone: it knows who else is booked
         // and which engine actually holds the slot.
@@ -449,7 +449,7 @@ impl ActorState {
                 // unmeasurable figure) returns None and falls through to the
                 // witness loop below, so the stand-in readings keep flowing
                 // and a refused landing never consumes them (review
-                // 2026-10-31 M1).
+                // 2026-10-31).
                 if matches!(ctx.engine.as_str(), "basalt" | "strata" | "xolotl") {
                     if let Some(booked) =
                         Self::report_measurement(&runtime, &tx, &ctx, &witness).await
@@ -556,7 +556,7 @@ impl ActorState {
         let runtime = Arc::clone(&self.runtime);
         let (port, generation) = (ticket.port, ticket.generation);
         tokio::spawn(async move {
-            // RAII release (the R9 C1 rule): the in-flight mark clears on EVERY
+            // RAII release (the release-per-exit rule): the in-flight mark clears on EVERY
             // exit — a panic in the probe reports as silence, never as a mark
             // wedged for the process lifetime.
             let mut probe = ServeIdProbeRelease {

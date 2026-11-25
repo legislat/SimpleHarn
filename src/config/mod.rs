@@ -1,5 +1,4 @@
-//! Typed config schema (`simpleharn.json`), defaults, and per-field validation
-//! (DESIGN Step 9/11).
+//! Typed config schema (`simpleharn.json`), defaults, and per-field validation.
 //!
 //! Boot rule (§0.2 step 1): a present-but-invalid file is reported per field and fails
 //! the boot — never silently replaced by defaults (v3.3 defect D1 discarded the whole
@@ -51,7 +50,7 @@ pub struct ConfigWarning {
 /// vocabulary lives with the type, not in copies of it (duplication review).
 pub const CATEGORY_HINT: &str = "WORK|RP|AUX|EMB";
 
-/// The four slot categories (operator decision 2026-10-24; DESIGN Step 5).
+/// The four slot categories.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum CategoryId {
@@ -61,7 +60,7 @@ pub enum CategoryId {
     Rp,
     /// Evictable by WORK and RP; up to six occupants (Step 5).
     Aux,
-    /// The embeddings surface (operator 2026-10-24).
+    /// The embeddings surface.
     Emb,
 }
 
@@ -211,7 +210,7 @@ fn default_modelconf_dir() -> std::path::PathBuf {
         .unwrap_or_else(|| std::path::PathBuf::from("ModelConf"))
 }
 
-/// First port of the sequential engine-port allocation (HANDOFF §3 SE port plan).
+/// First port of the sequential engine-port allocation (the SE port plan).
 const ENGINE_PORT_BASE: u16 = 18_109;
 
 fn default_release_timeout() -> u64 {
@@ -220,14 +219,14 @@ fn default_release_timeout() -> u64 {
 
 fn default_protected_ports() -> BTreeSet<u16> {
     // The live v3.3 ecosystem on this box: its public ports, engine ports, and the
-    // manual namespace. SE defaults use 8708-8711 so the two never collide (HANDOFF §3).
+    // manual namespace. SE defaults use 8708-8711 so the two never collide.
     BTreeSet::from([
         8003, 8004, 8005, 8009, 8016, 8017, 8030, 18203, 18204, 18205, 18206, 18207, 18208, 18209,
     ])
 }
 
-/// Longest accepted category display label, in characters (operator ruling
-/// 2026-11-05). The label is display-only — it never travels where an id is
+/// Longest accepted category display label, in characters (operator ruling).
+/// The label is display-only — it never travels where an id is
 /// required — and the cap keeps one hand-written name from breaking the tab
 /// strip. A longer value is refused by [`AppConfig::validate`], naming the
 /// category and the cap.
@@ -244,7 +243,7 @@ const ONE_DAY_SECS: u64 = 86_400;
 /// Cross-module because `model` validates the per-model rows against the same bound.
 pub(crate) const MAX_TIMEOUT_S: u64 = ONE_DAY_SECS;
 
-/// One declarative category: slot count, listener, and policy as data (DESIGN Step 5).
+/// One declarative category: slot count, listener, and policy as data.
 ///
 /// `deny_unknown_fields`: the categories carry all the safety policy and
 /// the file is hand-edited, so a key typo must fail the boot like any other invalid value —
@@ -308,11 +307,10 @@ pub struct CategoryConfig {
 }
 
 impl CategoryConfig {
-    /// The four shipped categories on the operator port set 8708-8711 (WORK control;
-    /// operator decision 2026-10-25).
+    /// The four shipped categories on the operator port set 8708-8711 (WORK control).
     ///
     /// Eviction privileges reproduce v3.3 semantics: WORK is evicted by nobody, RP by
-    /// WORK, AUX and EMB by WORK and RP (DESIGN Steps 5-6).
+    /// WORK, AUX and EMB by WORK and RP.
     pub fn four_defaults() -> Vec<CategoryConfig> {
         vec![
             CategoryConfig {
@@ -448,7 +446,8 @@ pub const STRATA_PYTHON_DEFAULT: &str = r"C:\Strata\terminal\.venv\Scripts\pytho
 /// old checkout root.
 pub const STRATA_CWD_DEFAULT: &str = r"C:\Strata\terminal";
 
-/// Harness-side per-engine defaults (slice 10d). Doctrine (`DECISIONS` LOCKED):
+/// Harness-side per-engine defaults. Doctrine
+/// (`docs/architecture/DECISIONS.md`, LOCKED):
 /// *"external engines obey only harness-owned configuration"* — the interpreter
 /// and working directory a strata launch runs with are configured here, not in
 /// an operator-side engine file. Every key is optional and an unset one stays
@@ -461,7 +460,7 @@ pub struct EnginesConfig {
     /// strata engine defaults; absent means the documented fallbacks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strata: Option<StrataEngineConfig>,
-    /// llama engine defaults (R11: the Fit probe switch and its Wave-C
+    /// llama engine defaults (the Fit probe switch and its card
     /// calibration constants); absent means fully inert — no probe is ever
     /// run unless `fit_probe` is explicitly turned on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -481,9 +480,9 @@ pub struct StrataEngineConfig {
     pub cwd: Option<std::path::PathBuf>,
 }
 
-/// llama harness-side defaults for the R11 Fit cost class (rule 2026-11-01,
-/// Search#40). Every value here is *calibration*, not decoration: the margin
-/// and surcharge are meant to be measured in the Wave-C card window, so an
+/// llama harness-side defaults for the Fit cost class. Every value here is
+/// *calibration*, not decoration: the margin
+/// and surcharge are meant to be measured in a card window, so an
 /// unset one is treated as **unconfigured** (warn + declared/estimate ladder)
 /// rather than defaulted to a number that would pretend to be calibrated.
 /// `fit_probe` itself defaults OFF, so the build lands inert: nothing probes,
@@ -647,7 +646,7 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub control_token: Option<String>,
     /// Explicit opt-in for publishing a non-loopback [`Self::internal_host`]
-    /// with no control token resolved (boot gate, operator task 2026-11-08).
+    /// with no control token resolved (boot gate, 2026-11-08).
     /// False (default): boot refuses the open bind before any listener binds
     /// and names both remedies — set a token, or set this key true. True:
     /// boot proceeds and the `lan_open_without_token` page warning stays.
@@ -658,7 +657,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub allow_unauthenticated_network_bind: bool,
     /// Gate for the test-facing `mock` engine adapter: production boot registers it **only**
-    /// when this is true (chunk 10 \[3]). The adapter's argv names the bare program
+    /// when this is true. The adapter's argv names the bare program
     /// `mock-engine`, which `CreateProcessW` resolves through the harness's own directories,
     /// so setting this on a machine where untrusted parties can write beside the harness exe
     /// or its cwd is a code-execution grant, not a debugging knob. Tests never need it: each
@@ -675,8 +674,9 @@ pub struct AppConfig {
     /// explicitly instead of relying on the default.
     #[serde(default)]
     pub prefetch_on_release: bool,
-    /// Harness-side per-engine defaults (slice 10d: the strata interpreter and
-    /// working directory, §20-9 "engines obey only harness-owned configuration").
+    /// Harness-side per-engine defaults (the strata interpreter and
+    /// working directory; doctrine: engines obey only harness-owned
+    /// configuration).
     /// Unset serializes nothing — existing config files keep their exact shape —
     /// and the resolved values are read through [`AppConfig::strata_python`] and
     /// [`AppConfig::strata_cwd`].
@@ -891,7 +891,7 @@ impl AppConfig {
 
     /// Which host-side namespace already claims a port number: the manual
     /// `protected_ports` set, a category public listener, or a resolved engine
-    /// port. R10 (operator 2026-11-01: "8003-8005 are manual only") extends the
+    /// port. The "8003-8005 are manual only" rule extends the
     /// harness/manual separation to the container-internal namespace: a ninfer
     /// row may not borrow one of these numbers as `ninfer_internal_port`, even
     /// though the netns makes a real collision impossible — the 8004 post-mortem
@@ -971,7 +971,7 @@ impl AppConfig {
 
     /// The llama Fit rows: `engines.llama` when the operator wrote the section.
     /// `None` is the inert default — the probe stays off and the ladder
-    /// unchanged (R11: the build lands before the card window with zero
+    /// unchanged: the build lands before the card window with zero
     /// surprise probes).
     #[must_use]
     pub fn llama_fit(&self) -> Option<&LlamaEngineConfig> {
@@ -980,7 +980,7 @@ impl AppConfig {
             .and_then(|engines| engines.llama.as_ref())
     }
 
-    /// Whether the pre-spawn Fit probe may run at all (R11). Unset is false:
+    /// Whether the pre-spawn Fit probe may run at all. Unset is false:
     /// the live build is inert until the operator turns it on.
     #[must_use]
     pub fn llama_fit_probe_enabled(&self) -> bool {
@@ -1012,7 +1012,7 @@ impl AppConfig {
                     .to_string(),
             });
         }
-        // Same discipline for the engines section (slice 10d): present-but-blank
+        // Same discipline for the engines section: present-but-blank
         // is a mistake that must refuse boot, not silently fall back to the
         // documented default the operator did not choose.
         if let Some(strata) = self
@@ -1051,7 +1051,7 @@ impl AppConfig {
                     .to_string(),
             });
         }
-        // R11 Fit calibration: every figure that feeds a VRAM booking must be
+        // Fit calibration: every figure that feeds a VRAM booking must be
         // finite and non-negative (the `parse_gib` doctrine — a NaN comparison
         // is false, and a negative margin would shrink bookings below the
         // projection). A timeout of 0 would refuse the probe outright.
@@ -1442,8 +1442,8 @@ impl AppConfig {
             .collect()
     }
 
-    /// Boot gate for the unauthenticated network bind (operator task
-    /// 2026-11-08): `Some(reason)` when [`Self::internal_host`] is not
+    /// Boot gate for the unauthenticated network bind:
+    /// `Some(reason)` when [`Self::internal_host`] is not
     /// loopback, no control token resolves (`token_present` is
     /// `ApiState::requires_token()`, as in [`Self::config_warnings`]), and
     /// [`Self::allow_unauthenticated_network_bind`] is false. The reason is
@@ -1472,7 +1472,7 @@ impl AppConfig {
         ))
     }
 
-    /// FR-15: the page-visible posture warnings, derived from the config alone
+    /// The page-visible posture warnings, derived from the config alone
     /// plus whether a control token resolves (`token_present` is
     /// `ApiState::requires_token()` — this crate stays env-agnostic here).
     /// Pure and side-effect-free, like [`Self::evictable_by_warnings`]; unlike
@@ -1715,7 +1715,7 @@ mod tests {
         );
     }
 
-    /// §6 restart guard: the opt-in decides whether the next boot publishes
+    /// Restart guard: the opt-in decides whether the next boot publishes
     /// unauthenticated, so the write-back must stamp it and a restart must
     /// read it back unchanged — in both directions. Falsifier: add
     /// `skip_serializing_if` on the key and the default-stamp assert fires;
@@ -1947,7 +1947,7 @@ mod tests {
         );
     }
 
-    /// R10 (operator 2026-11-01: "8003-8005 are manual only"): the claim helper the
+    /// The "8003-8005 are manual only" rule: the claim helper the
     /// container-internal check consults names each host-side namespace it owns —
     /// the manual protected set, a category listener, the engine plan — and keeps
     /// the SE internal default (8808) clear of all three.
@@ -2196,7 +2196,7 @@ mod tests {
 
     #[test]
     fn allow_mock_engine_survives_the_config_write_back() {
-        // §6 restart guard: the flag decides whether boot hands out a code-execution grant,
+        // Restart guard: the flag decides whether boot hands out a code-execution grant,
         // so the value the write-back stamps must come back through parse+validate unchanged
         // — a restart that quietly flipped it would either revoke an operator's setup or
         // re-open the planted-`mock-engine.exe` path without a config edit.
@@ -2258,7 +2258,7 @@ mod tests {
 
     #[test]
     fn prefetch_on_release_survives_the_config_write_back() {
-        // §6 restart guard: an operator who turned the spike on must find it
+        // Restart guard: an operator who turned the spike on must find it
         // still on (and one who never touched it still off) after a
         // write-back and a restart.
         let opted_in = AppConfig {
@@ -2291,7 +2291,8 @@ mod tests {
         assert!(reloaded.validate().is_empty());
     }
 
-    /// Slice 10d discipline (the inverted-`skip_serializing_if` GOTCHAS class):
+    /// Serialization discipline (the inverted-`skip_serializing_if` GOTCHAS
+    /// class):
     /// the new `engines:` section must survive serialize→parse→validate, and the
     /// unset default must not change the serialized file shape at all.
     #[test]
@@ -2327,7 +2328,7 @@ mod tests {
             unset.get("engines").is_none(),
             "an unset section stays out of the file: existing shape must not change"
         );
-        // The R11 half: a half-written llama section round-trips with its
+        // The llama half: a half-written llama section round-trips with its
         // absent keys ABSENT, never null (the unset-not-serialized rule).
         let half = AppConfig {
             engines: Some(EnginesConfig {
@@ -2398,7 +2399,8 @@ mod tests {
 
     /// A blank engines path is a mistake that must refuse boot (the
     /// `control_token` doctrine), and a typo — a section for an engine with no
-    /// harness-side defaults at all — is refused, not ignored. R11 gave the
+    /// harness-side defaults at all — is refused, not ignored. The Fit
+    /// work gave the
     /// llama row a real defaults section, so the refused stand-in moved to an
     /// engine that still owns none.
     #[test]
@@ -2454,7 +2456,7 @@ mod tests {
         );
     }
 
-    /// FR-13 serialization pin: the unset default never writes the key out —
+    /// Serialization pin: the unset default never writes the key out —
     /// a first-run file must not claim a binary this machine does not have.
     /// Falsifier: drop `skip_serializing_if` and the null/absent legs go red.
     #[test]
@@ -2477,7 +2479,7 @@ mod tests {
         assert_eq!(round, set);
     }
 
-    /// FR-15 falsifier, PH-RUST-02 sharpened: each posture warns exactly when
+    /// Posture-warning falsifier: each posture warns exactly when
     /// it is real — the contract is "not loopback", and the message names the
     /// ACTUAL address. Drop the token leg and the LAN row goes silent on an
     /// open bind; drop the exe leg and an unset `llama_server_exe` boots
@@ -2519,7 +2521,7 @@ mod tests {
             "a resolved token retires the LAN warning"
         );
 
-        // PH-RUST-02: "not loopback" is the contract — a concrete LAN bind is
+        // "Not loopback" is the contract — a concrete LAN bind is
         // just as open as the unspecified one, and the sentence names it.
         let lan_bound = AppConfig {
             internal_host: IpAddr::from([192, 168, 1, 10]),
@@ -2569,7 +2571,7 @@ mod tests {
         );
     }
 
-    /// R11 inertness, pinned: the default config probes NOTHING. The probe
+    /// Fit inertness, pinned: the default config probes NOTHING. The probe
     /// only exists when the operator writes `fit_probe: true`, and even then
     /// the calibration constants stay unset (a warning at use time, never a
     /// silent default that pretends to be measured).
@@ -2822,7 +2824,7 @@ mod tests {
         }
     }
 
-    /// The write-back round trip for the label (§6 restart guard, the
+    /// The write-back round trip for the label (Restart guard, the
     /// inverted-`skip_serializing_if` GOTCHAS class): a page `Default` edit
     /// rewrites the whole file, so the persisted bytes must carry the label back
     /// through parse and validate, while the unset default must not change the
@@ -2890,8 +2892,8 @@ mod tests {
         );
     }
 
-    /// The RAM ladder's reserve, pinned like its VRAM twin (operator ruling
-    /// 2026-11-05): the default is the ruling's 8 GiB, a negative reserve
+    /// The RAM ladder's reserve, pinned like its VRAM twin (operator ruling):
+    /// the default is the ruling's 8 GiB, a negative reserve
     /// would grow the RAM budget the more reserve is asked for, and 0 means
     /// "no reserve" and stays legal.
     #[test]

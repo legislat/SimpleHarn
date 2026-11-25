@@ -60,8 +60,7 @@ const REFRESH_BUDGET: Duration = Duration::from_millis(2_000);
 /// enough for a real unload to answer, short enough that a stalled actor cannot hold
 /// the operator's menu — and never the Exit item, which is not a scheduler command.
 const MENU_BUDGET: Duration = Duration::from_millis(5_000);
-/// Boot grace before `Pending` turns amber (operator ruling "A + amber",
-/// 2026-10-28).
+/// Boot grace before `Pending` turns amber (operator ruling "A + amber").
 ///
 /// The epoch is the registry's creation instant
 /// ([`crate::listeners::ListenerRegistry::created_at`]) — `main` builds the registry
@@ -97,11 +96,11 @@ pub enum TrayState {
     /// Nothing loaded, and every category has a verdict.
     Gray,
     /// A listener is down; the reason rides in the tooltip. Per-job errors are
-    /// not red (operator decision 2026-10-25).
+    /// not red.
     Red,
     /// No verdict: a category is still `Pending` after `BOOT_GRACE`, or this tick's
-    /// status fetch returned nothing. The same word for both, per the 2026-10-28
-    /// ruling.
+    /// status fetch returned nothing. The same word for both, per the
+    /// amber ruling.
     Amber,
 }
 

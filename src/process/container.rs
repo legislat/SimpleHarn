@@ -1,6 +1,6 @@
 //! The container seam of process supervision: the WSL/docker command builders
 //! and probes (`docker rm -f`, `docker port`, `docker ps`, `docker logs`), the
-//! claims and custody ledger homes, the boot-reclaim and R5 stranded plans,
+//! claims and custody ledger homes, the boot-reclaim and stranded plans,
 //! and the pure verdict cores the kill/release paths judge with. The verdict
 //! functions (`table_verdict`, `reap_action`, `release_ready`) are the pure
 //! decision cores; their behavior pins stay in the process test module.
@@ -91,7 +91,8 @@ pub(super) struct ReapSeam {
     pub(super) asked: Mutex<Vec<String>>,
 }
 
-/// Recorded docker-probe seam for the R5 pins (test-only): a canned `docker ps`
+/// Recorded docker-probe seam for the stranded-reconcile pins (test-only): a
+/// canned `docker ps`
 /// answer plus the log of docker verbs it was asked to run.
 #[cfg(test)]
 #[derive(Clone)]
@@ -196,7 +197,7 @@ pub(super) fn should_reap(
 /// Two independent facts decide it: the ticket says this kill carries the *duty*,
 /// and the ledger says this harness *owns* the name. The kill used to reap straight
 /// from the ticket's name without consulting the ledger, so any future adapter that
-/// invented a container name (chunk 10's templates) would have had a reap authority
+/// invented a container name from a template would have had a reap authority
 /// the boot reclaim rightly refuses. Pure, so the rule is testable without WSL.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum ReapAction {
@@ -290,7 +291,7 @@ pub(super) async fn reap_container(distro: &str, user: &str, name: &str) -> bool
 /// One catalog-declared container candidate for the boot reclaim: the declaring
 /// model's `engine:` plus its `ninfer_container:` value. Both travel together so
 /// [`boot_reap_decision`] can apply the engine gate and the name gate at boot,
-/// while the claim gate reads the ledger the spawn path wrote (chunk 10 \[1]).
+/// while the claim gate reads the ledger the spawn path wrote.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContainerCandidate {
     /// The declaring model's `engine:` value.
@@ -322,7 +323,7 @@ pub(super) fn reclaim_plan(
         .collect()
 }
 
-/// Home of the persisted container-claim ledger (chunk 10 [1]): beside the
+/// Home of the persisted container-claim ledger: beside the
 /// engine logs, next to the exe. Spawn, release, and the boot reclaim all
 /// address this one file through [`ContainerClaims`].
 pub(super) fn container_claims_path() -> PathBuf {
@@ -332,7 +333,7 @@ pub(super) fn container_claims_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("ninfer-claims.json"))
 }
 
-/// The custody sidecar (slice 10b): recorded strata launches, beside the
+/// The custody sidecar: recorded strata launches, beside the
 /// claim ledger the harness already keeps next to its executable — the same
 /// state home for the same reason: one microsecond of local read at boot,
 /// never a stall on a volume that could delay the bind.
@@ -399,7 +400,7 @@ pub(super) async fn docker_ps(distro: &str, user: &str) -> Option<Vec<String>> {
     Some(ps_names(&output.stdout))
 }
 
-/// The R5 reconcile's probe: the very command of [`docker_ps`], but every
+/// The stranded reconcile's probe: the very command of [`docker_ps`], but every
 /// failure path is SILENT. Report-only doctrine: a probe that could not run is
 /// not a warning — docker being off is the normal state of a machine the
 /// harness never uses, and a rescan must never spam the operator for it.
@@ -411,10 +412,10 @@ pub(super) async fn docker_ps_quiet(distro: &str, user: &str) -> Option<Vec<Stri
     }
 }
 
-/// The pure core of the R5 report-only reconcile: the running containers whose
+/// The pure core of the report-only stranded reconcile: the running containers whose
 /// exact name a catalog row declares as `ninfer_container` while the claim
 /// ledger holds **no** claim — the stranded VRAM the ownership-scoped reaping
-/// may never address (ruling 9: report it, never touch it). A claimed match is
+/// may never address (report it, never touch it). A claimed match is
 /// a running engine this harness started and never appears; a running container
 /// no catalog row names is foreign and equally out of report. Presence in
 /// `docker ps` is re-checked, never assumed.
@@ -432,7 +433,7 @@ pub(super) fn stranded_plan(
         .collect()
 }
 
-/// `wsl.exe … docker logs --tail <n> <name>` (R9): the raw container stdout. The
+/// `wsl.exe … docker logs --tail <n> <name>`: the raw container stdout. The
 /// line bound is imposed by **docker** (`--tail`), not by truncating a fully
 /// buffered fetch after the fact — a container the operator never rotated (e.g. one
 /// left from a manual run under a harness-shaped name) has an unbounded log, and a

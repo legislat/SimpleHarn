@@ -1,4 +1,4 @@
-//! Entry point: boot order per DESIGN §0.2 — single-instance guard, then config
+//! Entry point: single-instance guard, then config
 //! (the guard is acquired before any file is touched: fail fast), listeners bound
 //! before any engine work (there is none: preload is scrapped), zero engine spawns
 //! at boot.
@@ -20,7 +20,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Whether a fatal boot error should hold the console open (operator 2026-11-09):
+/// Whether a fatal boot error should hold the console open:
 /// true only when both console ends are real terminals AND the console window is
 /// visible. A double-clicked exe leaves its reason on screen; a redirected launch,
 /// a service supervisor, and the hidden `SimpleHarn.vbs` launcher (which still
@@ -401,7 +401,7 @@ async fn main() -> ExitCode {
         config.wsl_account().unwrap_or_default(),
     );
     // Same runtime instance for the boot reclaim: one shared engine table and one
-    // shared container-claim ledger (chunk 10 [1]).
+    // shared container-claim ledger.
     let boot_runtime = runtime.clone();
     let runtime: Arc<dyn EngineRuntime> = Arc::new(runtime);
     // Pay the lazy `Nvml::init()` on the blocking pool,
@@ -659,7 +659,7 @@ mod boot_order {
 ///
 /// `wsl_account` is [`AppConfig::wsl_account`] resolved at boot: `None` means no
 /// ninfer load can be addressed in WSL.
-/// The llama-binary posture the boot banner warns about (PH-RUST-03: the
+/// The llama-binary posture the boot banner warns about (the
 /// CHOICE is a pure function so the falsifier can pin it without a runtime or
 /// a filesystem): unset is a posture, a configured-but-absent binary is a
 /// fault, a present binary is silence. `exe_missing` is the stat verdict, only
@@ -684,7 +684,7 @@ async fn log_boot_banner(
     modelconf_dir: &std::path::Path,
     wsl_account: Option<&str>,
 ) {
-    // FR-15: an unset global is legal (rows may each name their own binary),
+    // An unset global is legal (rows may each name their own binary),
     // but it is an unsafe posture worth one boot warn.
     match llama_server_exe {
         Some(exe) => {
@@ -1090,7 +1090,7 @@ async fn run(
         #[cfg(test)]
         boot_order::log_ready();
     }
-    // Boot reclaim (deploy review, 2026-10-26; scoped per chunk 10 [1], 2026-10-27):
+    // Boot reclaim (deploy review, 2026-10-26, scoped 2026-10-27):
     // a container left by a crashed run keeps the card occupied, and observed-VRAM
     // admission then refuses every load with no pointer to the culprit. Runs after
     // `boot ready` so it can never delay binding (§0.2). The reclaim may touch ONLY
@@ -1114,7 +1114,7 @@ async fn run(
             // completion, on the wall clock, in the same ms-since-start unit as the
             // other measures — it used to end in silence.
             let dispatched = std::time::Instant::now();
-            // Custody sweep (chunk 10 slice 10b, R8): a strata router left by a
+            // Custody sweep: a strata router left by a
             // crashed run is reaped only on proof from the harness's OWN
             // sidecar (pid alive AND start-time token equal); the engine's own
             // leftover probe is untrusted and is never consulted here. The
@@ -1409,7 +1409,7 @@ mod tests {
         );
     }
 
-    /// Operator 2026-11-09: a double-clicked exe must leave a fatal boot reason
+    /// A double-clicked exe must leave a fatal boot reason
     /// on screen. The hold fires only when both console ends are terminals and
     /// the console window is visible, so a redirected launch, a service
     /// supervisor, and the hidden `.vbs` launcher (a console without a window)
@@ -1864,7 +1864,7 @@ Start Port    End Port
         serde_json::from_slice(&bytes).expect("status is JSON")
     }
 
-    /// PH-RUST-03 falsifier: the boot-posture choice is pinned pure. Delete
+    /// Boot-posture falsifier: the boot-posture choice is pinned pure. Delete
     /// the `None` arm of `llama_binary_warning` and the unset leg goes red;
     /// answer `Some` for a present binary and the silence leg goes red.
     #[test]

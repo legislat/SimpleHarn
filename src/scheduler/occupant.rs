@@ -1,5 +1,5 @@
 //! Actor-side occupant, sampler, and container-log lifecycle: the residency
-//! clear, the released-victim slot clear, the sampler retire, the R9 one-shot
+//! clear, the released-victim slot clear, the sampler retire, the one-shot
 //! container report, and the failed-launch log snapshot. The state and its
 //! fields stay owned by `mod.rs`.
 
@@ -50,10 +50,10 @@ impl ActorState {
     /// victim's own slot goes the way a completed release takes it (same-slot
     /// replacement or a cross-category evictee — never the job's slot blindly),
     /// and only while the occupant there is still the one this ticket owns, and
-    /// the victim's own load row is terminalized as unloaded (EVID-01). Shared
+    /// the victim's own load row is terminalized as unloaded. Shared
     /// by the two arms that accept a confirmed release, so a cancelled swap
-    /// cannot leave a reaped engine installed (chunk 4 [1]) or a gone model
-    /// still reading `Serving` on the ledger (EVID-01 live proof: slot empty,
+    /// cannot leave a reaped engine installed or a gone model
+    /// still reading `Serving` on the ledger (live proof once: slot empty,
     /// job row `Serving`/`loaded`). Ownership resolves HERE and only here —
     /// one writer — see [`ActorState::terminalize_victim_load_row`].
     ///
@@ -75,7 +75,7 @@ impl ActorState {
         self.terminalize_victim_load_row(&victim);
     }
 
-    /// EVID-01: a confirmed release means the victim's engine is gone, so the
+    /// A confirmed release means the victim's engine is gone, so the
     /// ledger may no longer claim its load still serves. The owning row keeps
     /// `terminal` (its swap ended at install; this is a terminal-ledger
     /// correction, not a state-machine transition — `Serving -> Idle` is no
@@ -141,7 +141,7 @@ impl ActorState {
         }
     }
 
-    /// The R9 one-shot: fetch `docker logs <container>` at readiness, snapshot it for
+    /// The one-shot: fetch `docker logs <container>` at readiness, snapshot it for
     /// forensics, and hand the engine's own startup `MemorySummary` figure to the
     /// actor. `Some(())` means the sampler is finished for the footprint (the reserved
     /// figure is static per launch); `None` means fall back to the witness loop —
@@ -160,7 +160,7 @@ impl ActorState {
         if ctx.engine != crate::ownership::NINFER_ENGINE {
             return None;
         }
-        // The trust-site ownership gate (review-wave leftover): a container's
+        // The trust-site ownership gate: a container's
         // self-reserved figure books only when its name passes the very rule the
         // spawn path applies — [`crate::ownership::valid_container_name`], the one
         // validator the adapter spec, the pre-reap, the boot reclaim, and
@@ -186,7 +186,7 @@ impl ActorState {
         // Decide HERE whether the actor could ever book this figure: the one-shot
         // does not retry after it sends, so consuming the sampler on a figure the
         // actor would drop would silently skip the witness stand-in too (review
-        // 2026-10-31, M1). A refused figure falls back; the actor still logs the
+        // 2026-10-31). A refused figure falls back; the actor still logs the
         // race-loss drop that cannot be predicted here.
         Self::measurable_figure(report.required_to_free_gb, total_gib)?;
         if tx
@@ -218,7 +218,7 @@ impl ActorState {
     /// figure to the actor. `Some(figure)` means the
     /// measurement landed; for the elastic `basalt`/`strata` rows the caller
     /// then hands the sampler to [`Self::elastic_refresh`] instead of ending
-    /// it (phase 4: an elastic cache keeps moving after the first fold), while
+    /// it (an elastic cache keeps moving after the first fold), while
     /// ninfer's `engine_report` one-shot semantics stay untouched. Every
     /// refusal returns `None` so the witness loop stands in rather than
     /// losing the measurement outright. The
@@ -268,7 +268,7 @@ impl ActorState {
                 // plus every descendant at every depth — the captured
                 // engines hang two levels below the harness child, so a
                 // one-generation sum misses the process holding the card.
-                // FR-04: a cap-stopped (truncated) walk would under-count the
+                // A cap-stopped (truncated) walk would under-count the
                 // tree, so this measurement is refused outright — the `None`
                 // below is the same stand-in posture the module already
                 // carries for every refusal: the witness loop keeps the
@@ -448,7 +448,7 @@ impl ActorState {
     /// free, fall banded) this band is SYMMETRIC: the measured working set is
     /// a noisy witness reading, not the engine's own static word, so a rise
     /// inside the band is noise too. The ruling's standing tolerance for
-    /// growth past the booking is the GATE's reserve — the DESIGN ruling
+    /// growth past the booking is the GATE's reserve — the ruling
     /// words it "The reserve band is the standing allowance" — not this
     /// sampler band, which only keeps noise out of the fold. The fold itself
     /// stays pure bookkeeping (it re-books on any changed figure); the band
@@ -465,19 +465,19 @@ impl ActorState {
     /// decimal gigabyte a `MiB/1024`-style parser would sneak in. The probe
     /// answers raw bytes (the Win32 `QUERY_MEMORY_INFORMATION` unit) and the
     /// actor consumes the GiB newtype, so no MiB or byte figure ever crosses
-    /// a task or fold boundary (W2 step 3, falsifier-pinned).
+    /// a task or fold boundary (falsifier-pinned).
     pub(super) fn working_set_to_gib(bytes: u64) -> crate::budget::Gibibytes {
         crate::budget::Gibibytes(bytes as f64 / (1024.0f64 * 1024.0 * 1024.0))
     }
 
-    /// The TEST-ONLY one-call form of the guarded tree sample (FR-11), driven
-    /// by the W2 tree-sum pins: the engine's own pid plus every descendant at
+    /// The TEST-ONLY one-call form of the guarded tree sample, driven
+    /// by the tree-sum pins: the engine's own pid plus every descendant at
     /// every depth, summed as bytes (saturating — no working-set sum of a real
     /// tree overflows a u64, and a saturating miss is absence, not a wrapped
     /// negative). A pid the probe cannot read is skipped: a child that exited
     /// between the pid walk and the query shrinks the tree honestly. Nothing
     /// readable at all is absence: the caller treats it as the tree being gone
-    /// and ends its sampler. A **truncated** walk (FR-04,
+    /// and ends its sampler. A **truncated** walk (see
     /// [`Self::descendants_truncated`]) is also absence here — a partial tree
     /// is refused, never summed as if complete — but it is *not* the tree
     /// being gone, so production [`Self::ram_refresh`] runs the same two
@@ -504,7 +504,7 @@ impl ActorState {
 
     /// The descendant-walk bound the Win32 Toolhelp answer is capped at
     /// (`DESCENDANT_CAP` in `src/process/win32.rs`): a walk answer reaching
-    /// this length is the walk reporting a **partial** tree (FR-04 — the cap
+    /// this length is the walk reporting a **partial** tree (the cap
     /// length is itself the truncation signal, since the walk never returns
     /// more). Callers refuse such an answer rather than treat it as complete;
     /// the bound is conservative in the safe direction (a pathologically
@@ -515,7 +515,7 @@ impl ActorState {
     pub(super) const DESCENDANT_REPORT_CAP: usize = 4_096;
 
     /// Whether a descendant answer reached the cap and must be treated as a
-    /// truncated (partial) tree (FR-04).
+    /// truncated (partial) tree.
     #[must_use]
     pub(super) fn descendants_truncated(descendants: &[u32]) -> bool {
         descendants.len() >= Self::DESCENDANT_REPORT_CAP
@@ -577,7 +577,7 @@ impl ActorState {
             }
             let descendants = runtime.descendant_pids(ctx.ticket.pid).await;
             if Self::descendants_truncated(&descendants) {
-                // FR-04: a cap-stopped walk is a partial tree — this sample
+                // A cap-stopped walk is a partial tree — this sample
                 // is refused and logged, never booked; the sampler survives
                 // and the last honest figure stays booked (silence posture,
                 // like every other skipped tick).
@@ -619,7 +619,7 @@ impl ActorState {
         }
     }
 
-    /// Snapshots a failed launch's container log (R9, C1): the autostart pre-reap the
+    /// Snapshots a failed launch's container log: the autostart pre-reap the
     /// NEXT launch runs is `docker rm -f`, un-interceptable, so the engine evidence of
     /// a failed start must be on the Windows side before this job's reap completes —
     /// never on graceful unload, where there is nothing left to forensicate. Best
@@ -646,7 +646,7 @@ impl ActorState {
             // RAII release: the in-flight mark clears on EVERY exit of this task —
             // normal end, early return, or panic — so a wedged mark can never
             // silently blind every later failure of this container name (review
-            // 2026-10-31, L9).
+            // 2026-10-31).
             let _guard = SnapshotRelease {
                 tx,
                 container: released,
@@ -679,7 +679,7 @@ mod tests {
     use std::time::Duration;
 
     /// The cap-length answer the Win32 walk returns when it stops at the bound
-    /// (FR-04): the partial tree the callers must refuse.
+    /// (the truncation signal): the partial tree the callers must refuse.
     fn capped_walk_answer() -> Vec<u32> {
         (1..=ActorState::DESCENDANT_REPORT_CAP as u32).collect()
     }
@@ -801,7 +801,7 @@ mod tests {
         }
     }
 
-    /// FR-04: an answer that reached the walk's cap is a partial tree — the
+    /// An answer that reached the walk's cap is a partial tree — the
     /// tree-sum refuses it outright, before a single per-pid query, and never
     /// books it; a tree under the cap sums exactly as before. Falsifiers:
     /// drop the `descendants_truncated` guard and the first assert sees a
@@ -836,7 +836,7 @@ mod tests {
         );
     }
 
-    /// FR-04: a truncated RAM tick is skipped and LOGGED while the sampler
+    /// A truncated RAM tick is skipped and LOGGED while the sampler
     /// keeps polling — the next honest tick re-books. Falsifiers: read the
     /// refusal as tree-gone (`return` instead of `continue`) and the message
     /// never arrives; send the truncated sample through the band check and
@@ -879,7 +879,7 @@ mod tests {
         sampler.abort();
     }
 
-    /// FR-04: the process-tree measurement fallback refuses a truncated walk
+    /// The process-tree measurement fallback refuses a truncated walk
     /// — the `None` is the module's established stand-in posture (the witness
     /// loop keeps the measurement honest), and nothing reaches the actor.
     /// Below the cap the same leg still lands its figure. Falsifiers: remove
@@ -928,7 +928,7 @@ mod tests {
         );
     }
 
-    /// FR-04 tripwire: the refusal side mirrors the Win32 walk's own cap
+    /// Tripwire: the refusal side mirrors the Win32 walk's own cap
     /// constant. Falsifier: move `DESCENDANT_CAP` in `src/process/win32.rs`
     /// without moving the mirror and this pin goes red on the drift.
     #[test]

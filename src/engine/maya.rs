@@ -450,8 +450,7 @@ fn gpu_flag(model: &ModelEntry, value: &str) -> Result<bool, MayaRowError> {
 /// never a silent last-wins. A declared-but-blank line never reaches this
 /// parser: [`knob`] trims it to absent. The block merges into the staged
 /// profile as its `vision` object; the conflict with a config-side `vision`
-/// object is refused by [`validate_row`] before this parser runs (ruling
-/// 2026-11-17), so the conflict always wins.
+/// object is refused by [`validate_row`] before this parser runs, so the conflict always wins.
 fn vision_overlay(
     model: &ModelEntry,
     line: &str,
@@ -1016,7 +1015,7 @@ mod tests {
         assert_eq!(first, second);
     }
 
-    /// FR-08: the effective served context is the config's own `--max-context`
+    /// The effective served context is the config's own `--max-context`
     /// token. Falsifier: accepting a non-digit value slot, losing the `=`
     /// spelling, letting the first occurrence win, or reading the row keys
     /// instead of the argv each fails one leg here.
@@ -1049,7 +1048,8 @@ mod tests {
         }
     }
 
-    /// FR-08 through the single door: the figure the config spells rides the
+    /// The effective context through the single door: the figure the config
+    /// spells rides the
     /// validated row. Falsifier: dropping the capture from `validate_row`
     /// leaves the row silent whatever the config says.
     #[test]

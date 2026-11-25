@@ -19,14 +19,14 @@ impl ActorState {
     /// evict it between plan and dequeue and produce two ledger deaths for one
     /// release). The occupant stays installed until that release is confirmed
     /// ([`ActorState::commit_victim_release`] is the window's close, and the same
-    /// commit terminalizes the victim's own load row - EVID-01), so an
+    /// commit terminalizes the victim's own load row), so an
     /// `Already` receipt for it would promise a slot the harness has already
     /// decided to empty. A terminal job is not a commitment: its unconfirmed
     /// victim stays installed on purpose (G12) and a later swap or restart
     /// re-owns the ticket, so `Already` for it is the point-in-time truth.
     /// This predicate is also the single source of the `releasing` value of
     /// the `/har/status` label below, and the one the admission planner calls
-    /// to name a committed-release resident as a blocker (2026-11-22).
+    /// to name a committed-release resident as a blocker.
     /// `O(slots x live jobs)` against
     /// the ledger; both counts are tiny.
     pub(super) fn is_committed_release_target(&self, ticket: &SpawnTicket) -> bool {
@@ -160,8 +160,8 @@ impl ActorState {
             }
         }
         // Target: an empty slot first, else the LRU occupied one, else supersede.
-        // A slot holding a parked row is not an offer either (operator ruling
-        // 2026-11-10): a gate-parked row sits on a slot that shows neither job
+        // A slot holding a parked row is not an offer either:
+        // a gate-parked row sits on a slot that shows neither job
         // nor occupant, and arming a second load on it would silently break the
         // wait. A different model instead takes the park-and-supersede path
         // below, which answers the parked row exactly like a busy slot's does.
@@ -182,8 +182,8 @@ impl ActorState {
             Some(target) => self.begin_load(target, entry, vec![reply]),
             None => {
                 // Every slot runs a job or parks a row: cancel the oldest, park
-                // this load (T3.4). A slot whose queue place is free of any job
-                // (a gate-parked row waits there, operator 2026-11-10) is
+                // this load. A slot whose queue place is free of any job
+                // (a gate-parked row waits there) is
                 // taken
                 // first: superseding a row that never started is the lighter
                 // replacement, and the different model never silently steals a
@@ -230,7 +230,7 @@ impl ActorState {
                 }
                 // Superseding a gate-parked row on a free slot just armed `queued`
                 // there (the terminal funnel re-gates a row whose slot came
-                // free, operator 2026-11-10): the cancel below targets the job the slot
+                // free): the cancel below targets the job the slot
                 // ran before this command, never the row this command just
                 // started. A busy slot keeps its running job under this check -
                 // it is a different id than `queued`, exactly as before.
@@ -256,7 +256,7 @@ impl ActorState {
         }
     }
 
-    /// T10.1 crash-retry primitive: kill the (dead) occupant of `model`'s slot and
+    /// The crash-retry primitive: kill the (dead) occupant of `model`'s slot and
     /// load it fresh. Reuses the standard replacement path — the dead occupant
     /// becomes the victim, so release + settle + spawn all run normally.
     ///
@@ -318,15 +318,15 @@ impl ActorState {
         }
     }
 
-    /// RC-02: terminalize a resident the proxy witnessed dead. The caller is
+    /// Terminalize a resident the proxy witnessed dead. The caller is
     /// the proxy's exhausted crash-retry arm — the port refused a second
     /// connection after the reload had already installed a successor, so the
     /// slot's occupant is a corpse by witness. The command arms the one
     /// standard release path for that slot (`begin_unload_slot`, note
     /// `engine died`): the reap runs under the occupant's own ticket, the slot
     /// frees at the driver-confirmed release, and the victim's owning load row
-    /// terminalizes at the same commit point ([`ActorState::commit_victim_release`],
-    /// EVID-01) — so `/har/status` never goes on reporting a resident nobody
+    /// terminalizes at the same commit point ([`ActorState::commit_victim_release`])
+    /// — so `/har/status` never goes on reporting a resident nobody
     /// can reach, and the next load replaces it.
     ///
     /// The match is the identity the witness carries — `model` + `category` +
@@ -401,10 +401,10 @@ impl ActorState {
         self.unload_slots(targets, reply);
     }
 
-    /// T12.1: unload one model's slot; a loading swap for it is cancelled first and
+    /// Unload one model's slot; a loading swap for it is cancelled first and
     /// the slot is unloaded after that cancel terminalizes. A loading slot has no
-    /// occupant yet — the in-flight job's model is the only way to find it (T8:
-    /// unload during load = cancel, cleanup completes). A load queued on the model
+    /// occupant yet — the in-flight job's model is the only way to find it
+    /// (unload during load = cancel, cleanup completes). A load queued on the model
     /// counts as a target too, so the row the operator can see is the row the command
     /// removes.
     pub(super) fn on_unload_model(&mut self, model: &str, reply: Waiter) {
@@ -435,9 +435,9 @@ impl ActorState {
         self.unload_slots(targets, reply);
     }
 
-    /// T12.4: unload every occupied slot; loading jobs are cancelled, and the slot
+    /// Unload every occupied slot; loading jobs are cancelled, and the slot
     /// they still leave occupied is unloaded when the cancel terminalizes. A slot
-    /// holding only a parked row is a target too (operator 2026-11-10): the
+    /// holding only a parked row is a target too: the
     /// row is
     /// the load the operator can see waiting, and an Unload All that skipped it
     /// would let it re-gate onto the card the very same gesture just emptied -
@@ -458,7 +458,8 @@ impl ActorState {
     /// job has that job cancelled **and** — when it still holds an occupant — unloaded
     /// the moment the cancellation terminalizes (an unload means
     /// cancel *and* unload, never either/or). The occupant survives a cancelled swap
-    /// whenever the swap's release was never confirmed (chunk 4 [1] keeps an engine
+    /// whenever the swap's release was never confirmed (the committed-release rule
+    /// keeps an engine
     /// nobody proved dead installed), so cancelling alone can leave the model loaded
     /// and serving while the caller is told `Done`. A load parked on a targeted slot
     /// is dropped here too: an operator's unload must never be followed by the load

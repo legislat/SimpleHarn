@@ -1,11 +1,11 @@
-//! The harness-side custody sidecar for custodied engine launches (chunk 10
-//! slice 10b; port of the engine-side ownership rule in `C:\Strata`'s
-//! `strata_control/procs.py`, behavior not code).
+//! The harness-side custody sidecar for custodied engine launches: a port of
+//! the engine-side ownership rule in the strata control path
+//! (`strata_control/procs.py`, behavior not code).
 //!
 //! Doctrine: *the harness owns what it starts, and engine-side custody is
 //! untrusted*. The strata server sweeps leftover engines at startup
 //! (`serve/server.py::end_leftover_engines`) but its probe may itself fail —
-//! R8's live line `[strata] could not check for engines left by an earlier
+//! its live failure line `[strata] could not check for engines left by an earlier
 //! run: RuntimeError` — and a failed sweep says nothing at all about what is
 //! still running. So the harness records what IT launched in its own sidecar
 //! (next to the `ninfer-claims.json` ledger, same persistence idiom: atomic
@@ -141,7 +141,7 @@ pub enum TerminateOutcome {
 
 /// The process-identity seam the boot reconcile drives through: pid
 /// operations only, never engine endpoints. Tests substitute a mock; the
-/// R8 falsifier depends on there being nothing else to drive — a failing
+/// custody falsifier depends on there being nothing else to drive — a failing
 /// engine-side custody probe cannot reach this seam at all. The platform
 /// implementation lives in `crate::platform`, where the identity legs
 /// delegate to [`crate::platform::ProcessIdentity`].
@@ -333,7 +333,7 @@ fn lock_custody(
 /// touch the stranger; provably ours → terminate once (token re-verified at
 /// the instant of the signal) and wait `grace` for the port to close; stuck →
 /// keep the entry for the next boot. Every path warns or stays silent — this
-/// never returns an error and never fails a boot (R8: even the engine's own
+/// never returns an error and never fails a boot (even the engine's own
 /// probe failing left the engine running; the harness sweeps from its OWN
 /// sidecar alone, and this seam has no way to consult the engine anyway).
 pub async fn reconcile(
@@ -463,7 +463,7 @@ mod tests {
         }
     }
 
-    /// The ownership-proof rule, pinned as a matrix. The R8 core: the ONLY
+    /// The ownership-proof rule, pinned as a matrix. The core: the ONLY
     /// way an entry authorizes a kill is pid-alive AND start-time match; every
     /// other observation drops the entry and touches nothing.
     #[test]
@@ -491,7 +491,7 @@ mod tests {
         );
     }
 
-    /// R8 falsifier harness: a mock *process* runtime — pid ops only, no
+    /// Custody falsifier harness: a mock *process* runtime — pid ops only, no
     /// engine endpoint exists to consult — so a failing engine-side custody
     /// probe (its `RuntimeError` path) has no channel into this sweep.
     #[derive(Default)]
@@ -560,7 +560,7 @@ mod tests {
         Arc::new(Mutex::new(ledger))
     }
 
-    /// The R8 falsifier proper: boot-reconcile driven with sidecar entries
+    /// The custody falsifier proper: boot-reconcile driven with sidecar entries
     /// and a mock process runtime sweeps purely from the harness's OWN
     /// record — the live orphan is reaped, the pid-reused stranger and the
     /// dead entry are dropped untouched, a forged engine id is dropped even
