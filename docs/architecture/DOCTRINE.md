@@ -100,7 +100,7 @@ non-ASCII punctuation in quotes is replaced with ASCII equivalents only.
 14. **The card window belongs to the handoff, never to a served session.** No
     agent may "start harness instances, load models, or execute
     `verify.ps1 -Card`"; card evidence is produced only by the
-    `handoff/wave-verify/` package run in an operator-spawned session.
+    operator's private wave-verification package run in an operator-spawned session.
     Cardless in-tree work (fmt, clippy, `cargo test`, DOM stub) stays allowed
     because it execs no engine. Consequence: an agent whose session is served
     by engines never touches the card.

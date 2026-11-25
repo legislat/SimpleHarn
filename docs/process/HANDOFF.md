@@ -120,7 +120,8 @@ use the same physical device as the working tree.
   `scripts/check-docs.mjs`, `scripts/check-instructions.mjs`, and `scripts/check-tasks.mjs`
   on the restored trees. Verify `HANDOFF.md` and every task file have the required fields.
   The test verifies the retained set. Record the evidence under
-  `handoff/evidence/<YYYY-MM-DD>-restore-test/`. Do not start an engine during the test.
+  `evidence/<YYYY-MM-DD>-restore-test/` in the private handoff repository. Do
+  not start an engine during the test.
 
 The handoff repo's `HANDOFF.md` snapshot names the current backup medium and the latest
 backup path. The policy is the rule; the snapshot is the current fact.

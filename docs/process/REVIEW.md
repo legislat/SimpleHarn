@@ -61,10 +61,10 @@ Do not run ritual reviews on exempt changes.
   that can cost a model, a process, or a false PASS comes first.
 - Each chunk writes its own findings file. No run may overwrite another run's
   file.
-- The method examples are `PLAN.md` and `PROMPT.md` in `handoff/code-review/`
-  (local-only). The per-round findings files that used to sit beside them moved
-  to `handoff/archive/2026-10-27-code-review/`; that archive is a frozen record,
-  not current guidance.
+- The method examples are `PLAN.md` and `PROMPT.md` in the private handoff
+  layer (local-only). The per-round findings files that used to sit beside them
+  are kept in a frozen archive there; that archive is a frozen record, not
+  current guidance.
 
 ## The four traps
 
@@ -138,8 +138,9 @@ Do not pad. A chunk that finds nothing in a category says so.
 
 ## Evidence retention
 
-- Full review evidence lives under `handoff/evidence/<YYYY-MM-DD>-<slug>/`
-  (local-only, backed up).
+- Full review evidence lives as `evidence/<YYYY-MM-DD>-<slug>/` under the
+  private handoff root that `AGENTS.md` section 2 resolves (local-only, backed
+  up). A public clone has no such directory.
 - Each review record names the scope, the reviewer, the date, the commit under
   review, and the findings file.
 - Evidence is immutable once closed.

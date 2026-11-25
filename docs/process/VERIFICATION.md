@@ -72,7 +72,7 @@ no port bind.
   agree with the release facts.
 - Release published: a guard fails a release that carries zero assets. A published
   release must carry an artifact.
-- The workflow log is the record. The run needs no `handoff/evidence/` directory, and
+- The workflow log is the record. The run needs no private evidence record, and
   it never substitutes for a card gate verdict.
 
 | Run | Trigger | What it proves |
@@ -99,13 +99,16 @@ These checks are not part of the cardless gate. Run them on the named schedule:
   directory and verifies the durable onboarding path and its links.
 - Cycle start: `scripts/health-report.ps1` prints the read-only process health report.
 
-Record each run under `handoff/evidence/<YYYY-MM-DD>-<slug>/`.
+Record each run as `evidence/<YYYY-MM-DD>-<slug>/` under the private handoff root
+that `AGENTS.md` section 2 resolves. A public clone has no such directory (see
+`CONTRIBUTING.md`).
 
 ## Evidence requirements
 
 Every gate claim needs dated evidence. Each evidence record names:
 
-- the log path under `handoff/evidence/<YYYY-MM-DD>-<slug>/`,
+- the log path as `evidence/<YYYY-MM-DD>-<slug>/` under the private handoff root
+  that `AGENTS.md` section 2 resolves,
 - the exact command that ran,
 - the exit code,
 - the counts the command printed.
@@ -184,7 +187,8 @@ cargo test --test admission_conformance
   `scripts/seed-admission-regression.ps1`. It flips one expression in
   `src/scheduler/admission.rs`, runs the target there, and proves a non-zero
   exit. The main working tree is never mutated. The script exits 0 only when the
-  target goes red; record its log under `handoff/evidence/`.
+  target goes red. Record its log as `evidence/<YYYY-MM-DD>-<slug>/` under the
+  private handoff root that `AGENTS.md` section 2 resolves.
 
 ## Definition of verified
 

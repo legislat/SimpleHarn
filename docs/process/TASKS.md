@@ -121,7 +121,8 @@ List or diff reference.
 
 ## Evidence
 
-Links to `handoff/evidence/...` and gate output.
+Links to the dated evidence record (`evidence/<YYYY-MM-DD>-<slug>/` under the
+private handoff root) and gate output.
 
 ## Next step
 
