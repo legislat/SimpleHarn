@@ -200,6 +200,32 @@ const driver = `
         page.css.indexOf("R2-16-01") >= 0,
       (page.css.match(/font-family:[^;]+/g) || []).join(" | "));
   }
+  // ---- TASK-TEST-CULTURE B-4/B-7 (static legs, the R2-16-01 precedent): the
+  // stub never parses the index and never applies CSS, so the banner's place in
+  // the document and the favicon link live on as honest string legs over the
+  // served bytes. B-4 owns the 1.5.1.2 regression (the fixed, transparent banner
+  // painted its text over the page text); B-7 owns the head link that makes a
+  // browser use /favicon.png instead of probing only the .ico path.
+  {
+    const page = globalThis.servedPage;
+    const headerAt = page.index.indexOf("</header>");
+    const hostAt = page.index.indexOf('id="sh-flash-host"');
+    const bannerAt = page.index.indexOf('id="sh-flash"');
+    const mainAt = page.index.indexOf('id="sh-main"');
+    const fixedHits = [page.index, page.css]
+      .map(function (src) {
+        return src.indexOf("position: fixed") >= 0 || src.indexOf("position:fixed") >= 0;
+      })
+      .filter(Boolean).length;
+    check("the flash host sits in flow between header and table and nothing is fixed",
+      headerAt >= 0 && hostAt > headerAt && bannerAt > hostAt && mainAt > hostAt &&
+        fixedHits === 0,
+      "header=" + headerAt + " host=" + hostAt + " banner=" + bannerAt +
+        " main=" + mainAt + " fixed=" + fixedHits);
+    check("the page head links the favicon",
+      page.index.indexOf('<link rel="icon" type="image/png" href="/favicon.png" />') >= 0,
+      "no favicon link in the served index");
+  }
   await refresh();
   const main = document.getElementById("sh-main");
   const header = document.getElementById("sh-header");
@@ -524,9 +550,9 @@ const driver = `
   // structurally cannot see that (UR-01 landed exactly there).
   {
     const page = globalThis.servedPage;
-    const unloadHits = (page.app.match(/sh-unload/g) || []).length;
-    check("the page carries sh-unload at exactly the three unload call sites",
-      unloadHits === 3, "found " + unloadHits);
+    // TASK-TEST-CULTURE: the raw source count of sh-unload over page.app died
+    // here — the rendered class legs below and the releasing/draining pill legs
+    // own which buttons carry the amber class.
     const clsOf = function (b) { return b ? " " + (b.attrs.class || "") + " " : ""; };
     const hdr = document.getElementById("sh-header");
     const hdrPills = findAll(hdr, "span", "sh-tab-item");
@@ -1115,6 +1141,61 @@ const driver = `
         !!thBody && thBody.indexOf("var(--sh-panel-bg") >= 0 &&
         !!lightBody && lightBody.indexOf("--sh-panel-bg: #f2eadc") >= 0,
       "head=" + (headBody || "missing").slice(0, 40) + " th=" + (thBody || "missing").slice(0, 40));
+    // ---- TASK-TEST-CULTURE B-2/B-3/B-5/B-6: the cascade legs that replace the
+    // byte-level rule pins retired from src/webui/mod.rs. This harness is the
+    // only place the served stylesheet is seen at all (GOTCHAS [ui][test]); the
+    // stub never resolves custom properties (UR-05), so attribute rules are
+    // located by selector text and checked for their tone TOKENS, never hexes.
+    // B-2: badges get their colours from the served stylesheet — the amber badge
+    // must never carry the red family and vice versa (FINDINGS-16 [4]: an amber
+    // badge rendered green when its rule was lost).
+    const badgeWarnBody = bodyOf('.sh-badge[data-tone="warn"]');
+    const badgeBadBody = bodyOf('.sh-badge[data-tone="bad"]');
+    check("the badge tones resolve to their own tokens in the served stylesheet",
+      !!badgeWarnBody && badgeWarnBody.indexOf("var(--sh-warn-ink)") >= 0 &&
+        badgeWarnBody.indexOf("--sh-bad") < 0 &&
+        !!badgeBadBody && badgeBadBody.indexOf("var(--sh-bad)") >= 0 &&
+        badgeBadBody.indexOf("--sh-warn") < 0,
+      "warn=" + (badgeWarnBody || "missing") + " bad=" + (badgeBadBody || "missing"));
+    // B-3: colour is the provenance (operator ruling 2026-11-01) — the validated
+    // and unchecked cost states each name their OWN ink token, so merging both
+    // states onto one colour or dropping either rule trips this leg.
+    const costCheckedBody = bodyOf(".sh-cost-checked");
+    const costUncheckedBody = bodyOf(".sh-cost-unchecked");
+    check("the cost states each keep their own ink token in the served stylesheet",
+      !!costCheckedBody && costCheckedBody.indexOf("color: var(--sh-cost-ink)") >= 0 &&
+        !!costUncheckedBody &&
+        costUncheckedBody.indexOf("color: var(--sh-warn-ink)") >= 0,
+      "checked=" + (costCheckedBody || "missing") +
+        " unchecked=" + (costUncheckedBody || "missing"));
+    // B-5: refusal text stays readable, not the graphics red — the job-error
+    // class carries the readable ink token, and both theme blocks re-ink that
+    // token (tokens, not hexes). Twin of the .sh-job-note leg beside it (UIFR-01
+    // keeps the red off the muted cancel note).
+    const jobErrBody = bodyOf(".sh-job-error {");
+    check("job-error text carries the readable bad-ink token in both theme blocks",
+      !!jobErrBody && jobErrBody.indexOf("color: var(--sh-bad-ink)") >= 0 &&
+        jobErrBody.indexOf("var(--sh-bad)") < 0 &&
+        !!rootBody && rootBody.indexOf("--sh-bad-ink:") >= 0 &&
+        !!darkBody && darkBody.indexOf("--sh-bad-ink:") >= 0,
+      "rule=" + (jobErrBody || "missing") +
+        " root=" + (rootBody ? rootBody.indexOf("--sh-bad-ink") : "missing") +
+        " dark=" + (darkBody ? darkBody.indexOf("--sh-bad-ink") : "missing"));
+    // B-6: opaque, edged, hidden when empty (the 1.5.1.2 banner lineage). The
+    // shipped CSS puts the in-flow margin on .sh-flash-host and the opaque card
+    // with its left fault edge on .sh-flash itself — the stub sees both class
+    // rules directly; the leg asserts the behavior wherever the stylesheet
+    // actually carries it.
+    const flashHostBody = bodyOf(".sh-flash-host {");
+    const flashBody = bodyOf(".sh-flash {");
+    const flashHiddenBody = bodyOf(".sh-flash[hidden]");
+    check("the error banner is opaque, edged, and hidden when empty",
+      !!flashHostBody && !!flashBody &&
+        flashBody.indexOf("background: var(--pico-card-background-color)") >= 0 &&
+        flashBody.indexOf("border-left: 4px solid var(--sh-bad)") >= 0 &&
+        !!flashHiddenBody && flashHiddenBody.indexOf("display: none") >= 0,
+      "host=" + (flashHostBody || "missing") + " banner=" + (flashBody || "missing") +
+        " hidden=" + (flashHiddenBody || "missing"));
   }
 
   // One fact, one place (operator 2026-11-10): the newest fault is a ledger row,
@@ -1800,8 +1881,8 @@ const driver = `
   // Red when the harness says a listener is down, amber when one is still without a
   // verdict (the tray's precedence, page-side), and never amber over red. The stub sees
   // the tone ATTRIBUTE only: CSS application and stacking cannot be seen from here at
-  // all (GOTCHAS [ui][test]) — the amber rule's existence in the served stylesheet is
-  // pinned byte-level by served_app_js_reads_the_server_computed_listener_verdicts.
+  // all (GOTCHAS [ui][test]) — the badge tone rules are pinned by the cascade legs
+  // above (TASK-TEST-CULTURE B-2), the only harness where the stylesheet is seen.
   const flush = async () => {
     for (let i = 0; i < 8; i += 1) await new Promise((r) => setTimeout(r, 0));
   };
@@ -1833,6 +1914,26 @@ const driver = `
     listenerBadges().join(" | "));
   applyState(verdictDoc(undefined, undefined));
   check("absent verdicts render no badge (no verdict is not a verdict)",
+    listenerBadges().length === 0, listenerBadges().join(" | "));
+  applyState(verdictDoc(false, false));
+
+  // ---- TASK-TEST-CULTURE B-1: the legacy shape decoder stays dead ----
+  // A document carrying the old "listeners" shape map — a WORK listener marked
+  // down inside it — while the server verdict fields say all-clear must render
+  // no badge: the verdict is read from the server fields, never decoded from
+  // the JSON shape (FINDINGS-16 [4]). Reintroducing a scan of
+  // Object.values(status.listeners) paints the badge and this leg goes
+  // red. This replaces the mod.rs source-absence pins, which a differently
+  // worded decoder would have slipped past (the census found this the one real
+  // R-class coverage hole of the old module).
+  applyState({
+    ...fixtures["/har/status"],
+    models: fixtures["/har/models"].data,
+    listeners_down: false,
+    listeners_pending: false,
+    listeners: { WORK: { port: 8708, state: "down" } },
+  });
+  check("a legacy listeners shape map decides no badge",
     listenerBadges().length === 0, listenerBadges().join(" | "));
   applyState(verdictDoc(false, false));
 
@@ -2287,10 +2388,10 @@ const driver = `
     check("no label text ever reaches a request body",
       bodies.every((b) => b.indexOf("Primary Work") < 0 && b.indexOf("Theater") < 0),
       JSON.stringify(bodies));
-    const app = globalThis.servedPage.app;
-    check("the request and order key on the page stays the id list",
-      app.indexOf('const CATEGORY_ORDER = ["WORK", "RP", "AUX", "EMB"];') >= 0,
-      "CATEGORY_ORDER line drifted");
+    // TASK-TEST-CULTURE: the raw CATEGORY_ORDER source-line pin died here — the
+    // rendered legs above own it: the tab/pill order (WORK,RP,AUX,EMB), the retag
+    // option vocabulary, and the two payload legs that post the ids under custom
+    // labels. A reordered id list trips the tab-order leg.
 
     // Leave the base document applied for anything that reads state afterwards.
     applyState({ ...fixtures["/har/status"], models: fixtures["/har/models"].data });

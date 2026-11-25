@@ -80,18 +80,23 @@ pub fn router(_state: Arc<ApiState>) -> Router {
 
 #[cfg(test)]
 mod tests {
-    use super::{APP_JS, FAVICON_PNG, INDEX_HTML, STYLE_CSS};
+    use super::{APP_JS, FAVICON_PNG};
     use crate::engine::llama::OFFLOAD_ENGINES;
 
-    /// C of the `cpu_offload` scoping ruling: the served page — the exact
-    /// `include_str!` bytes `/app.js` answers, so an `include_str!`-stale exe
-    /// cannot hide a page bug (GOTCHAS [ui]) — gates the CPU control on the
-    /// engine table. Nature, declared: a source-content assertion, not a render
-    /// test (cargo tests have no DOM engine; the render check is the node DOM
-    /// stub in `tests/webui/`). The gate list is compared against the Rust
-    /// `OFFLOAD_ENGINES` const itself, not a second copy of it, closing the
-    /// list-drift trap (GOTCHAS [test]). Falsifier: restoring the checkbox
-    /// unconditionally drops the gate/branch asserts or duplicates the control.
+    /// List-drift falsifier (C of the `cpu_offload` scoping ruling): the served
+    /// page's gate list — the exact `include_str!` bytes `/app.js` answers, so an
+    /// `include_str!`-stale exe cannot hide a page bug (GOTCHAS [ui]) — must equal
+    /// the Rust `OFFLOAD_ENGINES` const itself, not a second copy of it
+    /// (GOTCHAS [test]). This is one of the two source pins the test wave kept:
+    /// the DOM stub has no access to the Rust const, so the const comparison is
+    /// not DOM-expressible. Nature, declared: a source-content assertion, not a
+    /// render test. Every rendered behavior this function used to carry — the
+    /// gated checkbox, the one-per-row count, the dash on non-offload rows — is a
+    /// DOM leg in `tests/webui/webui_dom_test.mjs` (per-row checkbox counts and
+    /// cell text, engine-scoped).
+    ///
+    /// Falsifier: adding an engine to the Rust const without restating the page
+    /// list, or restating the page list wrongly, fails the equality.
     #[test]
     fn served_app_js_gates_the_cpu_control_on_the_offload_engine_table() {
         const LIST: &str = "const OFFLOAD_ENGINES = [";
@@ -110,449 +115,6 @@ mod tests {
             listed, OFFLOAD_ENGINES,
             "the page's gate list must equal the Rust OFFLOAD_ENGINES const"
         );
-        const GATE: &str = "if (OFFLOAD_ENGINES.includes(model.engine)) {";
-        let gate_at = APP_JS
-            .find(GATE)
-            .expect("the CPU cell must be created only inside the engine gate");
-        const CONTROL: &str = "\"aria-label\": \"cpu offload\"";
-        assert_eq!(
-            APP_JS.matches(CONTROL).count(),
-            1,
-            "exactly one CPU control exists, inside the gate"
-        );
-        let cpu_at = APP_JS
-            .find(CONTROL)
-            .expect("the gated branch must still build the CPU checkbox");
-        assert!(
-            cpu_at > gate_at,
-            "the checkbox must sit after the gate test"
-        );
-        assert!(
-            APP_JS[gate_at..].contains("text(\"\u{2014}\")"),
-            "non-offload rows must render a dash, not a control"
-        );
-    }
-
-    /// The row dot's amber reads the SERVER's
-    /// boolean directly (`model.stale_config === true`, the exact-compare the K-round
-    /// listener-verdict rule demands — `undefined` must not slip through as truthy),
-    /// carries the agreed tooltip wording, and prints `model.launched_at` verbatim
-    /// with no client-side date math (the only `new Date(` the page may keep is the
-    /// log panel's pre-existing `entry.ts_ms` formatting — asserted scoped, not
-    /// blanket-absent). The amber rule's existence in the served stylesheet is pinned
-    /// at the byte level because CSS is untestable in the DOM stub (GOTCHAS [ui]).
-    ///
-    /// Nature, declared: a source-content assertion over the exact `include_str!`
-    /// bytes `/app.js` and `/style.css` answer (not a render test — the render legs
-    /// are `tests/webui/webui_dom_test.mjs`).
-    ///
-    /// # Falsifier
-    ///
-    /// Drop the `=== true` and the exact-compare assert fails; re-derive staleness
-    /// page-side from file times (a `Date` around `launched_at`) and the scoped
-    /// absence asserts fail; delete the CSS rule and its assert fails.
-    #[test]
-    fn served_app_js_renders_the_stale_bool_and_launch_stamp_as_given() {
-        assert!(
-            APP_JS.contains("model.stale_config === true"),
-            "the amber must read the server's own boolean exactly"
-        );
-        assert!(
-            APP_JS.contains("\"data-stale\": \"amber\""),
-            "the serving row's stale marker must carry the attribute the stylesheet paints"
-        );
-        assert!(
-            APP_JS.contains(
-                "title: \"config file changed since launch \\u2014 unload + reload to apply\""
-            ),
-            "the tooltip must be the ruling's true sentence, byte-exact"
-        );
-        assert!(
-            APP_JS.contains("model.launched_at")
-                && APP_JS.contains(
-                    "[el(\"span\", { class: \"sh-launched\" }, text(` \\u00b7 launched ${model.launched_at}`))]"
-                ),
-            "the launch stamp must render verbatim from the server's string inside .sh-launched"
-        );
-        for derived in ["new Date(model", "Date.parse(model", "launched_at.toLocale"] {
-            assert!(
-                !APP_JS.contains(derived),
-                "no date math around the launch field: found `{derived}`"
-            );
-        }
-        assert!(
-            STYLE_CSS.contains(".sh-dot[data-stale=\"amber\"]") && STYLE_CSS.contains("--sh-warn"),
-            "the amber needs a rule in the served stylesheet or it renders as the green dot"
-        );
-    }
-
-    /// The header badge reads the two verdicts `/har/status` computes
-    /// and no longer decodes the serde shape of `listeners` in the browser. The
-    /// stranded-reservation badge rides the same rule: it reads
-    /// `status.stranded_containers` and names only what the harness lists.
-    ///
-    /// Nature, declared: a source-content assertion over the exact `include_str!`
-    /// bytes `/app.js` and `/style.css` answer, so an `include_str!`-stale exe cannot
-    /// hide a page bug (GOTCHAS [ui]); it is not a render test. The render legs — one
-    /// per badge state — live in `tests/webui/webui_dom_test.mjs`, and CSS application
-    /// and stacking stay untestable there (GOTCHAS [ui][test]), which is why the amber
-    /// rule's existence is pinned at the byte level here.
-    ///
-    /// # Falsifier
-    ///
-    /// Restore the `Object.values(status.listeners).some((l) => typeof l === "object")`
-    /// derivation in `renderHeader` and the two absence asserts fail; read a differently
-    /// named field (or drop the `=== true`, letting `undefined` through as truthy) and
-    /// the presence asserts fail; delete the amber tone from either asset and its assert
-    /// fails while the red one stays green.
-    #[test]
-    fn served_app_js_reads_the_server_computed_listener_verdicts() {
-        const SHAPE_SCAN: &str = "typeof listener === \"object\"";
-        const SHAPE_USE: &str = "Object.values(status.listeners)";
-        assert!(
-            !APP_JS.contains(SHAPE_SCAN),
-            "the page must not decide a verdict from the JSON shape of `listeners`"
-        );
-        assert!(
-            !APP_JS.contains(SHAPE_USE),
-            "and must not scan that map at all: the verdicts are `/har/status` fields"
-        );
-        for field in [
-            "status.listeners_down === true",
-            "status.listeners_pending === true",
-            "status.stranded_containers",
-        ] {
-            assert!(
-                APP_JS.contains(field),
-                "the header must read the server's own boolean exactly: missing {field}"
-            );
-        }
-        const RED: &str = "\"data-tone\": \"bad\"";
-        const AMBER: &str = "\"data-tone\": \"warn\"";
-        assert_eq!(
-            APP_JS.matches(RED).count(),
-            1,
-            "one red badge, for a listener the harness reports down"
-        );
-        assert_eq!(
-            APP_JS.matches(AMBER).count(),
-            2,
-            "two amber badges: the listener no-verdict state (the tray's colour, page-side) \
-             and the reservations the harness reports stranded"
-        );
-        assert!(
-            STYLE_CSS.contains(".sh-badge[data-tone=\"warn\"]") && STYLE_CSS.contains("--sh-warn"),
-            "the amber badge needs a rule in the served stylesheet or it renders as the \
-             default green badge"
-        );
-    }
-
-    /// Cost provenance is colour, not prose: the served
-    /// page paints a gate-validated figure green and an unchecked one yellow,
-    /// and the CSS rules both colours need exist in the served stylesheet —
-    /// untestable in the DOM stub (GOTCHAS [ui][test]), so pinned byte-level.
-    ///
-    /// Nature: a source-content assertion over the `include_str!` bytes.
-    /// Falsifier: dropping either rule, or colouring both states from one token,
-    /// fails.
-    #[test]
-    fn served_assets_colour_the_cost_cell_by_validation() {
-        assert!(
-            APP_JS.contains("sh-cost-\" + (costChecked ? \"checked\" : \"unchecked\")"),
-            "the cost cell must carry exactly the checked/unchecked class token"
-        );
-        assert!(
-            STYLE_CSS.contains(".sh-cost-checked { color: var(--sh-cost-ink); }")
-                && STYLE_CSS.contains(".sh-cost-unchecked { color: var(--sh-warn-ink); }")
-                && STYLE_CSS.contains("--sh-cost-ink: #536542")
-                && STYLE_CSS.contains("--sh-cost-ink: var(--sh-accent-solid)"),
-            "green must be the cost ink (darker in light, the olive in dark) and yellow \
-             the warn-ink token, each with its own rule"
-        );
-    }
-
-    /// The `releasing` slot state: both the tab
-    /// pill and the model row read the server's `slots[].state` string
-    /// directly — the page never re-derives the release (same rule as the
-    /// stale amber and the fault dot) — and `releasing` gets its own
-    /// stylesheet treatment, distinct from `loading`'s amber. CSS application
-    /// is untestable in the DOM stub (GOTCHAS [ui][test]), so the rule's
-    /// existence is pinned at the byte level, like the amber before it; the
-    /// render legs live in `tests/webui/webui_dom_test.mjs`.
-    ///
-    /// Nature, declared: a source-content assertion over the exact
-    /// `include_str!` bytes `/app.js` and `/style.css` answer.
-    ///
-    /// # Falsifier
-    ///
-    /// Replace a server read with a page-side derivation (`loading_job` or
-    /// `model` alone) and one of the two reads disappears: the count assert
-    /// fails. Delete the `releasing` rule from the stylesheet and its assert
-    /// fails while the cost asserts stay green.
-    #[test]
-    fn served_assets_render_the_server_releasing_state() {
-        const READ: &str = "slot.state === \"releasing\"";
-        assert_eq!(
-            APP_JS.matches(READ).count(),
-            2,
-            "the tab pill AND the model row must read the server's `state` string, \
-             never re-derive it"
-        );
-        assert!(
-            APP_JS.contains("text(\"releasing\u{2026}\")"),
-            "the pill must say releasing, not restate the occupant"
-        );
-        assert!(
-            APP_JS.contains("text(\"Releasing\u{2026}\")"),
-            "the releasing row parks on an honest disabled button"
-        );
-        assert!(
-            STYLE_CSS.contains(".sh-dot[data-state=\"releasing\"]")
-                && STYLE_CSS.contains("--sh-releasing"),
-            "the releasing dot needs its own rule and token or it renders as \
-             another state's colour"
-        );
-    }
-
-    /// The working-model dot, made bright: the matte
-    /// olive served-dot read as nothing at 9px, so serving takes the bright
-    /// green `--sh-dot-live` (#22c55e) with a 1px ring of its deep shade
-    /// `--sh-dot-live-ring` (#14532d) - a non-text graphic held to >= 3:1 on
-    /// its ring/fill combination (measured: light ring 7.6:1 on the surface,
-    /// fill 4.0:1 on the ring; dark fill 7.6:1 on the card, ring a subtle
-    /// 1.9:1 edge). Every other state keeps its hue and the same ring
-    /// treatment; dark drops the other rings to a near-black tint. The
-    /// selected-tab olive accent must stay exactly as it was.
-    ///
-    /// Nature, declared: a source-content assertion over the exact
-    /// `include_str!` bytes `/style.css` answers.
-    ///
-    /// Falsifier: reverting the serving dot to the accent (or dropping a ring)
-    /// fails the rule asserts; recoloring the tab accent fails its pins in
-    /// `served_assets_join_the_unload_entity_and_colour_it_amber`.
-    #[test]
-    fn served_assets_brighten_the_working_dot() {
-        assert!(
-            STYLE_CSS.contains(
-                ".sh-dot[data-state=\"serving\"] { background: var(--sh-dot-live); \
-                 box-shadow: 0 0 0 1px var(--sh-dot-live-ring); }"
-            ),
-            "the serving dot is the bright live green with its deep ring"
-        );
-        assert!(
-            !STYLE_CSS
-                .contains(".sh-dot[data-state=\"serving\"] { background: var(--sh-accent-solid)"),
-            "the matte olive is no longer the working indicator"
-        );
-        assert!(
-            STYLE_CSS.contains("--sh-dot-live: #22c55e")
-                && STYLE_CSS.matches("--sh-dot-live:").count() == 1
-                && STYLE_CSS.contains("--sh-dot-live-ring: #14532d")
-                && STYLE_CSS.matches("--sh-dot-live-ring:").count() == 1,
-            "the live fill and its ring are declared once and shared by both themes"
-        );
-        assert!(
-            STYLE_CSS.contains("background: var(--pico-muted-color);\n  box-shadow: 0 0 0 1px var(--sh-dot-idle-ring);")
-                && STYLE_CSS.contains("--sh-dot-warn-ring: #7c4a03")
-                && STYLE_CSS.contains("--sh-dot-releasing-ring: #5c3804")
-                && STYLE_CSS.contains("--sh-dot-bad-ring: #7f1d12")
-                && STYLE_CSS.contains("--sh-dot-idle-ring: #3d372c"),
-            "idle gets its ring in the base rule and every light state ring is \
-             one dark step of its own hue"
-        );
-        assert!(
-            STYLE_CSS.contains("--sh-dot-warn-ring: #241703")
-                && STYLE_CSS.contains("--sh-dot-releasing-ring: #1d1101")
-                && STYLE_CSS.contains("--sh-dot-bad-ring: #260a06")
-                && STYLE_CSS.contains("--sh-dot-idle-ring: #05070a")
-                && STYLE_CSS.matches("--sh-dot-live-ring:").count() == 1,
-            "dark drops the non-green rings to a near-black tint and keeps the \
-             same green ring as light"
-        );
-    }
-
-    /// The checked box in both themes: Pico's tick is a hardcoded-white SVG glyph
-    /// and the switch knob is white, both painted on
-    /// `--pico-primary-background` / `--pico-switch-checked-background-color`.
-    /// With both themes routing `--pico-primary-background` to their muted
-    /// chrome plates (`#efe6d6` light, `#1e2631` dark), the checkbox rule sets
-    /// both tokens to the matte olive `--sh-accent-solid` once for both themes.
-    ///
-    /// Nature, declared: a source-content assertion over the exact
-    /// `include_str!` bytes `/style.css` answers.
-    ///
-    /// Falsifier: deleting the checkbox override or duplicating the switch
-    /// token fails the asserts.
-    #[test]
-    fn served_assets_darken_the_checked_box_in_light() {
-        assert!(
-            STYLE_CSS.contains("input[type=\"checkbox\"] {")
-                && STYLE_CSS.matches("input[type=\"checkbox\"]").count() == 1
-                && !STYLE_CSS.contains("[data-theme=\"light\"] input[type=\"checkbox\"]")
-                && !STYLE_CSS.contains("[data-theme=\"dark\"] input[type=\"checkbox\"]")
-                && !STYLE_CSS.contains(":root:not([data-theme=\"dark\"]) input[type=\"checkbox\"]")
-                && STYLE_CSS.contains("--pico-primary-background: var(--sh-accent-solid);")
-                && STYLE_CSS
-                    .contains("--pico-switch-checked-background-color: var(--sh-accent-solid);")
-                && STYLE_CSS
-                    .matches("--pico-switch-checked-background-color:")
-                    .count()
-                    == 1,
-            "the checked checkbox and switch fill is the olive accent on ONE unscoped rule; \
-             a light-scoped copy would pass a substring test, so the absence legs are the pin"
-        );
-    }
-
-    /// The unload entity and its amber: the three
-    /// unload gestures — tab-side, row Unload, Unload all — carry the one
-    /// `sh-unload` class in the served page bytes, the served stylesheet
-    /// carries the amber class rule and the warm-parchment light palette the
-    /// design names, and no rule may repaint the joined side when its tab is
-    /// selected: the shape joins, the amber action stays amber. Rule
-    /// existence is pinned byte-level like the amber tones before it; the
-    /// matte-olive accent (bright #2ea043 retired), the table-cell actions
-    /// wrapper (seam fix), the shared unload plate and the warm Pico-primary
-    /// scheme ride the same served bytes; the cascade legs (joined edges
-    /// computed from the served stylesheet, the class on each rendered
-    /// button) live in `tests/webui/webui_dom_test.mjs`.
-    ///
-    /// Nature, declared: a source-content assertion over the exact
-    /// `include_str!` bytes `/app.js` and `/style.css` answer, so an
-    /// `include_str!`-stale exe cannot hide a page bug (GOTCHAS [ui]).
-    ///
-    /// # Falsifier
-    ///
-    /// Drop `sh-unload` from any one call site and that count assert fails;
-    /// delete the amber class rule or the parchment values, reintroduce a
-    /// selected-side accent override, the bright #2ea043, a flex on the
-    /// actions td, a transparent unload plate, a renamed-away `Default`
-    /// label, a row-action block that is not compact, equal-width and
-    /// left-aligned, light body cells painting their own surface instead of
-    /// the panel's, a light block falling back to the card hex instead of
-    /// the page parchment, or a wrapper without the warm scrollbar rule, and
-    /// their asserts fail while the releasing and cost asserts stay green.
-    #[test]
-    fn served_assets_join_the_unload_entity_and_colour_it_amber() {
-        assert_eq!(
-            APP_JS.matches("\"sh-mini sh-tab-side sh-unload\"").count(),
-            1,
-            "the tab-side Unload carries the amber class on its joined pill"
-        );
-        assert_eq!(
-            APP_JS.matches("\"sh-mini sh-unload\"").count(),
-            2,
-            "the row Unload and the Unload all carry the amber class"
-        );
-        assert!(
-            STYLE_CSS.contains(".sh-unload {") && STYLE_CSS.contains("var(--sh-warn-ink)"),
-            "the amber unload class needs its rule and its text-ink token in \
-             the served stylesheet"
-        );
-        assert!(
-            !STYLE_CSS.contains(".sh-tab[aria-selected=\"true\"] + .sh-tab-side"),
-            "a selected tab must not repaint the joined side - the amber \
-             action stays amber in every state"
-        );
-        assert!(
-            APP_JS.contains("class: \"sh-row-actions\"")
-                && APP_JS.contains("el(\"td\", { class: \"sh-actions\" }, actions)")
-                && STYLE_CSS.contains("table.sh-models td.sh-actions")
-                && !STYLE_CSS.contains("td.sh-row-actions"),
-            "the actions cell must stay a table-cell wrapping a flexed span \
-             (the display:flex td opened a card-white seam beside it)"
-        );
-        assert!(
-            STYLE_CSS.contains("--sh-accent: #596B4770")
-                && STYLE_CSS.contains("--sh-accent-solid: #596B47")
-                && STYLE_CSS.contains("--sh-accent-solid: #8fae6f")
-                && !STYLE_CSS.contains("#2ea043"),
-            "the accent is the matte olive: shared wash #596B4770, matte \
-             solid in light, the same hue lightened in dark; the bright \
-             green #2ea043 is retired from the served stylesheet"
-        );
-        assert!(
-            STYLE_CSS.contains(".sh-unload {")
-                && STYLE_CSS.contains("background: var(--sh-tab-side-bg)"),
-            "every unload button sits on the shared tab-side plate"
-        );
-        assert!(
-            STYLE_CSS.contains("--pico-primary-background: #efe6d6")
-                && STYLE_CSS.contains("--pico-primary-background: #1e2631")
-                && STYLE_CSS.matches("--pico-primary-background:").count() == 3
-                && STYLE_CSS.contains("--pico-muted-border-color: #d6c5a8")
-                && STYLE_CSS.contains("--pico-muted-border-color: #232c38")
-                && STYLE_CSS.matches("--pico-muted-border-color:").count() == 2,
-            "the served stylesheet carries the warm Pico-primary scheme in light, \
-             the calm dark-slate Pico-primary scheme in dark, and the olive \
-             checked-box override"
-        );
-        assert!(
-            APP_JS.contains("text(\"Default\")") && !APP_JS.contains("text(\"Set default\")"),
-            "the row action is labelled Default - only the label renamed, \
-             the handler still posts the default it always posted"
-        );
-        assert!(
-            STYLE_CSS.contains("flex: 0 0 auto")
-                && STYLE_CSS.contains("min-width: 4rem")
-                && STYLE_CSS.contains("padding: 0.25rem 0.6rem")
-                && STYLE_CSS.contains("justify-content: flex-start")
-                && !STYLE_CSS.contains("justify-content: flex-end"),
-            "row action buttons are word-width compact (small overhead, small \
-             equalising floor, no grow) and left-aligned in the served stylesheet"
-        );
-        assert!(
-            STYLE_CSS.contains("--sh-panel-bg: #f2eadc")
-                && STYLE_CSS.contains("--sh-header-bg: #f2eadc")
-                && STYLE_CSS.contains("--pico-table-border-color: #e2d5be")
-                && STYLE_CSS.contains("--pico-table-border-color: #202935")
-                && STYLE_CSS.matches("--pico-table-border-color:").count() == 2
-                && STYLE_CSS.contains("color: var(--sh-head-ink, var(--pico-color))")
-                && STYLE_CSS.contains("--pico-primary-border: #2d3846")
-                && STYLE_CSS
-                    .contains("background: var(--sh-panel-bg, var(--pico-card-background-color))")
-                && STYLE_CSS
-                    .contains("background: var(--sh-header-bg, var(--pico-card-background-color))",)
-                && STYLE_CSS.contains("html[data-theme=\"light\"] .sh-unload:not(:hover)")
-                && !STYLE_CSS.contains("[data-theme=\"dark\"] .sh-unload"),
-            "the approved ramp ships in both themes: light #f2eadc and dark #161c24 \
-             surfaces, muted chrome buttons, and the light strip carries no plate \
-             behind any unload"
-        );
-        assert!(
-            STYLE_CSS.contains("table.sh-models tbody td {")
-                && STYLE_CSS.contains("border-bottom: 0;\n  background: transparent;")
-                && !STYLE_CSS.contains("[data-theme=\"light\"] table.sh-models tbody td")
-                && !STYLE_CSS.contains("[data-theme=\"dark\"] table.sh-models tbody td")
-                && !STYLE_CSS.contains(":root:not([data-theme=\"dark\"]) table.sh-models tbody td"),
-            "body cells paint nothing in both themes - one unscoped rule, the \
-             panel token shows through every gap, dark mirrors light exactly"
-        );
-        assert!(
-            STYLE_CSS
-                .contains("scrollbar-color: var(--pico-card-border-color) var(--sh-chrome-bg)")
-                && STYLE_CSS.contains(".sh-tablewrap {")
-                && STYLE_CSS.matches(".sh-tablewrap {").count() == 1
-                && !STYLE_CSS.contains("[data-theme=\"light\"] .sh-tablewrap")
-                && !STYLE_CSS.contains("[data-theme=\"dark\"] .sh-tablewrap")
-                && !STYLE_CSS.contains(":root:not([data-theme=\"dark\"]) .sh-tablewrap"),
-            "the table wrapper scrollbar carries the theme border and chrome tokens on \
-             one unscoped rule - a light-scoped or dark-scoped copy would still pass a \
-             substring test, so the absence legs are the pin"
-        );
-        assert!(
-            APP_JS.contains(
-                "dotState === \"serving\" ? { class: \"sh-serving\", \"data-serving\": \"true\" } : {}"
-            ) && STYLE_CSS.contains("table.sh-models tbody tr.sh-serving {")
-                && STYLE_CSS.contains("box-shadow: inset 3px 0 0 var(--sh-dot-live);"),
-            "serving resident rows carry .sh-serving and data-serving=true with a \
-             full-row wash and 3px start-edge accent bar"
-        );
-        for ramp in ["#f7f1e6", "#f2eadc", "#efe6d6", "#d6c5a8", "#e2d5be"] {
-            assert!(
-                STYLE_CSS.contains(ramp),
-                "the warm ramp needs {ramp} in the served stylesheet"
-            );
-        }
     }
 
     /// A unit-handler state: the favicon handlers read no state at all, so the
@@ -612,73 +174,27 @@ mod tests {
         }
     }
 
-    /// The page head links the favicon, so a browser uses the link instead of
-    /// probing only `/favicon.ico`. Nature, declared: a source-content assertion
-    /// over the exact `include_str!` bytes `/` answers, the served-asset style of
-    /// every pin in this module.
+    /// Flash-deadline hygiene — the second kept source pin: a new flash must
+    /// clear the previous deadline before arming its own, or an earlier timer
+    /// wipes a later banner. Nature, declared: a source-content assertion over
+    /// the exact `include_str!` bytes `/app.js` answers. The DOM stub has no
+    /// timer driver, so a leaked prior deadline cannot be rendered there; the
+    /// honest alternative is a fake-timer harness, which this wave did not
+    /// build. Everything else this test used to carry is DOM-side in
+    /// `tests/webui/webui_dom_test.mjs`: the banner's place in the document and
+    /// the no-fixed rule are static legs there, the opaque/edged/hidden rules
+    /// are cascade legs there, and the ledger dedup, the once-per-reason
+    /// wording and the absent last-fault headline are rendered legs there.
+    /// The name now states the one behavior this pin keeps: the served app
+    /// clears the previous flash timer before arming a new deadline.
     ///
-    /// Falsifier: remove the link from `index.html` and the assert fails.
+    /// Falsifier: delete the clear-before-set line in `flash` and the assert
+    /// fails.
     #[test]
-    fn served_index_links_the_favicon() {
+    fn served_app_clears_the_previous_flash_timer() {
         assert!(
-            INDEX_HTML.contains("<link rel=\"icon\" type=\"image/png\" href=\"/favicon.png\" />"),
-            "the page head must link the favicon: an unlinked page probes only \
-             the .ico path"
-        );
-    }
-
-    /// The error banner's shape: it lives in flow between
-    /// the header (whose bottom is the tab strip) and the model table, never as a
-    /// fixed overlay, and it is opaque. The 1.5.1.2 fixed, transparent banner
-    /// painted its text over the page text and read as garbled duplication.
-    ///
-    /// Nature, declared: source-content assertions over the `include_str!` bytes
-    /// the page serves. Falsifier: restore `position: fixed` on `#sh-flash`, or
-    /// move the host below `<main>`, and a leg fails.
-    #[test]
-    fn served_index_places_the_error_banner_between_tabs_and_table() {
-        let header = INDEX_HTML.find("</header>").expect("the header closes");
-        let host = INDEX_HTML
-            .find("id=\"sh-flash-host\"")
-            .expect("the banner host exists");
-        let main = INDEX_HTML
-            .find("id=\"sh-main\"")
-            .expect("the main host exists");
-        assert!(
-            header < host && host < main,
-            "the banner host must sit between the header and the model table"
-        );
-        assert!(
-            INDEX_HTML.contains("id=\"sh-flash\"")
-                && INDEX_HTML.find("id=\"sh-flash-host\"").expect("host")
-                    < INDEX_HTML.find("id=\"sh-flash\"").expect("banner"),
-            "the banner host must contain the banner element, not rely on the test DOM fabricating it"
-        );
-        assert!(
-            !INDEX_HTML.contains("position: fixed") && !STYLE_CSS.contains("position: fixed"),
-            "the page shell and the stylesheet must not pin the banner over the page"
-        );
-        assert!(
-            STYLE_CSS.contains("--sh-bad-ink: #b03024")
-                && STYLE_CSS.contains("--sh-bad-ink: #e8756a")
-                && STYLE_CSS.contains(".sh-job-error { color: var(--sh-bad-ink);"),
-            "error text uses the readable ink in both themes, not the graphics red"
-        );
-        assert!(
-            STYLE_CSS.contains(".sh-flash-host {")
-                && STYLE_CSS.contains("background: var(--pico-card-background-color);")
-                && STYLE_CSS.contains("border-left: 4px solid var(--sh-bad);")
-                && STYLE_CSS.contains(".sh-flash[hidden] { display: none; }"),
-            "the banner must be opaque, edged and hidden when empty"
-        );
-        assert!(
-            APP_JS.contains("function flashUnlessJobRefusal(error)")
-                && APP_JS.contains("error.status = response.status;")
-                && APP_JS.contains("if (flashTimer !== null) clearTimeout(flashTimer);")
-                && APP_JS.contains("same reason as above")
-                && !APP_JS.contains("last fault: "),
-            "a server refusal must stay in its ledger row, each flash must clear the \
-             previous deadline, and repeated reasons must not be reprinted"
+            APP_JS.contains("if (flashTimer !== null) clearTimeout(flashTimer);"),
+            "arming a new flash deadline must clear the previous one"
         );
     }
 }
