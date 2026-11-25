@@ -40,6 +40,12 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
   pair on one stem reports the existing duplicate-name refusal; and write-back
   keeps the row's own extension. Every other extension stays silently inert.
 
+Tag: `v1.5.2`. Commit: `8843bc7` (release prep). Artifact: `simpleharn.exe`,
+built 2026-11-25, SHA256
+`6B5630C9A39B05C74481FEF3397E7F01F5D2172850F04C5F4B84DB40FA9AF672`, zip
+`SimpleHarn-1.5.2-win-x64.zip` SHA256
+`AC31C2ADD5FF8AB65BE77AD87A2F1DF75C4AABE5859D9261ED11E4F5B13A1441`.
+
 ## v1.5.1.6 - 2026-11-16
 
 ### Added
