@@ -64,6 +64,23 @@ The docs in this repository are written in ASD-STE100 (Simplified Technical Engl
 purpose: short sentences, active voice, one idea per sentence. People and software agents
 can parse them reliably. The trade is that some pages read terse.
 
+## Version scheme
+
+A release tag carries three or four numbers:
+
+- A normal release uses `v<major>.<minor>.<patch>`, for example `v1.5.1`.
+- A hotfix release uses `v<major>.<minor>.<patch>.<hotfix>`, for example `v1.5.1.6`.
+
+The first three numbers are the crate version. `Cargo.toml` holds them, and Cargo
+cannot hold a fourth number. A fix on a shipped patch line gets the fourth number,
+the hotfix counter: `v1.5.1.1` follows `v1.5.1`. A hotfix release keeps the crate
+version. The counter names only the tag, the changelog heading, the release-asset
+names, and the release claim near the top of this page. Asset names drop the leading
+`v`: tag `v1.5.1.6` ships `SimpleHarn-1.5.1.6-win-x64.zip`. `scripts/release-check.ps1`
+refuses a tag whose first three numbers differ from `Cargo.toml`. The full rule is in
+[docs/process/GIT_WORKFLOW.md](docs/process/GIT_WORKFLOW.md), section "Tag and version
+naming".
+
 ## Quick start
 
 ### Prebuilt
