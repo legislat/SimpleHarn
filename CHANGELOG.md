@@ -19,8 +19,27 @@ Rule: no tag without a dated entry here and a matching `Cargo.toml` version.
 
 ## v1.5.2 - 2026-11-25
 
+### Added
+
+- A typed `maya_vision` row block carries the Maya vision settings (a closed
+  key set of exe, mmproj, model, gpu) as row data: the harness renders it into
+  the staged profile, refuses an engine-side vision object as a named conflict
+  before any path check, and keeps the previous check when no overlay is set.
+
 ### Changed
 
+- A swap that meets an in-progress release parks the load and waits for the
+  release instead of failing. The release park needs every named blocker to be
+  releasing and the floor reachable with the release credit; a committed
+  release is a planner blocker and never a victim, and the refusal's
+  unreleasable figure credits the release. The in-flight booking park is
+  unchanged.
+- Strata defaults and the shipped fp4local rows repoint to the Strata 0.2.19
+  terminal layout (the terminal venv interpreter and cwd) so `-m serve.server`
+  resolves; model paths, the nvfp4 fork, and unrelated rows are untouched.
+- A named 503 refusal no longer writes an ERROR line on the HTTP trace: the
+  scheduler's WARN refusal stays the visible record and the trace failure line
+  drops to DEBUG.
 - Scheduler invariant violations now answer the refused command with `500`
   `invariant_violation` instead of stopping the actor. The client receives
   generic wording, while the detailed reason stays in the harness log.
