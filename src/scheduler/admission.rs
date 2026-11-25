@@ -13,6 +13,18 @@ use super::{
     SwapState, Victim, Waiter,
 };
 
+/// The one fail arm of the invariant `let`-`else` guards in this file: name
+/// the invariant error, finish the row under the `invariant` note, and return
+/// from the guarded step. The macro keeps the guard's `return` beside its
+/// `finish` call so the repeated arm reads once at every site; the expansion
+/// is exactly the inline arm it replaces.
+macro_rules! invariant_guard {
+    ($self:expr, $job_id:expr, $note:literal) => {{
+        $self.finish($job_id, Err(Self::invariant_error($note)), "invariant");
+        return;
+    }};
+}
+
 enum VictimPlan {
     Planned(Vec<Victim>),
     NoPlan(
@@ -248,12 +260,7 @@ impl ActorState {
             if let Some(claim) = self.cfg.port_claim(port) {
                 let error = SchedulerError::Admission(AdmissionError::PortClaimed { port, claim });
                 let Some(slot_state) = self.slots.get_mut(slot) else {
-                    self.finish(
-                        job_id,
-                        Err(Self::invariant_error("the load slot exists")),
-                        "invariant",
-                    );
-                    return;
+                    invariant_guard!(self, job_id, "the load slot exists")
                 };
                 slot_state.job = Some(job_id);
                 self.step(job_id, SwapState::Admit);
@@ -273,12 +280,7 @@ impl ActorState {
                 Err(error) => {
                     let error = SchedulerError::Admission(error);
                     let Some(slot_state) = self.slots.get_mut(slot) else {
-                        self.finish(
-                            job_id,
-                            Err(Self::invariant_error("the load slot exists")),
-                            "invariant",
-                        );
-                        return;
+                        invariant_guard!(self, job_id, "the load slot exists")
                     };
                     slot_state.job = Some(job_id);
                     self.step(job_id, SwapState::Admit);
@@ -294,12 +296,7 @@ impl ActorState {
                 Err(error) => {
                     let error = SchedulerError::Admission(error);
                     let Some(slot_state) = self.slots.get_mut(slot) else {
-                        self.finish(
-                            job_id,
-                            Err(Self::invariant_error("the load slot exists")),
-                            "invariant",
-                        );
-                        return;
+                        invariant_guard!(self, job_id, "the load slot exists")
                     };
                     slot_state.job = Some(job_id);
                     self.step(job_id, SwapState::Admit);
@@ -320,12 +317,7 @@ impl ActorState {
         // credit this gate cannot honestly state. A VRAM row keeps the card
         // figure, unchanged.
         let Some(slot_state) = self.slots.get(slot) else {
-            self.finish(
-                job_id,
-                Err(Self::invariant_error("the load slot exists")),
-                "invariant",
-            );
-            return;
+            invariant_guard!(self, job_id, "the load slot exists")
         };
         let victim = slot_state.occupant.as_ref().map(|o| Victim {
             model: o.model.clone(),
@@ -346,12 +338,7 @@ impl ActorState {
         job.ram_need = ram_booking;
         job.victim = victim;
         let Some(slot_state) = self.slots.get_mut(slot) else {
-            self.finish(
-                job_id,
-                Err(Self::invariant_error("the load slot exists")),
-                "invariant",
-            );
-            return;
+            invariant_guard!(self, job_id, "the load slot exists")
         };
         slot_state.job = Some(job_id);
         self.step(job_id, SwapState::Admit);
@@ -365,12 +352,7 @@ impl ActorState {
             .get(&job_id)
             .map(|job| job.resource == crate::model::Resource::Ram)
         else {
-            self.finish(
-                job_id,
-                Err(Self::invariant_error("caller holds a live job id")),
-                "invariant",
-            );
-            return;
+            invariant_guard!(self, job_id, "caller holds a live job id")
         };
         let witness = Arc::clone(&self.witness);
         let ram_witness = Arc::clone(&self.ram_witness);
@@ -700,14 +682,11 @@ impl ActorState {
                         .get(&job_id)
                         .map(|job| (job.victim.is_some(), job.release_first, job.slot.is_some()))
                     else {
-                        self.finish(
+                        invariant_guard!(
+                            self,
                             job_id,
-                            Err(Self::invariant_error(
-                                "the load row exists while covering a deficit",
-                            )),
-                            "invariant",
-                        );
-                        return;
+                            "the load row exists while covering a deficit"
+                        )
                     };
                     // The blocker gate of the release park (operator ruling,
                     // release-only): a release
@@ -1197,14 +1176,7 @@ impl ActorState {
         releasing_models: &[String],
     ) {
         let Some(slot) = self.jobs.get(&job_id).and_then(|job| job.slot) else {
-            self.finish(
-                job_id,
-                Err(Self::invariant_error(
-                    "the park arm checked the row has a slot",
-                )),
-                "invariant",
-            );
-            return;
+            invariant_guard!(self, job_id, "the park arm checked the row has a slot")
         };
         let booked: Vec<String> = self
             .jobs
