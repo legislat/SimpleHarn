@@ -58,7 +58,7 @@ async fn not_found() -> Response {
     StatusCode::NOT_FOUND.into_response()
 }
 
-/// The page routes, merged into the control listener (Step 11: `/har/*` and the
+/// The page routes, merged into the control listener (`/har/*` and the
 /// page live on the designated control listener only).
 pub fn router(_state: Arc<ApiState>) -> Router {
     Router::new()

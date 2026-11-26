@@ -1,4 +1,5 @@
-// Comment-hygiene checker for Rust comments in src/ and tests/. Node only, no external
+// Comment-hygiene checker for Rust comments in src/ and tests/ and TOML comments
+// in Cargo.toml. Node only, no external
 // dependencies. A source comment states the invariant and the reason; the
 // durable ledger owns the history. This checker flags internal-history
 // references inside line and block comments: task IDs, finding IDs, rule IDs
@@ -7,7 +8,8 @@
 // ("operator GO 2026-11-01"), ledger finding IDs ("FINDINGS-12", "W21-01",
 // "FR-01"), plan and evidence handles ("chunk 10 slice 10b", "C1 evidence"),
 // release-version pins, queue task IDs ("T10.1"), development-phase handles
-// ("phase 4"), matrix-cell handles ("Cell 4", "10a"), research-document cites
+// ("phase 4"), build-plan step references ("Step 4", "Steps 11-12",
+// "step 6"), matrix-cell handles ("Cell 4", "10a"), research-document cites
 // ("Search#40", "research/x.md"), handoff-snapshot cites, and incident
 // write-up names.
 //
@@ -84,6 +86,11 @@ const PATTERNS = [
   // a current spec, so it is not a public anchor for a source comment. A
   // bare "§5" without the DESIGN keyword is ambiguous and stays out of scope.
   { name: "design-step-ref", re: /\bDESIGN(?:\.md)?(?:\s*§|\s+Step\s+\d+)\b|\bDESIGN\.md\b/ },
+  // Build-plan step references ("Step 4 rule 2", "Steps 11-12", "§0.2 step 6").
+  // The numbers are sections of the historical DESIGN plan and rows of the
+  // private build ledger. Neither is a public anchor a reader of the code can
+  // follow, so the comment must carry the invariant itself.
+  { name: "step-ref", re: /\b[Ss]teps? \d+\b/ },
   // Task IDs from the private queue ("T10.1", "T6-d"). The queue is not in the
   // public clone, so a task ID carries no meaning for a reader of the code.
   { name: "task-ref", re: /\bT\d+(?:\.\d+|-[a-z])\b/ },
@@ -231,6 +238,56 @@ function extractComments(text) {
   return comments;
 }
 
+// Returns Map<lineNumber, commentTextOnThatLine> for TOML comments: a '#'
+// outside a quoted string opens a comment that runs to end of line. Basic
+// strings (double-quoted) honor backslash escapes; literal strings
+// (single-quoted) do not. Cargo.toml uses no multi-line strings, so the
+// extractor needs none, and a '#' inside a string is never read as a comment.
+function extractTomlComments(text) {
+  const comments = new Map();
+  let i = 0;
+  let line = 1;
+  const n = text.length;
+  while (i < n) {
+    const c = text[i];
+    if (c === "\n") {
+      line++;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      i++;
+      while (i < n && text[i] !== '"') {
+        if (text[i] === "\\") {
+          if (text[i + 1] === "\n") line++;
+          i += 2;
+          continue;
+        }
+        if (text[i] === "\n") line++;
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (c === "'") {
+      i++;
+      while (i < n && text[i] !== "'" && text[i] !== "\n") i++;
+      if (i < n && text[i] === "'") i++;
+      continue;
+    }
+    if (c === "#") {
+      i++;
+      while (i < n && text[i] !== "\n") {
+        comments.set(line, (comments.get(line) ?? "") + text[i]);
+        i++;
+      }
+      continue;
+    }
+    i++;
+  }
+  return comments;
+}
+
 function loadAllowlist() {
   const entries = [];
   if (!existsSync(ALLOWLIST)) return entries;
@@ -248,18 +305,21 @@ const rel = (p) => relative(ROOT, p).split(sep).join("/");
 const allowlist = loadAllowlist();
 
 const presentRoots = SCAN_ROOTS.filter((root) => existsSync(root));
-if (presentRoots.length === 0) {
+const CARGO_TOML = join(ROOT, "Cargo.toml");
+if (presentRoots.length === 0 && !existsSync(CARGO_TOML)) {
   console.log("check-comments: no scan roots found; nothing to check");
   process.exit(0);
 }
 let files = [];
 for (const root of presentRoots) files = listRustFiles(root, files);
+if (existsSync(CARGO_TOML)) files.push(CARGO_TOML);
 
 const hits = [];
 let allowed = 0;
 for (const file of files) {
   const relFile = rel(file);
-  const comments = extractComments(readFileSync(file, "utf8"));
+  const extract = file.endsWith(".toml") ? extractTomlComments : extractComments;
+  const comments = extract(readFileSync(file, "utf8"));
   for (const [lineNum, text] of comments) {
     for (const { name, re } of PATTERNS) {
       if (!re.test(text)) continue;

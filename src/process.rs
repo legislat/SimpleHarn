@@ -1281,7 +1281,7 @@ impl EngineRuntime for ProcessRuntime {
     }
 
     async fn probe(&self, port: u16, readiness: &crate::engine::ReadinessSpec) -> Probe {
-        // Fast-fail (Step 3 cancel/dead-engine lesson): a child that already exited
+        // Fast-fail (the cancel and dead-engine lesson): a child that already exited
         // must not eat the whole readiness deadline — readiness is unreachable.
         // Container-backed engines are exempt: the engine is the detached
         // container, not the short-lived wsl.exe client.

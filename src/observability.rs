@@ -3,7 +3,7 @@
 //! Production logging is `tracing` only — the v3.3 baseline shipped 67 `println!` /
 //! `eprintln!` calls and zero structured logging (Appendix A.6). The ring keeps the
 //! last [`RING_CAPACITY`] formatted events in memory so `/har/log` can answer "why
-//! did the last load fail" without opening files (Step 16).
+//! did the last load fail" without opening files.
 //!
 //! The ring alone could not answer that question after a process death: it is memory,
 //! and the shipped harness runs hidden (`autostart.vbs`, window style 0), so the

@@ -12,8 +12,8 @@
 //!   the actor actually did, never a blanket `unloading`;
 //! - proxy responses stream through byte-for-byte, SSE included;
 //! - `/har/*` lives on the one control listener; the control router has no request
-//!   timeout because `/har/load` deliberately waits through the load (Step 12
-//!   idempotency: a double-click attaches to the same job).
+//!   timeout because `/har/load` deliberately waits through the load
+//!   (load idempotency: a double-click attaches to the same job).
 
 use crate::config::{AppConfig, CategoryId, ConfigError};
 use crate::model::writeback::WritebackError;
@@ -573,8 +573,8 @@ pub struct BootTimings {
     /// Wall time until every listener was Serving or Down (set by `main`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bind_ms: Option<u64>,
-    /// ms-since-start of the FIRST successful bind across all category supervisors
-    /// (§0.2 step 5): when the harness first became reachable, as opposed to when
+    /// ms-since-start of the FIRST successful bind across all category supervisors:
+    /// when the harness first became reachable, as opposed to when
     /// every category had a verdict. Absent from `/har/status.boot` until it happens.
     #[serde(
         skip_serializing_if = "BootMsStamp::unset",
@@ -582,7 +582,7 @@ pub struct BootTimings {
     )]
     pub first_bind_at: BootMsStamp,
     /// Wall ms of the boot container reclaim, from its dispatch (after `boot ready`,
-    /// §0.2 step 4 "off the bind path") to completion. Absent until the reclaim
+    /// off the bind path) to completion. Absent until the reclaim
     /// returns, which needs docker/WSL to have any owned container to talk about.
     #[serde(
         skip_serializing_if = "BootMsStamp::unset",
@@ -717,17 +717,17 @@ pub struct ApiState {
     pub scheduler: SchedulerHandle,
     /// Listener health, written by the supervisors in `main` (red state, §0.2).
     pub listeners: crate::listeners::ListenerRegistry,
-    /// The VRAM witness, shared with the scheduler (Step 4).
+    /// The VRAM witness, shared with the scheduler.
     pub witness: Arc<dyn crate::budget::VramWitness>,
     /// Boot measures (§0.2), filled by `main` as boot progresses.
     pub boot: Arc<std::sync::RwLock<BootTimings>>,
     /// Runtime `default_model` overrides from `/har/config/default`, layered over
-    /// the boot config (Step 9: the yaml/json stays the source of truth; overrides
+    /// the boot config (the yaml/json stays the source of truth; overrides
     /// persist back to it on every set).
     default_overrides: Arc<Mutex<BTreeMap<CategoryId, Option<String>>>>,
     /// Per-field verdict on the boot config file as of the last landing harness
     /// write-back (07[11]: the `/har/status` `config_errors` producer). A boot that
-    /// validates dirty never serves a status (§0.2 step 1 fails the boot), so the
+    /// validates dirty never serves a status (an invalid config fails the boot), so the
     /// starting state is honestly empty; the only way to non-empty is a write-back
     /// that published bytes the next boot would refuse. Every boot-file mutation
     /// path must feed its landed bytes through [`ApiState::record_config_errors`] —
@@ -1060,7 +1060,7 @@ impl ApiState {
             .clone()
     }
 
-    /// Catalog snapshot from the actor (Step 2: one writer, snapshot reads).
+    /// Catalog snapshot from the actor (the scheduler is one writer; reads are snapshots).
     ///
     /// # Errors
     ///
@@ -1075,7 +1075,7 @@ impl ApiState {
     }
 
     /// The effective `default_model` for a category: runtime override, else boot
-    /// config (Step 11 fallback rule).
+    /// config (the default-model fallback rule).
     pub fn default_model(&self, category: CategoryId) -> Option<String> {
         let overrides = self
             .default_overrides
@@ -1217,7 +1217,7 @@ where
 }
 
 /// `POST /har/load {"model": name}` — waits through the load and returns the receipt;
-/// a repeat while in flight attaches to the same job (Step 12 idempotency).
+/// a repeat while in flight attaches to the same job (load idempotency).
 async fn har_load(
     State(state): State<Arc<ApiState>>,
     body: Result<Json<Value>, JsonRejection>,
@@ -1385,7 +1385,7 @@ async fn publish_state(state: &ApiState) {
 
 /// `GET /har/events` — one SSE stream: the current state immediately, then a push
 /// after every scheduler mutation (keepalives by the SSE layer); a dropped stream
-/// degrades to the page's polling fallback (Step 12 / Step 14).
+/// degrades to the page's polling fallback.
 ///
 /// The document is built ONCE per scheduler push by [`ApiState::ensure_state_pump`]
 /// and published through a `watch` channel; `WatchStream` is the coalescing bound, so
@@ -1481,7 +1481,7 @@ async fn envelope_router_errors(
 }
 
 /// `GET /har/log?limit=N` — the last N harness log events from the in-memory
-/// ring (Step 16): why did the last load fail, without opening files.
+/// ring: why did the last load fail, without opening files.
 ///
 /// Two refusal arms, one envelope:
 /// * A query the extractor itself rejects answers `400 bad_request` in the
@@ -1518,7 +1518,7 @@ async fn har_log(
 }
 
 /// `POST /har/rescan` — re-scan `ModelConf`; the reply carries the new counts and
-/// every catalog error (Step 9: a bad file is named, never fatal).
+/// every catalog error (a bad file is named, never fatal).
 async fn har_rescan(State(state): State<Arc<ApiState>>) -> Result<Json<Value>, ApiError> {
     state.scheduler.reload().await.map_err(ApiError::from)?;
     let catalog = state.scheduler.catalog().await.map_err(ApiError::from)?;

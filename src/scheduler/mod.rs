@@ -73,7 +73,7 @@ use measured::serve_model_warning;
 const PROBE_INTERVAL: Duration = Duration::from_millis(250);
 /// Pause between G12 release-evidence polls while inside the release deadline.
 const RELEASE_POLL: Duration = Duration::from_millis(50);
-/// Idle sweep cadence (Step 5): thresholds are seconds, so a 2 s tick is ample.
+/// Idle sweep cadence: thresholds are seconds, so a 2 s tick is ample.
 const IDLE_TICK: Duration = Duration::from_secs(2);
 /// Wall-clock bound on every serve sampler (one day in seconds): a sampler is not a
 /// promise of eternity, so each refresh loop stops after this even if its serve runs
@@ -89,12 +89,12 @@ const SAMPLER_LIFETIME_BOUND: Duration = Duration::from_secs(86_400);
 /// unload the model still in that slot, then load again.
 const PARKED_SLOT_NOT_FREED: &str = "the load it was waiting on did not free the slot";
 
-/// Starts the actor; the only constructor (Step 2: one scheduler per process).
+/// Starts the actor; the only constructor (one scheduler per process).
 pub struct Scheduler;
 
 impl Scheduler {
     /// Spawns the actor task and returns its handle, without touching the catalog:
-    /// the scan of `models_dir` (§0.2 step 6, re-run by [`Command::Reload`]) happens
+    /// the scan of `models_dir` (re-run by [`Command::Reload`]) happens
     /// **on the actor task, never on the boot thread** — `start()` returns while it
     /// is still pending, so the boot thread reaches `TcpListener::bind` unblocked
     /// (an operator-chosen `modelconf_dir` can live on a sleeping
@@ -124,7 +124,7 @@ impl Scheduler {
             rx,
         ));
         watch_actor(actor, Arc::clone(&health));
-        // Idle sweep tick (Step 5): cheap actor-side scan into the same queue, so
+        // Idle sweep tick: cheap actor-side scan into the same queue, so
         // the single-writer rule holds.
         let tick_tx = tx.clone();
         tokio::spawn(async move {
@@ -279,7 +279,7 @@ struct ActorState {
     fit_stamps: BTreeMap<String, (u64, bool)>,
     slots: Vec<Slot>,
     jobs: BTreeMap<JobId, Job>,
-    /// Last proxy-side use per model (idle sweep input, Step 5).
+    /// Last proxy-side use per model (idle sweep input).
     last_used: HashMap<String, Instant>,
     /// Slots holding a queued (parked) load, mapped to the ledger row registered
     /// when it parks: its model, waiters and state all live on that
@@ -312,7 +312,7 @@ struct ActorState {
 struct Slot {
     category: CategoryId,
     index: usize,
-    /// Internal engine port for this slot, from the config port plan (Step 8/11).
+    /// Internal engine port for this slot, from the config port plan.
     engine_port: u16,
     occupant: Option<Occupant>,
     job: Option<JobId>,
@@ -762,7 +762,7 @@ impl ActorState {
         self.finish(job_id, Err(error), "cancelled");
     }
 
-    /// Terminal funnel: every exit path funnels through here exactly once (Step 3).
+    /// Terminal funnel: every exit path funnels through here exactly once.
     fn finish(&mut self, job_id: JobId, result: Result<Reply, SchedulerError>, note: &str) {
         let (waiters, slot) = {
             let Some(job) = self.jobs.get_mut(&job_id) else {
@@ -969,7 +969,7 @@ impl ActorState {
         self.finish(job_id, result, note);
     }
 
-    /// Publishes a snapshot to event subscribers after every mutation (Step 12).
+    /// Publishes a snapshot to event subscribers after every mutation.
     /// Send errors are laggy or gone subscribers — never the actor's problem.
     fn publish(&self) {
         let _ = self.events.send(self.snapshot());

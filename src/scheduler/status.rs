@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use super::{fault_of, jobs::JobStatus, occupant::state_last_used, ActorState, JobId, Slot};
 
-/// Immutable status snapshot (Step 2: reads never probe and never mutate).
+/// Immutable status snapshot (reads never probe and never mutate).
 #[derive(Debug, Clone, Serialize)]
 pub struct SchedulerStatus {
     /// Every materialized slot (AUX expands to `max_models` entries).
@@ -58,7 +58,7 @@ impl SchedulerStatus {
     }
 }
 
-/// One slot as seen by `/har/status` (Step 12).
+/// One slot as seen by `/har/status`.
 #[derive(Debug, Clone, Serialize)]
 pub struct SlotStatus {
     /// Category of the slot.
@@ -73,7 +73,7 @@ pub struct SlotStatus {
     pub pid: Option<u32>,
     /// Admission cost of the occupant in GiB.
     pub need_gib: Option<f64>,
-    /// Seconds since the occupant was last used (None when empty; Step 5).
+    /// Seconds since the occupant was last used (None when empty).
     pub idle_s: Option<u64>,
     /// The engine's self-reported id, when discovered.
     pub serve_id: Option<String>,

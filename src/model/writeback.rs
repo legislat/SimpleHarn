@@ -256,8 +256,8 @@ pub(crate) fn next_temp_seq() -> u64 {
 ///
 /// Two corners that follow from letting the reader define the rule, both pinned:
 /// a word that is **itself quote-wrapped is literal data, not a directive** — `"a"`
-/// goes out as `""a""` (step 2 reads it back exactly), while `"a # b"` is
-/// **refused** (step 2 yields `""a` — the added pair shifts the quote parity so the
+/// goes out as `""a""` (the quote-pair form reads it back exactly), while `"a # b"` is
+/// **refused** (the quote-pair form yields `""a` — the added pair shifts the quote parity so the
 /// ` #` lands outside the quotes); and a word containing `\n` is refused before
 /// either step, because the reader splits the *document* on `\n` long before
 /// `split_value_comment` sees a value, so no quoting can make a line break
@@ -1446,7 +1446,7 @@ mod tests {
     /// PIN 1 of the auto-quote rule: a plain value still
     /// goes out **unquoted**, byte-identical to the pre-ruling emit, in both the
     /// change and the append arm — this is what makes the ruling zero-impact for
-    /// every current caller. Falsifier: delete step 1 (always quote) and every
+    /// every current caller. Falsifier: delete the as-is step (always quote) and every
     /// line here gains a `"` pair.
     #[test]
     fn a_plain_value_change_and_append_are_still_emitted_unquoted() {
@@ -1500,11 +1500,11 @@ mod tests {
     /// PIN 3: a leading-`#` value. Under the locked boundary rule a `#` opens a
     /// comment only after a space in
     /// the *normalized* value text, so `#lead` is **not** truncated by our reader —
-    /// step 1 is faithful and the word goes out unquoted, which is also what the
+    /// the as-is form is faithful and the word goes out unquoted, which is also what the
     /// writer/reader agreement demands: the emitted line must be exactly the form
     /// the reader already reads back as the caller's word. Pinned in both arms so
     /// nobody "fixes" it into a quote (which would be a different, also-round-tripping
-    /// choice, but not this ruling's step 1).
+    /// choice, but not this ruling's as-is step).
     #[test]
     fn a_leading_hash_value_round_trips_under_the_locked_boundary_rule() {
         for value in ["#lead", "# tail", "#"] {
@@ -1654,7 +1654,7 @@ mod tests {
     /// lock with no unique falsifier left** — both arms reproduce the same bytes, and
     /// the neuter that used to isolate it (an emit deriving from the line being
     /// rewritten) is now unreachable for this class. Its first leg still fails if
-    /// `emit_form` step 2 is deleted, which pins 2 and 6 also catch.
+    /// `emit_form`'s quote-pair step is deleted, which pins 2 and 6 also catch.
     #[test]
     fn the_quoted_incoming_class_is_a_byte_fixed_point_on_the_second_write() {
         for incoming in ["\"a\"", "'a # b'"] {
@@ -1690,15 +1690,15 @@ mod tests {
 
     /// PIN 7 (zero-caller-impact): every word the product actually writes — the
     /// category names, the offload truth words, the `{:.1}` measured floats, model
-    /// names and paths, the empty value, and the incident-stamp shape — takes step
-    /// 1: emitted as-is, never quoted, never refused, in either arm. Together with
+    /// names and paths, the empty value, and the incident-stamp shape — take the
+    /// as-is step: emitted as-is, never quoted, never refused, in either arm. Together with
     /// the untouched writeback/scheduler/api suites this is the proof the ruling
-    /// changes nothing for live callers. Falsifier: delete step 1 and every
+    /// changes nothing for live callers. Falsifier: delete the as-is step and every
     /// assertion here gains a quote pair.
     #[test]
     fn the_live_value_vocabulary_never_reaches_the_quote_or_refuse_branch() {
-        // The shape `forensic_copy` builds; a name containing ` #` would take step
-        // 2, and this one — what the live incident path writes — must not.
+        // The shape `forensic_copy` builds; a name containing ` #` would take the
+        // quote-pair step, and this one — what the live incident path writes — must not.
         const STAMP: &str = concat!(
             "incident copy of qwen3.yaml at 2026-10-28T08:50:42Z \u{2014} ",
             "post-write validation failed"
@@ -1999,7 +1999,7 @@ mod tests {
     /// because the reader's own published values can legitimately carry edge
     /// whitespace and residual quote pairs, and normalizing them away made an
     /// identical write a change. So a padded word is a different value and lands
-    /// quoted (step 2 is the only form the reader reads back whole), a word with a
+    /// quoted (the quote-pair form is the only form the reader reads back whole), a word with a
     /// line break is refused instead of silently trimmed, and a quoting-only
     /// difference is a real change the file must reproduce. What survives from the
     /// old pin unchanged: writing the value the reader itself publishes is a

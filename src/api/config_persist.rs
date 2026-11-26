@@ -323,7 +323,7 @@ pub(super) fn persist_default_model(
 /// Re-validate the tree the boot config file now holds after a landing write-back
 /// (07[11]: the `/har/status` `config_errors` producer). The harness cannot fix a file
 /// the operator hand-edited while it ran — reload re-reads the catalog and nothing
-/// else (Step 9, LOCKED) — but the moment a harness write-back publishes the file it
+/// else (LOCKED) — but the moment a harness write-back publishes the file it
 /// owns every byte the next boot will read, so the verdict the boot would render
 /// ([`AppConfig::validate`]) is reported while the harness is still alive to be asked.
 /// A tree that no longer parses as the schema (a hand-edited unknown key rides the
@@ -391,7 +391,7 @@ fn config_corrupt_if_armed(path: &std::path::Path) {
 }
 
 /// `POST /har/config/default {"category": …, "model": name|null}` — set the
-/// category's default model (Step 11 fallback); validated against the catalog and
+/// category's default model (the default-model fallback); validated against the catalog and
 /// persisted to `simpleharn.json` atomically.
 ///
 /// `model` is required: a string sets the default, `null` clears it, and an absent
@@ -457,7 +457,7 @@ pub(super) async fn har_config_default(
 }
 
 /// `POST /har/config/model {"model": name, "category"?: WORK|RP|AUX|EMB, "cpu"?: bool}`
-/// — write per-model flags into the model's yaml (Step 9: the file stays the
+/// — write per-model flags into the model's yaml (the file stays the
 /// source of truth). A `cpu` edit on a model whose engine row lacks the
 /// `cpu_offload` knob is refused 400 naming the engine: that key changes no
 /// launch there, and the harness never writes inert keys.

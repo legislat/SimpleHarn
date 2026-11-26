@@ -1,6 +1,6 @@
 //! Typed config schema (`simpleharn.json`), defaults, and per-field validation.
 //!
-//! Boot rule (§0.2 step 1): a present-but-invalid file is reported per field and fails
+//! Boot rule: a present-but-invalid file is reported per field and fails
 //! the boot — never silently replaced by defaults (v3.3 defect D1 discarded the whole
 //! safety policy over one typo). A *missing* file yields the documented defaults, so
 //! "no config file" still produces a usable harness (§0.1 "simple").
@@ -18,7 +18,7 @@ use thiserror::Error;
 /// A single per-field configuration problem.
 ///
 /// Collected (never panicked on) so boot and `/har/status` can report every issue at
-/// once, with the file and key named (Step 9, G6). On the wire (`/har/status`
+/// once, with the file and key named (G6). On the wire (`/har/status`
 /// `config_errors`) each entry carries a snake_case `kind` beside its `field` and
 /// `reason`, matching the `catalog_errors` vocabulary.
 #[derive(Debug, Clone, PartialEq, Error, Serialize)]
@@ -58,7 +58,7 @@ pub enum CategoryId {
     Work,
     /// Evictable by WORK only.
     Rp,
-    /// Evictable by WORK and RP; up to six occupants (Step 5).
+    /// Evictable by WORK and RP; up to six occupants.
     Aux,
     /// The embeddings surface.
     Emb,
@@ -268,28 +268,28 @@ pub struct CategoryConfig {
         deserialize_with = "trimmed_opt"
     )]
     pub label: Option<String>,
-    /// Public listener port for this category (Step 11: one listener per category).
+    /// Public listener port for this category (one listener per category).
     pub public_port: u16,
-    /// Model loaded when a no-`model` request finds the category empty (Step 11);
+    /// Model loaded when a no-`model` request finds the category empty;
     /// validated against the catalog once it is scanned.
     #[serde(default)]
     pub default_model: Option<String>,
-    /// Slot count for this category: 1 for WORK/RP/EMB, 1..=6 for AUX (Step 5).
+    /// Slot count for this category: 1 for WORK/RP/EMB, 1..=6 for AUX.
     #[serde(default = "one")]
     pub max_models: usize,
-    /// Categories whose loads may evict occupants of this one (Step 6 hard filter).
+    /// Categories whose loads may evict occupants of this one (the eviction hard filter).
     /// An omitted key and an explicit `[]` are the same posture here: nobody may
     /// evict this category. The schema cannot tell the two spellings apart, so a
     /// non-WORK entry that lands on the empty list is named by a boot warning
     /// ([`AppConfig::evictable_by_warnings`]); the behavior is unchanged.
     #[serde(default)]
     pub evictable_by: Vec<CategoryId>,
-    /// Idle auto-unload threshold in seconds; 0 disables (Step 5: WORK defaults
+    /// Idle auto-unload threshold in seconds; 0 disables (WORK defaults
     /// to 0 and never idles out; set it explicitly to make WORK idle — config is king).
     #[serde(default)]
     pub idle_timeout_s: u64,
     /// This category's listener also serves `/har/*` and the control page;
-    /// exactly one category sets this (Step 11). Always serialized: the old
+    /// exactly one category sets this. Always serialized: the old
     /// `skip_serializing_if = "is_true"` was inverted (skipped the only value
     /// that matters), so a config rebuilt through `to_value` lost its control
     /// category and refused to boot (found by the live restart test, 2026-10-26).
@@ -526,28 +526,27 @@ pub struct AppConfig {
     /// every machine on the segment.
     #[serde(default = "default_internal_host")]
     pub internal_host: IpAddr,
-    /// The four category definitions (Step 5); validation requires all four exactly once.
+    /// The four category definitions; validation requires all four exactly once.
     #[serde(default = "default_categories")]
     pub categories: Vec<CategoryConfig>,
-    /// GiB kept unreachable by admission (Step 4 rule 2).
+    /// GiB kept unreachable by admission (the memory reserve rule).
     #[serde(default = "default_vram_reserve")]
     pub vram_reserve_gb: f64,
     /// Host GiB kept unreachable by admission for CPU-resident rows: the RAM
     /// ladder's reserve, the twin of `vram_reserve_gb` on its own resource.
     #[serde(default = "default_ram_reserve")]
     pub ram_reserve_gb: f64,
-    /// Total VRAM of the card in GiB; the ceiling the budget is measured against
-    /// (Step 4).
+    /// Total VRAM of the card in GiB; the ceiling the budget is measured against.
     #[serde(default = "default_vram_total")]
     pub vram_total_gb: f64,
-    /// Ports the harness must never bind or touch — the manual namespace (Step 1).
+    /// Ports the harness must never bind or touch — the manual namespace.
     #[serde(default = "default_protected_ports")]
     pub protected_ports: BTreeSet<u16>,
     /// G12 release-confirmation deadline in seconds for one dispose (§0.3).
     #[serde(default = "default_release_timeout")]
     pub release_timeout_s: u64,
-    /// Readiness deadline per load in seconds; per-model override lands with the
-    /// template schema (Step 3 knobs).
+    /// Readiness deadline per load in seconds; the per-model override is the
+    /// `load_timeout:` key in the model file.
     #[serde(default = "default_load_timeout")]
     pub load_timeout_s: u64,
     /// Interval between witness samples while a model serves, which build the
@@ -566,7 +565,7 @@ pub struct AppConfig {
     /// never changes admission, the booking, or the persisted measured range.
     #[serde(default = "default_measured_drift_warn_ratio")]
     pub measured_drift_warn_ratio: f64,
-    /// Whether the tray icon starts with the harness (Step 15; loopback tool knob, G9).
+    /// Whether the tray icon starts with the harness (loopback tool knob, G9).
     #[serde(default = "default_tray_enabled")]
     pub tray_enabled: bool,
     /// Global `llama-server.exe` default (A.7: the operator's script is the
@@ -576,14 +575,14 @@ pub struct AppConfig {
     /// refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llama_server_exe: Option<std::path::PathBuf>,
-    /// Directory of per-model flat yaml files (Step 9); missing dir = empty catalog.
+    /// Directory of per-model flat yaml files; missing dir = empty catalog.
     #[serde(default = "default_modelconf_dir")]
     pub modelconf_dir: std::path::PathBuf,
     /// G12 memory-settle deadline after a confirmed release (§0.3).
     #[serde(default = "default_settle_timeout")]
     pub settle_timeout_s: u64,
     /// Witness tolerance in GiB: disagreement within this band is not a re-sample
-    /// trigger, and settle accepts `baseline + tolerance` (Step 4 rule 4).
+    /// trigger, and settle accepts `baseline + tolerance`.
     #[serde(default = "default_witness_tolerance")]
     pub witness_tolerance_gb: f64,
     /// Launch floor applied to `cost: greedy` models that carry no explicit
@@ -856,7 +855,7 @@ impl AppConfig {
         self.categories.iter_mut().find(|c| c.id == id)
     }
 
-    /// Resolves the internal engine port per slot (Step 8/11 port plan).
+    /// Resolves the internal engine port per slot (the config port plan).
     ///
     /// Walks [`CategoryId::all`] in canonical order, never the file order of
     /// `categories`: WORK holds 18109 whatever order the hand-written
@@ -920,7 +919,7 @@ impl AppConfig {
         None
     }
 
-    /// The category whose listener hosts `/har/*` and the control page (Step 11).    ///
+    /// The category whose listener hosts `/har/*` and the control page.
     /// # Panics
     ///
     /// Only when the exactly-one-control invariant was not checked by `validate`;
@@ -989,13 +988,13 @@ impl AppConfig {
             .unwrap_or(false)
     }
 
-    /// Cross-field validation (§0.2 step 2 namespace check). Returns every problem.
+    /// Cross-field validation, including the port-namespace check. Returns every problem.
     ///
     /// # Errors
     ///
     /// One [`ConfigError::Invalid`] per violation; an empty return means the config is
     /// internally consistent. The `default_model`-names-a-real-model check happens after
-    /// catalog scan (Step 9) and is out of scope here.
+    /// catalog scan and is out of scope here.
     pub fn validate(&self) -> Vec<ConfigError> {
         let mut errors = Vec::new();
         // A blank token must not silently disable auth: the guard reads an empty value
@@ -2172,7 +2171,8 @@ mod tests {
     fn mock_engine_adapter_is_off_until_the_config_opts_in() {
         // The `mock` adapter spawns the bare program name `mock-engine`, so boot registers
         // it only on an explicit opt-in: absent means off, and a file written before the
-        // key existed must still parse rather than fail the boot (§0.2 step 1).
+        // key existed must still parse rather than fail the boot (boot rule:
+        // an invalid file is reported, never silently defaulted).
         let absent = AppConfig::parse("{}").expect("defaults parse");
         assert!(
             !absent.allow_mock_engine,
@@ -2234,7 +2234,7 @@ mod tests {
     fn warm_during_release_stays_off_until_the_config_opts_in() {
         // The experimental warm knob: absent means off, and a file written
         // before the key existed must still parse rather than fail the boot
-        // (§0.2 step 1, same discipline as the mock-engine grant).
+        // (same boot discipline as the mock-engine grant).
         let absent = AppConfig::parse("{}").expect("defaults parse");
         assert!(
             !absent.prefetch_on_release,

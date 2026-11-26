@@ -1164,7 +1164,7 @@ async fn g09_orphan_count_is_parent_scoped() {
 
 // ---------------------------------------------------------------- G10
 
-/// ADVERSARIAL. A10 / §0.2 step 3 is a boot-order claim: the second harness is
+/// ADVERSARIAL. A10 is a boot-order claim: the second harness is
 /// refused by the named mutex BEFORE it can touch any state. The t-suite boot tests
 /// and g03 prove the refusal by construction, but neither observes both processes at
 /// once, which is where the honest form of the claim lives: the refused instance must

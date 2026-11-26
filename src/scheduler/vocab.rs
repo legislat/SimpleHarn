@@ -52,7 +52,7 @@ pub enum Command {
         port: u16,
     },
     /// Cooperative cancel: observed inside the current step, then cleanup completes
-    /// (Step 3 — never a dropped task).
+    /// (never a dropped task).
     Cancel { job: JobId },
     /// Unload every occupant of a category; a loading slot in it is cancelled
     /// first and unloaded when that cancel terminalizes (unload
@@ -65,11 +65,11 @@ pub enum Command {
     /// Unload every occupied slot across all categories (the tray's
     /// Unload All); loading jobs are cancelled and their slots unloaded after them.
     UnloadAll,
-    /// Re-scan `ModelConf` (hot reload, Step 9).
+    /// Re-scan `ModelConf` (hot reload).
     Reload,
 }
 
-/// Swap lifecycle states (Step 3, LOCKED graph).
+/// Swap lifecycle states (the LOCKED graph).
 ///
 /// `Dispose -> Spawn` is a *confirmation gate*, not a delay: the edge is legal only
 /// once release is proven (G12); the spawn fires immediately on that event. A release
@@ -82,13 +82,13 @@ pub enum SwapState {
     Admit,
     /// Admission refused; terminal until the slot returns to `Idle`.
     AdmitFail,
-    /// Victims selected and being released, one at a time with re-settle (Step 6).
+    /// Victims selected and being released, one at a time with re-settle.
     Quiesce,
     /// Waiting for release confirmation of the previous occupant (§0.3).
     Dispose,
     /// Engine process/container starting.
     Spawn,
-    /// Readiness probing (`Ready | NotYet | Failed`, Step 7).
+    /// Readiness probing (`Ready | NotYet | Failed`).
     Ready,
     /// Installing the occupant into the slot table.
     Install,
@@ -99,7 +99,7 @@ pub enum SwapState {
     Failed,
     /// Killing what this job spawned; then `Idle`.
     Reap,
-    /// Cancel observed; finish the current step, then `Reap` (Step 3).
+    /// Cancel observed; finish the current step, then `Reap`.
     CancelRequested,
 }
 
@@ -118,7 +118,7 @@ impl SwapState {
     }
 }
 
-/// Whether the `from -> to` edge exists in the Step 3 graph.
+/// Whether the `from -> to` edge exists in the swap lifecycle graph.
 ///
 /// Rules encoded:
 /// - the happy path `Idle -> Admit -> Quiesce -> Dispose -> Spawn -> Ready -> Install

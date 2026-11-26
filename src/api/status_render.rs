@@ -39,7 +39,7 @@ pub(super) async fn har_status(
 /// health (raw verdicts plus the two derived booleans), slots, jobs, catalog
 /// errors, and the boot config file's per-field write-back verdict — one call (G13).
 /// Also the body of every SSE `har_state` event
-/// (Step 14: one push replaces the page's state).
+/// (one push replaces the page's state).
 pub(super) async fn status_document(state: &ApiState) -> Result<Value, ApiError> {
     let scheduler = match state.scheduler.status().await {
         Ok(scheduler) => scheduler,
@@ -139,7 +139,7 @@ pub(super) async fn render_status_document(state: &ApiState, scheduler: &Schedul
         "catalog_errors": &scheduler.catalog_errors,
         // The boot config file's per-field verdict as of the last landing harness
         // write-back (07[11]): cached state only — the boot itself exits on any
-        // invalid field (§0.2 step 1), so a served document starts empty and the
+        // invalid field (the boot rule), so a served document starts empty and the
         // write-back validator is the only producer.
         "config_errors": state.config_errors(),
         // Unsafe-but-legal postures the operator should see on the page —
@@ -327,7 +327,7 @@ pub(super) fn model_json(
 }
 
 /// The merged document every `har_state` event carries: one push replaces the
-/// page's per-panel polling (Step 14).
+/// page's per-panel polling.
 pub(super) async fn merged_state(state: &ApiState) -> Result<Value, ApiError> {
     let scheduler = match state.scheduler.status().await {
         Ok(scheduler) => scheduler,

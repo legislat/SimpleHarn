@@ -25,7 +25,7 @@
 //! The Win32 message pump is the module's documented `unsafe`: one dedicated thread
 //! owns a hidden window and pumps messages for the tray-icon crate; the safety
 //! invariant is that all tray/menu interactions happen on, or are dispatched by, that
-//! single thread (Step 8 convention: contained, justified, documented).
+//! single thread (unsafe convention: contained, justified, documented).
 
 use crate::config::CategoryId;
 use crate::scheduler::{SchedulerError, SchedulerHandle, SchedulerStatus};
@@ -510,8 +510,8 @@ fn tick(
 }
 
 /// The tray colour for one tick, decided from the listener signal first and the
-/// snapshot second; precedence red > amber > yellow > green > gray (Step 15;
-/// the "A + amber" policy; no-freeze rule).
+/// snapshot second; precedence red > amber > yellow > green > gray
+/// (the "A + amber" policy; no-freeze rule).
 ///
 /// # Arguments
 ///

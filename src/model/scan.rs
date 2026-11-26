@@ -4,7 +4,7 @@
 //! v3.3 lessons encoded here: quotes and inline comments are handled (D2 — `name:
 //! "foo"` and `context: 4096 # 32k` parse correctly), and a file with problem lines
 //! is never published; its lines are named (D3, operator doctrine: "better not
-//! publish anything blindly"), while the scan itself stays non-fatal (§0.2 step 6).
+//! publish anything blindly"), while the scan itself stays non-fatal.
 //!
 //! Catalog-trust rules: identity is the yaml FILE
 //! STEM — a `name:` key is legacy-optional and only legal when it equals the stem,

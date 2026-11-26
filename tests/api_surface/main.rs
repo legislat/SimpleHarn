@@ -1,4 +1,4 @@
-//! API-surface integration tests (Steps 11-12): control routes, per-category
+//! API-surface integration tests: control routes, per-category
 //! listeners, wrong-category 404-before-ensure, no-model fallback, proxy
 //! pass-through — all against the in-process mock engine.
 //!

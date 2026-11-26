@@ -631,7 +631,7 @@ impl ActorState {
         self.spawn_kill_confirm(job_id)
     }
 
-    /// The idle sweep (Step 5, tick-driven): every occupied, job-free slot whose
+    /// The idle sweep (tick-driven): every occupied, job-free slot whose
     /// category has `idle_timeout_s > 0` and whose model has been unused for the
     /// threshold starts an unload. WORK defaults to 0 (never idles); config is king.
     /// An occupant a live job has already committed to release is skipped: a

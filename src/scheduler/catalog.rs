@@ -119,7 +119,7 @@ pub(super) fn gather_drift_stats(paths: &[PathBuf]) -> DriftStats {
 }
 
 impl ActorState {
-    /// Rescans `ModelConf` and cross-checks `default_model`s (§0.2 step 6, Step 9)
+    /// Rescans `ModelConf` and cross-checks `default_model`s
     /// off the actor's own thread: the whole synchronous filesystem walk
     /// (`read_dir`, one read per yaml, one stat per model) runs on a blocking
     /// thread so the single writer never parks on disk. The

@@ -45,7 +45,7 @@ pub enum EngineError {
     },
 }
 
-/// Readiness as typed data: one HTTP expectation, or two in sequence (Step 7 sketch).
+/// Readiness as typed data: one HTTP expectation, or two in sequence.
 ///
 /// `path` carries **no placeholders**: `probe_one` interpolates it verbatim into
 /// `http://127.0.0.1:{port}{path}`, so an adapter that wrote `{port}` or `{model}`
@@ -103,7 +103,7 @@ pub struct RenderedProfile {
     pub text: String,
 }
 
-/// Everything the engine-blind spawn/kill/reap machinery needs (Step 7).
+/// Everything the engine-blind spawn/kill/reap machinery needs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LaunchSpec {
     /// Argv, fully substituted.
@@ -182,7 +182,7 @@ pub fn wsl_prefix(_distro: &str, _user: &str) -> Vec<String> {
     Vec::new()
 }
 
-/// Tri-state probe outcome (Step 7): the scheduler decides what a missing field means
+/// Tri-state probe outcome: the scheduler decides what a missing field means
 /// per engine, in one place — with the reason surfaced in the job record (G6).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Probe {
@@ -234,7 +234,7 @@ pub fn effective_context(entry: &ModelEntry) -> Option<String> {
     }
 }
 
-/// Produces launch specs for one engine id (Step 7). The harness assigns the engine
+/// Produces launch specs for one engine id. The harness assigns the engine
 /// port from the slot plan (config `engine_ports`); the adapter embeds it in argv.
 pub trait EngineAdapter: Send + Sync {
     /// The `engine:` name this adapter serves.
@@ -249,7 +249,7 @@ pub trait EngineAdapter: Send + Sync {
     fn spec(&self, model: &ModelEntry, port: u16) -> Result<LaunchSpec, EngineError>;
 }
 
-/// Shared HTTP readiness probe (the semantics both runtimes use, Step 7).
+/// Shared HTTP readiness probe (the semantics both runtimes use).
 ///
 /// `Then` chains probe steps in order: the first non-`Ready` step short-circuits.
 pub async fn http_probe(client: &reqwest::Client, port: u16, readiness: &ReadinessSpec) -> Probe {
@@ -342,7 +342,7 @@ async fn probe_one(client: &reqwest::Client, port: u16, spec: &ReadinessSpec) ->
     }
 }
 
-/// Why a spawn/kill/release step failed at the process layer (Step 8).
+/// Why a spawn/kill/release step failed at the process layer.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum SpawnError {
     /// The engine could not be started.
@@ -376,7 +376,7 @@ pub enum SpawnError {
     },
 }
 
-/// A started engine instance (Step 8).
+/// A started engine instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Spawned {
     /// Port the engine now serves on.
@@ -448,7 +448,7 @@ pub(crate) struct EngineMeasurement {
 }
 
 /// Process-layer operations, driven by the scheduler actor but never executed inline
-/// in the actor loop (Step 2: no I/O in the actor; Step 8: one implementation).
+/// in the actor loop (no I/O in the actor; one implementation).
 ///
 /// The production implementation is [`crate::process::ProcessRuntime`] — hidden
 /// spawns under Job Objects, log files, and the name-plus-claim-ledger ownership
@@ -456,7 +456,7 @@ pub(crate) struct EngineMeasurement {
 /// exact `ninfer_container` name plus its entry in `ninfer-claims.json`, see
 /// [`crate::ownership`]). It is constructed at boot (`main.rs`) and held by the
 /// scheduler. The mock implementation used by tests lives in
-/// `tests/mock_runtime.rs` (Step 19).
+/// `tests/mock_runtime.rs`.
 #[async_trait::async_trait]
 pub trait EngineRuntime: Send + Sync {
     /// Starts an engine for `spec`; the ticket stamps provenance on the result.
@@ -466,7 +466,7 @@ pub trait EngineRuntime: Send + Sync {
     /// [`SpawnError::SpawnFailed`] when the engine cannot be started.
     async fn spawn(&self, spec: &LaunchSpec, ticket: SpawnTicket) -> Result<Spawned, SpawnError>;
 
-    /// Stops an owned resource. Only ever called with an owned ticket (Step 1).
+    /// Stops an owned resource. Only ever called with an owned ticket.
     ///
     /// # Errors
     ///
@@ -481,7 +481,7 @@ pub trait EngineRuntime: Send + Sync {
     /// [`SpawnError::KillFailed`] when the evidence check cannot be performed.
     async fn release_confirmed(&self, ticket: &SpawnTicket) -> Result<bool, SpawnError>;
 
-    /// One readiness attempt against `readiness` (Step 7 tri-state).
+    /// One readiness attempt against `readiness`, returning the `Probe` tri-state.
     async fn probe(&self, port: u16, readiness: &ReadinessSpec) -> Probe;
 
     /// The engine's self-reported OpenAI model id (`GET /v1/models`, first entry),

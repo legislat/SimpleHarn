@@ -63,7 +63,7 @@ fn classify<'a>(mut hits: Vec<&'a ModelEntry>) -> Resolution<'a> {
 ///
 /// Match order: exact harness name, then case-insensitive name, then GGUF file-name /
 /// stem aliases from the `model:` reference. Only catalog identity is resolved here;
-/// class filtering per listener happens at the router (Step 11).
+/// class filtering per listener happens at the router.
 ///
 /// Each tier is collected in full rather than won by the first match: two entries that
 /// answer the same tier make the query ambiguous, and no entry is returned. A lower
@@ -73,7 +73,7 @@ fn classify<'a>(mut hits: Vec<&'a ModelEntry>) -> Resolution<'a> {
 /// # Returns
 ///
 /// [`Resolution::Found`] for the single match, [`Resolution::None`] when no entry
-/// matches — the caller owes that a `404` listing that listener's ids (Step 11) — and
+/// matches — the caller owes that a `404` listing that listener's ids — and
 /// [`Resolution::Ambiguous`] with every colliding entry when one tier matched more
 /// than one. The caller must refuse an ambiguity (the API answers `409` naming each
 /// entry's yaml); treating it as `None` would misreport a real model as unknown, and

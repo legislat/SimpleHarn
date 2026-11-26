@@ -260,7 +260,7 @@ async fn spawn_and_find_job(handle: &SchedulerHandle) -> JobId {
 }
 
 /// A ledger-only witness the test can park. The admission decision waits on exactly
-/// one `sample()` (Step 4), so a gate with `samples` permits answers that many reads
+/// one `sample()`, so a gate with `samples` permits answers that many reads
 /// and parks every later one: a load frozen in `Admit` is the state in which a cancel
 /// can never prove its victim's release, which is the precondition both findings need.
 /// Without it these scenarios would be a race against the witness rather than a state

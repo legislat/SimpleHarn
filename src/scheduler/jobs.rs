@@ -15,7 +15,7 @@ use tokio::task::JoinHandle;
 
 use super::{JobId, MeasuredAnchor, Reply, SchedulerError, SwapState};
 
-/// Terminal receipt of one load (Step 12 idempotency: a repeat returns this).
+/// Terminal receipt of one load (load idempotency: a repeat returns this).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SwapReceipt {
     /// Job that performed the load.
@@ -30,7 +30,7 @@ pub struct SwapReceipt {
     pub serve_id: Option<String>,
 }
 
-/// One job ledger entry (Step 12: this is what `loading: bool` always pretended to be).
+/// One job ledger entry (this is what `loading: bool` always pretended to be).
 #[derive(Debug, Clone, Serialize)]
 pub struct JobStatus {
     /// Job id.
@@ -72,9 +72,9 @@ pub struct JobStatus {
     pub observed_at_admit_gib: Option<f64>,
     /// The gate this job had to satisfy before spawn: max(need, launch floor).
     pub gate_target_gib: Option<f64>,
-    /// Cross-category victims this job evicted (Step 6, G13 decision inputs).
+    /// Cross-category victims this job evicted (G13 decision inputs).
     pub victims_released: Vec<String>,
-    /// Non-fatal observations (serve_model mismatch, Step 10).
+    /// Non-fatal observations (serve_model mismatch).
     pub warnings: Vec<String>,
     /// Step timings (§0.3).
     pub timings: JobTimings,
@@ -169,7 +169,7 @@ pub struct JobTimings {
 
 pub(super) type Waiter = oneshot::Sender<Result<Reply, SchedulerError>>;
 
-/// A release target during Quiesce/Dispose (Step 6 calls these victims).
+/// A release target (a victim) during Quiesce/Dispose.
 #[derive(Clone)]
 pub(super) struct Victim {
     pub(super) model: String,
@@ -308,7 +308,7 @@ pub(super) struct Job {
     pub(super) measured: Option<MeasuredAnchor>,
     /// The previous occupant this job must release before spawning.
     pub(super) victim: Option<Victim>,
-    /// Cross-category victims queued by the eviction planner (Step 6), released
+    /// Cross-category victims queued by the eviction planner, released
     /// one at a time after the same-slot replacement (if any).
     pub(super) victims: Vec<Victim>,
     /// The expert-offload RAM reclaim planned at admission:
@@ -318,7 +318,7 @@ pub(super) struct Job {
     pub(super) reclaim: Reclaim,
     /// Cross-category victims whose release is confirmed (observability, G13).
     pub(super) victims_released: Vec<String>,
-    /// Ledger cost freed by confirmed releases so far (Step 6 minimality check).
+    /// Ledger cost freed by confirmed releases so far (the eviction minimality check).
     pub(super) released_cost: f64,
     /// The part of [`Self::released_cost`] that came from the non-evicted same-slot
     /// holder. Its booked need is already inside `free_at_admit`, so the ledger leg of

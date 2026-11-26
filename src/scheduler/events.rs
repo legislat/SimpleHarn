@@ -28,7 +28,7 @@ impl ActorState {
             return; // a stale step result after cancel/supersede
         }
         let state = job.state;
-        // The admission decision is witness-driven (Step 4); every other step
+        // The admission decision is witness-driven; every other step
         // matches its expected state.
         if let Event::Admitted(card, ram) = event {
             if state == SwapState::Admit {
@@ -66,7 +66,7 @@ impl ActorState {
                     }
                 };
                 if job_kind == JobKind::Load {
-                    // Step 6: release cross victims one at a time; after each
+                    // Release cross victims one at a time; after each
                     // release re-check the gate and stop as soon as it is satisfied
                     // (minimality — never kill more than the load needs).
                     if self.dequeue_victim(job_id) {

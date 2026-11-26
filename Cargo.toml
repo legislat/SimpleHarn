@@ -11,7 +11,7 @@ readme = "README.md"
 [dependencies]
 # HTTP framework: async handlers returning Result<Response, ApiError> (AGENTS.md convention).
 axum = "0.8"
-# Async runtime; the minimal explicit feature set the crate uses (TASK-N7-DEPS):
+# Async runtime; the minimal explicit feature set the crate uses:
 # rt (via rt-multi-thread) + macros (#[tokio::main]/select!/join!), signal (ctrl_c),
 # fs, process, sync, time, net, io-util (AsyncRead/WriteExt).
 tokio = { version = "1", features = [
@@ -30,25 +30,25 @@ tower-http = { version = "0.7", features = ["trace", "compression-gzip", "timeou
 # Structured logging; no println!/eprintln! on production paths (AGENTS.md).
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# Error taxonomy per layer (Step 17); anyhow only at main.
+# Error taxonomy per layer; anyhow only at main.
 thiserror = "2"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# dyn-compatible async methods for the EngineRuntime trait (Step 7).
+# dyn-compatible async methods for the EngineRuntime trait.
 async-trait = "0.1"
-# HTTP client: engine readiness probes now (mock engine), proxy surface later (Step 11).
+# HTTP client: engine readiness probes and the proxy pass-through surface.
 # `stream` enables byte-for-byte SSE pass-through.
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream"] }
-# Tray icon + menu (Step 15): the only GUI dependency; no Qt/egui. Optional and
+# Tray icon + menu: the only GUI dependency; no Qt/egui. Optional and
 # deliberately NOT in `default`: Cargo features are not target-conditional, so a
 # default tray would drag GUI dependencies onto headless hosts. The tray ships
 # behind the `tray` feature; a binary built without it runs headless.
 tray-icon = { version = "0.21", optional = true }
 
-# Stream adapters: broadcast receiver -> SSE body stream (Step 12 events).
+# Stream adapters: broadcast receiver -> SSE body stream.
 tokio-stream = { version = "0.1", features = ["sync"] }
-# NVML in-process witness with a graceful `nvidia-smi` fallback (Step 4, item 5).
+# NVML in-process witness with a graceful `nvidia-smi` fallback.
 nvml-wrapper = "0.13"
 # Base64 for staging a harness-rendered autostart script into the distro: the script
 # body rides a quoted heredoc inside a driver fed to `wsl … -- bash -s` on stdin
@@ -72,7 +72,7 @@ tray = ["dep:tray-icon"]
 # `windows::` call behind the platform traits, so these compile only on targets
 # that can link them.
 [target.'cfg(windows)'.dependencies]
-# Win32: tray message pump (Step 15), Job Objects + single-instance mutex (Step 8),
+# Win32: tray message pump, Job Objects + single-instance mutex,
 # and the pid-identity reads of process supervision.
 windows = { version = "0.62", features = [
     "Win32_Foundation",
@@ -88,8 +88,9 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Gdi",
 ] }
 
-# Approved but deliberately absent until its module lands (no unused deps):
-# - yaml crate    -> Step 9 ModelConf write-back (flat key: value round-trip)
+# No yaml crate is listed and none is needed: ModelConf write-back is a
+# byte-preserving read-modify-write of the raw file lines (src/model/writeback.rs),
+# so no yaml parser is required for the flat key: value round-trip.
 
 # Release profile for the v1.0 artifact (AGENTS.md: fully optimized). Fat LTO across
 # crates plus a single codegen unit trade build time for a smaller, faster binary, which

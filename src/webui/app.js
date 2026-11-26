@@ -1,4 +1,4 @@
-// SimpleHarn — control page logic (Step 14). Vanilla JS, no framework: the page
+// SimpleHarn — control page logic. Vanilla JS, no framework: the page
 // only renders /har/* JSON; every action is an API call that also exists headless.
 "use strict";
 
@@ -752,7 +752,7 @@ function modelRow(status, model, category) {
     ),
   );
 
-  // Category select: page edits write back into the model yaml (Step 9). The
+  // Category select: page edits write back into the model yaml. The
   // option shows the display label (ruling 2026-11-05); its `value` — and the
   // `select.value` the retag posts — stays the id.
   const select = el("select", { class: "sh-mini", "aria-label": "category" });
@@ -1251,7 +1251,7 @@ function render() {
   lastRenderKey = stateKey(status, state.models);
 }
 
-// ---------- event stream with polling fallback (Step 14) ----------
+// ---------- event stream with polling fallback ----------
 
 let pollTimer = null;
 let sse = null;

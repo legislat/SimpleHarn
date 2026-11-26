@@ -483,10 +483,10 @@ fn concurrent_default_writes_never_lose_a_field_or_leave_a_temp() {
 /// Producer falsifier: the write-back is the one moment the
 /// harness becomes the last writer of the boot config, and its read-patch-write
 /// carries every OTHER byte as `Value` passthrough — so an operator hand-edit made
-/// while the harness ran (reload re-reads the catalog and nothing else, Step 9
-/// LOCKED) survives into the published file. Pre-fix, `persist_default_model`
+/// while the harness ran (reload re-reads the catalog and nothing else, LOCKED)
+/// survives into the published file. Pre-fix, `persist_default_model`
 /// answered a bare bool and `/har/status` hardcoded `config_errors: []`, so a
-/// hand-edited `load_timeout_s: 0` (a boot-fatal field per §0.2 step 1) rode the
+/// hand-edited `load_timeout_s: 0` (a boot-fatal field under the boot rule) rode the
 /// harness's own `persisted: true` write unseen until the harness refused to
 /// start. The verdict is the boot's own validator over the landed tree, so the
 /// field can never drift from what boot would say.

@@ -5,14 +5,14 @@
 //! moves as one unit so reviewers read one file for all Win32 invariants.
 //!
 //! This module holds the project's documented `unsafe` for Win32 interop: every
-//! block states its invariant. The single-instance guard (A10, §0.2 step 3)
+//! block states its invariant. The single-instance guard (A10)
 //! lives here too: a named mutex refuses a second harness.
 
 use super::{ProcessIdentity, ProcessTree, SingleInstance};
 use crate::custody::{CustodyOs, TerminateOutcome};
 use async_trait::async_trait;
 
-/// `CREATE_NO_WINDOW`: hidden children (Step 8).
+/// `CREATE_NO_WINDOW`: hidden children.
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Whether this process owns a console window a person can actually see.

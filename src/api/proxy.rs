@@ -80,7 +80,7 @@ async fn ensure_named(
 }
 
 /// Resolves the request to a serving target on this listener, or a typed error:
-/// wrong-category and unknown models `404` **before** any ensure (Step 11).
+/// wrong-category and unknown models `404` **before** any ensure.
 ///
 /// Returns `(harness_name, port, serve_id)`; `serve_id` is the engine's
 /// self-reported id and is the proxy rewrite target when present.

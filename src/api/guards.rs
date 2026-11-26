@@ -159,7 +159,7 @@ pub(super) fn token_matches(given: &[u8], expected: &[u8]) -> bool {
     difference == 0
 }
 
-/// The guard + correlation middleware (Step 11 "kept regardless", Step 12):
+/// The guard + correlation middleware (kept on every route, regardless of scope):
 /// - **Host** must address a loopback — or any address when the harness publishes
 ///   on the unspecified bind (`internal_host = 0.0.0.0`, the documented no-auth
 ///   LAN posture where this guard is the floor) — on one of its own configured
@@ -168,7 +168,7 @@ pub(super) fn token_matches(given: &[u8], expected: &[u8]) -> bool {
 ///   gate runs on every request, not only the ones that bother to declare a Host);
 /// - **Origin** (when the client sends one — browsers do on cross-site POSTs) must
 ///   match the request's Host authority, else `403` (CSRF guard);
-/// - a **POST** body must declare `application/json`, else `415` (Step 11);
+/// - a **POST** body must declare `application/json`, else `415`;
 /// - the **request id** comes from the client's `x-request-id` only when it is
 ///   short and printable (see `accepted_request_id`) and is generated otherwise,
 ///   echoed in the response header, and logged at request completion (G6).

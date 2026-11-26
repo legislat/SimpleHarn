@@ -251,7 +251,7 @@ async fn main() -> ExitCode {
             .unwrap_or_else(|_| "unknown".to_string()),
         "harness booting"
     );
-    // A10 single-instance guard (§0.2 step 3): a second harness refuses to boot.
+    // A10 single-instance guard: a second harness refuses to boot.
     let _guard = match SingleInstanceGuard::acquire() {
         Ok(guard) => guard,
         Err(reason) => {
@@ -1109,7 +1109,7 @@ async fn run(
             // promises and nothing else can observe without docker or WSL.
             #[cfg(test)]
             boot_order::reclaim_begins();
-            // §0.2 step 4 says the reclaim is "off the bind path",
+            // The reclaim must stay off the bind path,
             // which is only auditable once it can say what it cost. Dispatch to
             // completion, on the wall clock, in the same ms-since-start unit as the
             // other measures — it used to end in silence.

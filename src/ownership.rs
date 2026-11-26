@@ -219,10 +219,10 @@ impl ContainerClaims {
     }
 }
 
-/// What kind of resource backs a slot occupant (Step 8).
+/// What kind of resource backs a slot occupant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResourceKind {
-    /// A Windows child process tree supervised by a Job Object (Step 8 C).
+    /// A Windows child process tree supervised by a Job Object.
     ChildProcess,
     /// A docker container started through the operator's WSL scripts. The label
     /// is the reap authority: the runtime removes exactly this name on release
@@ -230,11 +230,11 @@ pub enum ResourceKind {
     Container { name: String },
 }
 
-/// Mandatory metadata on every harness-owned resource (Step 1).
+/// Mandatory metadata on every harness-owned resource.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpawnTicket {
     /// Monotonic generation; distinguishes this spawn from any stale predecessor on the
-    /// same port (Step 17 newtype rationale).
+    /// same port.
     pub generation: u64,
     /// How the resource is backed.
     pub kind: ResourceKind,
@@ -250,7 +250,7 @@ pub struct SpawnTicket {
 pub enum Provenance {
     /// Started by this harness in this lifetime; only this variant is killable.
     Owned(SpawnTicket),
-    /// A manual server shown in the display list (Step 13); never touched.
+    /// A manual server shown in the display list; never touched.
     External,
     /// A resource the harness must never touch, even on request.
     Protected,
@@ -262,7 +262,7 @@ impl Provenance {
     /// # Returns
     ///
     /// `true` only for [`Provenance::Owned`]; externals and protected entries are
-    /// refused by construction (G4, Step 1).
+    /// refused by construction (G4).
     pub fn can_kill(&self) -> bool {
         matches!(self, Provenance::Owned(_))
     }

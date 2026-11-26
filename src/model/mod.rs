@@ -161,7 +161,7 @@ impl VramGate {
 /// ([`ModelEntry::resource`]) — never a stored yaml key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Resource {
-    /// The load reserves VRAM on the card (the ordinary gate, Step 4).
+    /// The load reserves VRAM on the card (the ordinary gate).
     Gpu,
     /// The load reserves host RAM (a CPU-resident llama row); the gate
     /// never reads the card for it, and the card's gate never sees it.
@@ -230,7 +230,7 @@ impl MeasuredAttribution {
     }
 }
 
-/// One model from `ModelConf/`, typed (Step 10: the harness name is canonical, and
+/// One model from `ModelConf/`, typed (the harness name is canonical, and
 /// it is the yaml file stem, which `scan` supplies as the
 /// `name` argument of [`ModelEntry::from_flat`]).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -238,11 +238,11 @@ pub struct ModelEntry {
     /// Canonical harness identity: the yaml file stem (a `name:` key that
     /// contradicts it is refused at scan); the `model` field clients send.
     pub name: String,
-    /// Engine id (`engine:`), defaulting to `llama`; may name a template (Step 7).
+    /// Engine id (`engine:`), defaulting to `llama`; may name a template.
     pub engine: String,
     /// Slot category after alias resolution.
     pub category: CategoryId,
-    /// Declared admission cost in GiB (Step 4 rule 1); `None` falls back to the
+    /// Declared admission cost in GiB; `None` falls back to the
     /// GGUF-size formula.
     pub vram_gb: Option<f64>,
     /// Declared host-RAM footprint in GiB (`ram_gb:`) — the booking figure
@@ -320,7 +320,7 @@ pub struct ModelEntry {
     /// RAM twin of [`Self::measured_min_gb`].
     pub measured_ram_min_gb: Option<f64>,
     /// Raw `model:` value — GGUF path or the engine-backed `scheme://` sentinel.
-    /// Informational for managed models; used for stem/path aliases (Step 10).
+    /// Informational for managed models; used for stem/path aliases.
     pub model_ref: Option<String>,
     /// The id the yaml claims the engine reports (`serve_model:`); verified by
     /// discovery at readiness — a mismatch is a recorded warning, never trusted.
@@ -336,7 +336,7 @@ pub struct ModelEntry {
     /// File the entry came from; `None` for synthetic entries (tests, mock).
     pub file: Option<PathBuf>,
     /// Every raw `key: value` from the source file, verbatim — the passthrough the
-    /// llama adapter builds argv from (Step 9 raw map; write-back keeps it honest).
+    /// llama adapter builds argv from (the raw map; write-back keeps it honest).
     pub raw: BTreeMap<String, String>,
 }
 
@@ -1040,7 +1040,7 @@ impl ModelEntry {
     /// identity the caller vouches for — at scan that is the file stem (`name:` is
     /// legacy-optional and only legal when it equals the stem, so identity cannot be
     /// a yaml value's claim). Applies the documented alias `is_embedding_model:
-    /// true` → EMB; the default category is WORK (Step 5, Step 9). The older app's
+    /// true` → EMB; the default category is WORK. The older app's
     /// `sticky:` alias is gone: a model is placed by its own `category:`, never by
     /// an inherited label.
     ///

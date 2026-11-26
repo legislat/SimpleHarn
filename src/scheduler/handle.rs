@@ -84,7 +84,7 @@ pub enum SchedulerError {
     /// (it is never persisted), so a restart or a mistyped id both land here.
     #[error("unknown job {0}")]
     UnknownJob(JobId),
-    /// The budget gate refused the load; carries need/free/reserve (Step 6 contract).
+    /// The budget gate refused the load; carries need/free/reserve (refusal contract).
     #[error(transparent)]
     Admission(#[from] AdmissionError),
     /// The adapter refused to build a launch spec.
@@ -134,8 +134,7 @@ pub enum SchedulerError {
 pub enum Reply {
     /// The model is loaded and serving.
     Loaded(SwapReceipt),
-    /// The model was already serving in that category (idempotent double-click,
-    /// Step 12).
+    /// The model was already serving in that category (idempotent double-click).
     Already {
         /// Harness name of the serving model.
         model: String,
@@ -219,7 +218,7 @@ impl SchedulerHandle {
     }
 
     /// Cancels a job; cleanup completes (kill + release confirmation) before the slot
-    /// returns to `Idle` (Step 3). Cancelling a finished job is `Done` (idempotent).
+    /// returns to `Idle`. Cancelling a finished job is `Done` (idempotent).
     ///
     /// # Errors
     ///
@@ -313,7 +312,7 @@ impl SchedulerHandle {
     }
 
     /// Records a use of `model` (fire-and-forget): the proxy paths call this on
-    /// every request so the actor's idle check measures real activity (Step 5).
+    /// every request so the actor's idle check measures real activity.
     /// A dropped actor makes this a no-op.
     pub fn touch(&self, model: &str) {
         let _ = self.tx.send(ActorMsg::Touch {
@@ -321,7 +320,7 @@ impl SchedulerHandle {
         });
     }
 
-    /// Re-scans `ModelConf` (hot reload, Step 9): the catalog and its error report
+    /// Re-scans `ModelConf` (hot reload): the catalog and its error report
     /// refresh atomically from the actor's single writer.
     ///
     /// # Errors
@@ -331,7 +330,7 @@ impl SchedulerHandle {
         self.call(Command::Reload).await
     }
 
-    /// Catalog snapshot (Step 2: reads are snapshots owned by the actor).
+    /// Catalog snapshot (reads are snapshots owned by the actor).
     ///
     /// # Errors
     ///
@@ -345,7 +344,7 @@ impl SchedulerHandle {
     }
 
     /// Subscribes to status pushes: the actor publishes a snapshot after every
-    /// state mutation (Step 12: the events stream, so the page polls nothing).
+    /// state mutation (the events stream, so the page polls nothing).
     ///
     /// # Returns
     ///
@@ -354,7 +353,7 @@ impl SchedulerHandle {
         self.events.subscribe()
     }
 
-    /// Snapshot of slots and jobs; never probes, never mutates (Step 2).
+    /// Snapshot of slots and jobs; never probes, never mutates.
     ///
     /// # Errors
     ///
