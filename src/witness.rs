@@ -42,6 +42,11 @@ const SMI_TIMEOUT: Duration = Duration::from_secs(5);
 /// remembered, not retried — the `nvidia-smi` fallback arms exactly as when init
 /// failed eagerly.
 pub struct NvmlWitness {
+    /// The GPU this witness samples: the `device_index` config key. Both legs
+    /// read the same card — the NVML leg by index, the `nvidia-smi` leg with
+    /// `-i <index>`. An index no card answers makes every sample error; the
+    /// witness never borrows another card's reading (DOCTRINE item 4).
+    device_index: u32,
     nvml: OnceLock<Option<nvml_wrapper::Nvml>>,
     cache: Mutex<Option<(Instant, MemorySample)>>,
     failure: Mutex<Option<(Instant, String)>>,
@@ -59,11 +64,18 @@ pub struct NvmlWitness {
 }
 
 impl NvmlWitness {
-    /// Creates the witness without touching the driver: allocation-cheap and bind-safe
-    /// NVML init failure is not an error — the fallback arms, on
-    /// the first [`VramWitness::sample`], never on the boot thread.
-    pub fn new() -> Self {
+    /// Creates the witness for the configured `device_index` without touching the
+    /// driver: allocation-cheap and bind-safe. NVML init failure is not an error —
+    /// the fallback arms, on the first [`VramWitness::sample`], never on the boot
+    /// thread. The index is deliberately not checked here: device existence is
+    /// driver state, and `new()` must stay boot-cheap; an index no card answers
+    /// makes every sample error (fail closed) exactly like a dead driver, so a
+    /// mistyped value refuses admission instead of wedging boot. There is no
+    /// `Default` impl: a defaulted witness would silently sample GPU 0 on a
+    /// machine whose config names another card.
+    pub fn new(device_index: u32) -> Self {
         NvmlWitness {
+            device_index,
             nvml: OnceLock::new(),
             cache: Mutex::new(None),
             failure: Mutex::new(None),
@@ -110,13 +122,13 @@ impl NvmlWitness {
 
     fn sample_nvml(&self) -> Result<MemorySample, String> {
         let nvml = self.nvml().ok_or("nvml not initialized")?;
-        let index = match nvml.device_count() {
-            Ok(count) if count > 0 => 0,
-            Ok(_) => return Err("nvml reports no devices".to_string()),
+        let device_count = match nvml.device_count() {
+            Ok(count) => count,
             Err(error) => return Err(format!("device_count: {error}")),
         };
+        check_device_selection(self.device_index, device_count)?;
         let device = nvml
-            .device_by_index(index)
+            .device_by_index(self.device_index)
             .map_err(|e| format!("device_by_index: {e}"))?;
         let info = device
             .memory_info()
@@ -153,17 +165,10 @@ impl NvmlWitness {
     }
 
     async fn sample_smi(&self) -> Result<MemorySample, String> {
-        let gpu = smi(&[
-            "--query-gpu=memory.total,memory.used",
-            "--format=csv,noheader,nounits",
-        ])
-        .await?;
-        let apps = smi(&[
-            "--query-compute-apps=pid,used_memory",
-            "--format=csv,noheader,nounits",
-        ])
-        .await
-        .unwrap_or_default();
+        let gpu = smi(&smi_gpu_query_args(self.device_index)).await?;
+        let apps = smi(&smi_apps_query_args(self.device_index))
+            .await
+            .unwrap_or_default();
         if !self.fallback_warned.swap(true, Ordering::Relaxed) {
             tracing::warn!("witness serving from nvidia-smi fallback (NVML absent)");
         }
@@ -195,12 +200,6 @@ impl NvmlWitness {
         let sample = self.sample_nvml()?;
         *self.cache.lock().expect("witness cache lock") = Some((Instant::now(), sample.clone()));
         Ok(sample)
-    }
-}
-
-impl Default for NvmlWitness {
-    fn default() -> Self {
-        NvmlWitness::new()
     }
 }
 
@@ -292,8 +291,50 @@ fn source_label(nvml_unavailable: bool, fell_back: bool) -> &'static str {
     }
 }
 
+/// The NVML leg's bounds rule: the configured index must name a device the
+/// driver actually reports. An out-of-range index fails closed — the sample
+/// errors and admission refuses — instead of borrowing another card's reading
+/// (DOCTRINE item 4). Pure so a test pins the rule without a driver.
+fn check_device_selection(index: u32, device_count: u32) -> Result<(), String> {
+    if device_count == 0 {
+        return Err("nvml reports no devices".to_string());
+    }
+    if index >= device_count {
+        return Err(format!(
+            "device_index {index} is out of range: nvml reports {device_count} device(s); \
+             the witness refuses rather than sampling another device"
+        ));
+    }
+    Ok(())
+}
+
+/// The full argument list of the GPU-memory fallback query, scoped to `index`
+/// with `-i`: the fallback must read the same card the NVML leg would have
+/// read. For an index with no device, `nvidia-smi -i` exits non-zero, so the
+/// fallback fails closed exactly as the NVML leg does instead of silently
+/// reading GPU 0. Pure so a test pins the args without a driver.
+fn smi_gpu_query_args(index: u32) -> Vec<String> {
+    vec![
+        String::from("-i"),
+        index.to_string(),
+        String::from("--query-gpu=memory.total,memory.used"),
+        String::from("--format=csv,noheader,nounits"),
+    ]
+}
+
+/// The same `-i` scoping for the compute-apps query: the per-process
+/// attribution belongs to the budgeted card, not to every card in the box.
+fn smi_apps_query_args(index: u32) -> Vec<String> {
+    vec![
+        String::from("-i"),
+        index.to_string(),
+        String::from("--query-compute-apps=pid,used_memory"),
+        String::from("--format=csv,noheader,nounits"),
+    ]
+}
+
 /// Runs `nvidia-smi` with `args` and returns stdout (blocking task + timeout).
-async fn smi(args: &[&str]) -> Result<String, String> {
+async fn smi(args: &[String]) -> Result<String, String> {
     tokio::time::timeout(SMI_TIMEOUT, async {
         let output = tokio::process::Command::new("nvidia-smi")
             .args(args)
@@ -505,7 +546,7 @@ mod tests {
         // Construction must never touch the driver — a dying NVML
         // may not wedge boot before `/har/status` exists. Deterministic on every
         // machine, driver present or not: the OnceLock stays untouched by `new()`.
-        let witness = NvmlWitness::new();
+        let witness = NvmlWitness::new(0);
         assert!(
             !witness.nvml_initialized_for_test(),
             "NvmlWitness::new() must not run Nvml::init()"
@@ -518,7 +559,7 @@ mod tests {
         // sample. Deterministic on every machine shape: an init that fails stores the
         // remembered `None`, so `nvml_initialized_for_test()` is true either way and
         // the source stays on the fallback — driver-less boxes pass too.
-        let witness = NvmlWitness::new();
+        let witness = NvmlWitness::new(0);
         witness.prime();
         assert!(
             witness.nvml_initialized_for_test(),
@@ -534,7 +575,7 @@ mod tests {
         // The other half of the laziness pin: `sample()` still reaches the driver
         // exactly as before — both machine shapes are asserted explicitly, so
         // neither can pass vacuously.
-        let witness = NvmlWitness::new();
+        let witness = NvmlWitness::new(0);
         let _ = witness.sample().await;
         if witness.nvml_initialized_for_test() {
             match witness.nvml.get().expect("init ran") {
@@ -556,7 +597,7 @@ mod tests {
         // A fallback reading must never be displayed as an in-process NVML one,
         // so the two cases cannot collapse into one label. With the init lazy, the
         // distinction only exists after the first sample — that is when it is pinned.
-        let witness = NvmlWitness::new();
+        let witness = NvmlWitness::new(0);
         let _ = witness.sample().await;
         let initialized = witness.nvml.get().is_some_and(|slot| slot.is_some());
         let expected = if initialized {
@@ -602,5 +643,79 @@ mod tests {
         assert_eq!(source_label(false, true), "nvidia-smi (fallback)");
         assert_eq!(source_label(true, false), "nvidia-smi (fallback)");
         assert_eq!(source_label(true, true), "nvidia-smi (fallback)");
+    }
+
+    /// The bounds rule that makes an out-of-range `device_index` fail closed:
+    /// the witness samples only a device the driver reports. Pre-change the
+    /// code hardcoded device 0 and had no index to bound, so this helper did
+    /// not exist and the falsifier does not compile against the old code.
+    #[test]
+    fn device_selection_refuses_an_index_the_driver_does_not_report() {
+        assert!(check_device_selection(0, 1).is_ok(), "GPU 0 on one card");
+        assert!(check_device_selection(1, 2).is_ok(), "GPU 1 on two cards");
+        assert!(
+            check_device_selection(0, 0).is_err(),
+            "a box with no card has no GPU 0 to borrow"
+        );
+        let reason = check_device_selection(1, 1).expect_err("one card has no GPU 1");
+        assert!(reason.contains("device_index 1"), "{reason}");
+        let reason = check_device_selection(u32::MAX, 1).expect_err("no box has that card");
+        assert!(reason.contains("out of range"), "{reason}");
+    }
+
+    /// The smi fallback must read the configured card, not GPU 0: both query
+    /// argument lists carry `-i <index>` ahead of the query flag, with the
+    /// index rendered from the configured value. Pure pin, no driver needed.
+    /// Pre-change the args carried no `-i` at all, so the fallback always
+    /// read GPU 0 whatever the config said.
+    #[test]
+    fn the_smi_fallback_args_carry_the_device_index() {
+        for (name, args) in [
+            ("gpu query", smi_gpu_query_args(1)),
+            ("apps query", smi_apps_query_args(1)),
+        ] {
+            assert_eq!(args[0], "-i", "{name} must scope the device");
+            assert_eq!(args[1], "1", "{name} must scope the configured index");
+            assert_eq!(
+                args[args.len() - 1],
+                "--format=csv,noheader,nounits",
+                "{name} keeps the csv contract"
+            );
+        }
+        assert!(
+            smi_gpu_query_args(3)[2].starts_with("--query-gpu="),
+            "the gpu query keeps its shape"
+        );
+        assert!(
+            smi_apps_query_args(3)[2].starts_with("--query-compute-apps="),
+            "the apps query keeps its shape"
+        );
+        assert_eq!(
+            smi_gpu_query_args(3)[1],
+            "3",
+            "the selector renders the configured value, not a constant"
+        );
+    }
+
+    /// Fail closed on an index no card answers: a live `sample()` must return
+    /// `Err` and never a GPU-0 reading. This falsifier fails on pre-change
+    /// code because the pre-change `NvmlWitness` had no device index at all
+    /// (it hardcoded GPU 0): the call below did not exist, and the equivalent
+    /// old call returned a real GPU-0 reading on a machine with a driver.
+    /// Driver-less shapes still hold: there the NVML leg and the smi spawn
+    /// each fail for their own reason, so `Err` is the verdict on every
+    /// machine, and an `Err` carries no figure to misattribute.
+    #[tokio::test]
+    async fn an_out_of_range_device_index_refuses_instead_of_sampling_gpu_zero() {
+        let witness = NvmlWitness::new(u32::MAX);
+        let outcome = witness.sample().await;
+        assert!(
+            outcome.is_err(),
+            "no card answers index u32::MAX, got {outcome:?}"
+        );
+        assert!(
+            witness.sample_boot().is_err(),
+            "the boot probe must refuse the same index, not probe GPU 0"
+        );
     }
 }

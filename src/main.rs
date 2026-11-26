@@ -305,7 +305,7 @@ async fn main() -> ExitCode {
         hold_console_after_fatal();
         return ExitCode::FAILURE;
     }
-    let witness = simpleharn::witness::NvmlWitness::new();
+    let witness = simpleharn::witness::NvmlWitness::new(config.device_index);
     let witness = Arc::new(witness);
     // First-start materialization: with no config file,
     // derive values from the real system and create the file beside the exe — the

@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent]
 source_of_truth_for: [harness configuration keys, category eviction rules]
-last_reviewed: 2026-11-08
+last_reviewed: 2026-11-26
 review_trigger: behavior-change, release
 ---
 
@@ -58,6 +58,7 @@ inert: they change nothing, warn nothing, and grant nothing.
 | `vram_reserve_gb` | `2.0` | Card GiB kept unreachable: the gate subtracts it before it compares (DOCTRINE item 4). It is also the foreign-residency allowance for a `whole` launch floor: a `whole` row counts the card as free when the witness reaches `total - reserve`, so unreclaimable foreign VRAM (the desktop, a driver) may use up to this many GiB. A workstation whose desktop holds more than the reserve keeps `whole` rows refused until the reserve is raised to cover it. |
 | `ram_reserve_gb` | `8.0` | Host GiB kept unreachable for CPU-resident loads: the RAM gate subtracts it before it compares. The RAM twin of `vram_reserve_gb` on its own resource (operator ruling 2026-11-05). The OS and the desktop need the headroom, and a refused load costs one retry. |
 | `witness_tolerance_gb` | `2.0` | Tolerance band for driver lag after a kill. A load may spawn up to this far under the gate. The band absorbs the lag between a confirmed release and the card reading catching up. It is also the settle allowance. |
+| `device_index` | `0` | The GPU the witness samples. Index `0` is the first card. The witness reads the memory figures of that card, in NVML and in the `nvidia-smi` fallback. Engine placement stays row-owned: this key never moves an engine to another card. When the index names no card, every sample fails and admission refuses; the witness never samples GPU 0 in place of the configured card. |
 | `greedy_launch_min_free_gb` | `4.0` | Launch floor for `cost: greedy` models without their own `launch_only_with_at_least_vram_free`. |
 | `expert_offload_evict_cpu_above_gb` | `4.0` | Host-RAM reclaim threshold for expert-offload engines (operator ruling 2026-11-06). Admitting a `cost: greedy` row on strata, basalt, or maya first drains every CPU-resident row booked above this many host GiB, largest first, through the normal confirmed release. A protected or `min_turn`-young holder is skipped and named, never a refusal. Boot refuses a negative or non-finite value. `0` disables the rule. |
 | `load_timeout_s` | `120` | Readiness deadline per load. Range 1-86400 seconds; boot refuses a value outside it. A model can override it with the `load_timeout:` yaml key. |

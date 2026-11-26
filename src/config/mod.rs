@@ -141,6 +141,12 @@ fn default_witness_tolerance() -> f64 {
     2.0
 }
 
+/// Which GPU the witness samples. `0` is the first card, so a machine that edits
+/// nothing samples what it always sampled.
+fn default_device_index() -> u32 {
+    0
+}
+
 fn default_greedy_min_free() -> f64 {
     4.0
 }
@@ -585,6 +591,16 @@ pub struct AppConfig {
     /// trigger, and settle accepts `baseline + tolerance`.
     #[serde(default = "default_witness_tolerance")]
     pub witness_tolerance_gb: f64,
+    /// Index of the GPU the witness samples; `0` (default) is the first card.
+    /// This key moves the witness only: engine placement stays row-owned, and
+    /// rows keep their own `--gpu` arguments. No range check here on purpose:
+    /// the driver decides which indices exist, and an index no card answers
+    /// makes every sample error instead of refusing boot (DOCTRINE item 4: an
+    /// unreadable card refuses; it never borrows another card's reading).
+    /// Serialized like [`AppConfig::ninfer_log_max_size_mib`], so the file
+    /// states the sampled index even at the default.
+    #[serde(default = "default_device_index")]
+    pub device_index: u32,
     /// Launch floor applied to `cost: greedy` models that carry no explicit
     /// `launch_only_with_at_least_vram_free`: greedy loads are never unguarded
     /// (operator design note, 2026-10-26).
@@ -715,6 +731,7 @@ impl fmt::Debug for AppConfig {
             modelconf_dir,
             settle_timeout_s,
             witness_tolerance_gb,
+            device_index,
             greedy_launch_min_free_gb,
             expert_offload_evict_cpu_above_gb,
             wsl_distro,
@@ -749,6 +766,7 @@ impl fmt::Debug for AppConfig {
             .field("modelconf_dir", modelconf_dir)
             .field("settle_timeout_s", settle_timeout_s)
             .field("witness_tolerance_gb", witness_tolerance_gb)
+            .field("device_index", device_index)
             .field("greedy_launch_min_free_gb", greedy_launch_min_free_gb)
             .field(
                 "expert_offload_evict_cpu_above_gb",
@@ -787,6 +805,7 @@ impl Default for AppConfig {
             modelconf_dir: default_modelconf_dir(),
             settle_timeout_s: default_settle_timeout(),
             witness_tolerance_gb: default_witness_tolerance(),
+            device_index: default_device_index(),
             greedy_launch_min_free_gb: default_greedy_min_free(),
             expert_offload_evict_cpu_above_gb: default_expert_offload_evict_cpu_above(),
             measured_sample_s: default_measured_sample_s(),
@@ -1748,6 +1767,74 @@ mod tests {
         );
     }
 
+    /// The witness device key: absent reads as GPU 0 (an unchanged file keeps today's
+    /// behavior), an explicit index parses, and nonsense shapes are refused by the
+    /// `u32` type at parse time. There is no config range for this key on purpose:
+    /// only the driver knows which indices exist, and an index no card answers must
+    /// refuse the *sample* (the witness, fail closed), not the boot. Falsifier: the
+    /// key did not exist pre-change, so every assert here reads a field that does
+    /// not compile.
+    #[test]
+    fn device_index_defaults_to_zero_and_refuses_nonsense_shapes() {
+        let absent = AppConfig::parse("{}").expect("defaults parse");
+        assert_eq!(absent.device_index, 0);
+        assert!(absent.validate().is_empty());
+        let explicit = AppConfig::parse("{\"device_index\": 1}").expect("explicit index parses");
+        assert_eq!(explicit.device_index, 1);
+        assert!(
+            explicit.validate().is_empty(),
+            "an index with no card on this machine must still boot: the witness decides"
+        );
+        for nonsense in ["-1", "1.5", "\"0\"", "null", "4294967296"] {
+            let outcome = AppConfig::parse(&format!("\"device_index\": {nonsense}"));
+            assert!(
+                outcome.is_err(),
+                "`{nonsense}` is not a device index: {outcome:?}"
+            );
+        }
+    }
+
+    /// Restart guard: which card the next boot samples must not depend on the
+    /// write-back forgetting the key. Falsifier: add `skip_serializing_if` on the
+    /// key and the default-stamp assert fires; break the serde default and the
+    /// round-trip assert fires.
+    #[test]
+    fn device_index_survives_the_config_write_back() {
+        let chosen = AppConfig {
+            device_index: 1,
+            ..AppConfig::default()
+        };
+        let text = write_back_text(&chosen);
+        let reloaded = AppConfig::parse(&text).expect("persisted index parses");
+        assert!(
+            reloaded.validate().is_empty(),
+            "persisted config must validate: {:?}",
+            reloaded.validate()
+        );
+        assert_eq!(
+            reloaded.device_index, 1,
+            "the sampled index must survive a write-back and a restart"
+        );
+
+        // Pinned serde choice: the default is stamped (like
+        // `ninfer_log_max_size_mib`), never omitted, so the file states the card.
+        let default_text = write_back_text(&AppConfig::default());
+        let stamped: serde_json::Value =
+            serde_json::from_str(&default_text).expect("stamped json parses");
+        assert_eq!(
+            stamped["device_index"],
+            serde_json::json!(0),
+            "the default index must be stamped, not omitted"
+        );
+        assert_eq!(
+            AppConfig::parse(&default_text)
+                .expect("stamped default parses")
+                .device_index,
+            0,
+            "the stamped default must parse back as the documented GPU 0"
+        );
+    }
+
     #[test]
     fn measured_cadence_defaults_to_a_minute_and_refuses_zero() {
         let absent = AppConfig::parse("{}").expect("defaults parse");
@@ -1894,6 +1981,7 @@ mod tests {
             modelconf_dir: std::path::PathBuf::from("F:/modelconf"),
             settle_timeout_s: 44,
             witness_tolerance_gb: 1.5,
+            device_index: 3,
             greedy_launch_min_free_gb: 6.5,
             expert_offload_evict_cpu_above_gb: 5.5,
             wsl_distro: "Ubuntu-24.04".to_string(),
@@ -1921,6 +2009,7 @@ mod tests {
             ("modelconf_dir", "F:/modelconf"),
             ("settle_timeout_s", "44"),
             ("witness_tolerance_gb", "1.5"),
+            ("device_index", "3"),
             ("greedy_launch_min_free_gb", "6.5"),
             ("expert_offload_evict_cpu_above_gb", "5.5"),
             ("wsl_distro", "Ubuntu-24.04"),

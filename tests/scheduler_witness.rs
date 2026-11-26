@@ -975,7 +975,7 @@ fn smi_parser_handles_csv_shapes() {
 
 #[tokio::test]
 async fn live_nvidia_witness_samples_or_skips() {
-    let witness = simpleharn::witness::NvmlWitness::new();
+    let witness = simpleharn::witness::NvmlWitness::new(0);
     match witness.sample().await {
         Ok(sample) => {
             assert!(sample.total_gib > 0.0, "a GPU reports a positive total");
