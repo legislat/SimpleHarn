@@ -250,7 +250,15 @@ carries two wait fields at the flat envelope top level:
   quote; an absent field means the harness has no basis to quote it.
 
 Other refusals that answer `unavailable` omit both fields, like every other
-error class. Neither field appears inside the OpenAI `error` sub-object.
+error class. One of them is the same-slot settle-unreachable pre-refuse: a
+same-slot replacement whose need no release can reach refuses before any
+release. The message reads "settle target unreachable before release" and
+names the need and the ceiling; it names the harness holders a release cannot
+reclaim when the planner named any, and when the bound rides foreign bytes
+only it quantifies the unreleasable figure and points at foreign residents.
+The refusal carries no wait
+fields: a victim exists, so there is nothing waitable to wait for. Neither
+field appears inside the OpenAI `error` sub-object.
 Both describe the decision moment only. The harness runs no wait queue and
 keeps no promise about a later load.
 

@@ -571,7 +571,7 @@ async fn a_wait_that_cannot_fit_after_the_booking_dies_refuses() {
     state.finish_admit_card(parked, Ok(gate_sample(23.8)));
     assert_eq!(state.pending.get(&1), Some(&parked), "the row waits");
     // The blocking booking terminalises and the terminal funnel re-gates the
-    // parked row through the queue path (ruling step 3).
+    // parked row through the queue path.
     let booking = state.slots[0].job.expect("the in-flight row owns slot 0");
     state.cancel_job(booking, "the in-flight engine died before install");
     assert_eq!(
@@ -730,7 +730,7 @@ async fn an_unreachable_floor_still_refuses() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Ruling step 4: every path that takes a parked row away answers its waiters
+/// Every path that takes a parked row away answers its waiters
 /// exactly once. Here: `Cancel` on a gate-parked row (the `Idle`-state queued
 /// branch), then `Unload All` over a second parked row - the command the
 /// parking ruling newly gives that shape. Falsifier: answer the waiter at park
@@ -825,7 +825,7 @@ async fn a_cancelled_waiting_load_is_answered_once() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Ruling step 2, the other half of the protection: the gate-parked row sits
+/// The other half of the protection: the gate-parked row sits
 /// on a slot that shows neither job nor occupant, so target selection would
 /// happily arm a different model on top of its queue place. It must instead
 /// take the park-and-supersede path - which answers the parked row - and the
@@ -877,7 +877,7 @@ async fn a_different_model_supersedes_a_gate_parked_row_instead_of_stealing_its_
         "exactly once"
     );
     // The new load takes the superseded place; the slot being free, the
-    // terminal funnel re-gates it at once (ruling step 3): supersede of a
+    // terminal funnel re-gates it at once: supersede of a
     // gate-parked row hands over its queue, and an empty slot needs no wait.
     let newer = state.slots[1]
         .job
@@ -1667,5 +1667,912 @@ async fn whole_replaces_the_greedy_floor_leg() {
         !job.terminal,
         "the reserve-covered card admits the greedy whole row: {:?}",
         job.error
+    );
+}
+
+// ---------- the same-slot pre-refuse and the sole-resident planner credit
+// (per the DECISIONS 2026-11-26 rows) ---------------------------------------
+
+/// One inline occupant for the ruling pins: the shape `seat_spawn` seats, with
+/// the booking and the fold figure the pin is testing written in directly.
+fn ruling_resident(name: &str, need_gib: f64, live_gib: Option<f64>, port: u16) -> Occupant {
+    Occupant {
+        model: name.to_string(),
+        need: Gibibytes(need_gib),
+        ram_need: None,
+        port,
+        ticket: fold_ticket(port),
+        loaded_at: Instant::now(),
+        launched_at_wall: std::time::SystemTime::now(),
+        spawn_config: None,
+        stale_config: false,
+        serve_id: None,
+        measure: None,
+        live_measured_gb: live_gib,
+    }
+}
+
+/// Per the DECISIONS 2026-11-26 rows, edge case (a): a same-slot replacement whose settle
+/// target sits ABOVE the reachable ceiling (`total - never_releasable`, here
+/// 72 - 0 = 72) refuses at the gate BEFORE any release: the swift resident
+/// (booked 24.0078, folded 23.3) is not killed for a 75 GiB load that could
+/// never settle even after its bytes returned (the physical free tops out at
+/// 72, the window needs 75 + 2 - 2). The refusal names the need, the target,
+/// the ceiling, and the compared figure.
+/// Falsifier: delete the pre-refuse arm and the row takes release-first — the
+/// victim dies (the occupant-survival leg goes red) and the error is the
+/// release-first absence, not the named refusal.
+#[tokio::test]
+async fn a_same_slot_need_the_releases_cannot_reach_refuses_before_any_release() {
+    let dir = crate::testutil::temp_dir("pre-refuse-ceiling");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let yaml = dir.join("big.yaml");
+    std::fs::write(&yaml, "engine: mock\ncategory: work\nvram_gb: 75\n").expect("seed");
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.cfg.witness_tolerance_gb = 2.0;
+    let entry = rescan_entry(&yaml, "big");
+    state.catalog = vec![entry.clone()];
+    state.slots = vec![Slot {
+        category: CategoryId::Work,
+        index: 0,
+        engine_port: 18_171,
+        occupant: Some(ruling_resident("swift", 24.0078, Some(23.3), 18_171)),
+        job: None,
+    }];
+    let job_id = state.register_queued_load(0, &entry, Vec::new());
+    state.slots[0].job = Some(job_id);
+    if let Some(job) = state.jobs.get_mut(&job_id) {
+        job.need = Some(Gibibytes(75.0));
+        job.victim = Some(super::Victim {
+            model: "swift".to_string(),
+            ticket: fold_ticket(18_171),
+            slot: 0,
+            evicted: false,
+            cost: 24.0078,
+        });
+    }
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(23.3)));
+    let job = &state.jobs[&job_id];
+    assert!(
+        matches!(
+            job.error,
+            Some(SchedulerError::Admission(
+                AdmissionError::SettleUnreachable { .. }
+            ))
+        ),
+        "a target above the reachable ceiling refuses before any kill: {:?}",
+        job.error
+    );
+    let message = job.error.as_ref().expect("refusal").to_string();
+    assert!(
+        message.contains("settle target unreachable before release")
+            && message.contains("need 75.0 GiB")
+            && message.contains("settle target 75.0 GiB")
+            && message.contains("ceiling 72.0 GiB")
+            && message.contains("free 70.0 GiB"),
+        "the refusal names need, target, ceiling, and the compared figure: {message}"
+    );
+    assert!(
+        !job.release_first,
+        "the ruling refuses INSTEAD of releasing"
+    );
+    assert!(
+        job.path.is_none(),
+        "a refusal never names a rung: {:?}",
+        job.path
+    );
+    assert_eq!(job.state, SwapState::AdmitFail);
+    assert!(
+        state.slots[0].occupant.is_some(),
+        "refusal before kill: the doomed-by-request resident is still seated"
+    );
+}
+
+/// Per the DECISIONS 2026-11-26 rows, edge case (b): the ceiling counts what a release for
+/// THIS decision provably cannot reclaim — here the protected `guard-p`
+/// resident (WORK: nothing may evict it) holds a witnessed 12.0 fold, so the
+/// ceiling is 72 - 12 = 60 and the 65 GiB same-slot replacement refuses naming
+/// its holder. The bound counts the holder's WITNESSED bytes only (per the
+/// DECISIONS 2026-11-26 rows): a bare booking is a projection, never a proven
+/// byte, so `guard-p` carries the fold that proves its 12 GiB — the pin holds
+/// the same refusal with the honest basis. The own-slot victim never bounds
+/// its own ceiling (it IS the release), so only the protected byte counts.
+/// Falsifier: drop the blocker-occupant leg of `never_releasable_holds` and
+/// the ceiling reads 72: the row slips into release-first, the victim is
+/// doomed, and the settle timeout arrives where the gate could have named the
+/// holder.
+#[tokio::test]
+async fn a_proven_unreachable_ceiling_names_the_protected_holder_before_the_release() {
+    let dir = crate::testutil::temp_dir("pre-refuse-holder");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let yaml = dir.join("mid.yaml");
+    std::fs::write(&yaml, "engine: mock\ncategory: work\nvram_gb: 65\n").expect("seed");
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.cfg.witness_tolerance_gb = 2.0;
+    let entry = rescan_entry(&yaml, "mid");
+    state.catalog = vec![entry.clone()];
+    state.slots = vec![
+        Slot {
+            category: CategoryId::Work,
+            index: 0,
+            engine_port: 18_172,
+            occupant: Some(ruling_resident("swift-v", 4.0, None, 18_172)),
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Work,
+            index: 1,
+            engine_port: 18_173,
+            occupant: Some(ruling_resident("guard-p", 12.0, Some(12.0), 18_173)),
+            job: None,
+        },
+    ];
+    let job_id = state.register_queued_load(0, &entry, Vec::new());
+    state.slots[0].job = Some(job_id);
+    if let Some(job) = state.jobs.get_mut(&job_id) {
+        job.need = Some(Gibibytes(65.0));
+        job.victim = Some(super::Victim {
+            model: "swift-v".to_string(),
+            ticket: fold_ticket(18_172),
+            slot: 0,
+            evicted: false,
+            cost: 4.0,
+        });
+    }
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(35.3)));
+    let job = &state.jobs[&job_id];
+    assert!(
+        matches!(
+            job.error,
+            Some(SchedulerError::Admission(
+                AdmissionError::SettleUnreachable { .. }
+            ))
+        ),
+        "65 above a 60 ceiling with a named holder refuses: {:?}",
+        job.error
+    );
+    let message = job.error.as_ref().expect("refusal").to_string();
+    assert!(
+        message.contains("ceiling 60.0 GiB") && message.contains("blocked by: guard-p"),
+        "the refusal names the ceiling and the never-releasable holder: {message}"
+    );
+    assert!(!job.release_first);
+    assert!(
+        state.slots[0].occupant.is_some() && state.slots[1].occupant.is_some(),
+        "both residents survive a refusal that arrives before the kill"
+    );
+}
+
+/// Per the DECISIONS 2026-11-26 rows, both falsifier directions: a target the release CAN
+/// reach still pays the eviction and re-gates (never pre-refused).
+/// Leg 1: swift (booked 13.2, folded 23.3), floor 60, exact need 70.5 — a
+/// 0.5 GiB deficit with the victim already credited; target 70.5 + 2 - 2 =
+/// 70.5 ≤ 72, so release-first runs (the booking-would-clear-with-release
+/// shape: a release DID happen). Leg 2, edge case (d): the same card with a
+/// 67.4 need under the 60 floor has no deficit at all — the gate admits and
+/// the same-slot replacement releases and re-gates (never refused).
+/// Falsifier: widen the pre-refuse predicate (drop the ceiling compare) and
+/// leg 1 refuses instead of going release-first — the rung and the Dispose
+/// legs go red.
+#[tokio::test]
+async fn a_ceiling_reachable_target_still_pays_the_release_first() {
+    let dir = crate::testutil::temp_dir("pre-refuse-release-first");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let swift_yaml = dir.join("swift.yaml");
+    std::fs::write(&swift_yaml, "engine: mock\ncategory: work\nvram_gb: 13.2\n").expect("seed");
+    let big_yaml = dir.join("floor.yaml");
+    std::fs::write(
+        &big_yaml,
+        "engine: mock\ncategory: work\nvram_gb: 70.5\nlaunch_only_with_at_least_vram_free: 60\n",
+    )
+    .expect("seed");
+    let swift = rescan_entry(&swift_yaml, "swift");
+    let entry = rescan_entry(&big_yaml, "floor");
+    assert_eq!(
+        entry.vram_gate.floor(),
+        Some(60.0),
+        "floor survives the scan"
+    );
+
+    // Leg 1: release-first on a reachable ceiling.
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.cfg.witness_tolerance_gb = 2.0;
+    state.catalog = vec![swift.clone(), entry.clone()];
+    let ticket = fold_ticket(18_174);
+    seat_spawn(&mut state, &swift, &ticket, 18_174);
+    if let Some(o) = state.slots[0].occupant.as_mut() {
+        o.need = Gibibytes(13.2);
+        o.live_measured_gb = Some(23.3);
+    }
+    let job_id = state.register_queued_load(0, &entry, Vec::new());
+    state.slots[0].job = Some(job_id);
+    if let Some(job) = state.jobs.get_mut(&job_id) {
+        job.need = Some(Gibibytes(70.5));
+        job.victim = Some(super::Victim {
+            model: "swift".to_string(),
+            ticket: ticket.clone(),
+            slot: 0,
+            evicted: false,
+            cost: 13.2,
+        });
+    }
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(23.3)));
+    let job = &state.jobs[&job_id];
+    assert!(
+        !job.terminal,
+        "a target inside the ceiling is release-first, not a refusal: {:?}",
+        job.error
+    );
+    assert!(job.release_first, "the release-first door stays first");
+    assert_eq!(job.path, Some(AdmissionPath::ReleaseFirst));
+    assert_eq!(job.state, SwapState::Dispose, "the release DID happen");
+
+    // Leg 2, edge case (d): need 67.4 under the same floor and the same
+    // credited figure — no deficit, so the ordinary drain-replace runs.
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.cfg.witness_tolerance_gb = 2.0;
+    state.catalog = vec![swift.clone(), entry.clone()];
+    let ticket = fold_ticket(18_175);
+    seat_spawn(&mut state, &swift, &ticket, 18_175);
+    if let Some(o) = state.slots[0].occupant.as_mut() {
+        o.need = Gibibytes(13.2);
+        o.live_measured_gb = Some(23.3);
+    }
+    let job_id = state.register_queued_load(0, &entry, Vec::new());
+    state.slots[0].job = Some(job_id);
+    if let Some(job) = state.jobs.get_mut(&job_id) {
+        job.need = Some(Gibibytes(67.4));
+        job.victim = Some(super::Victim {
+            model: "swift".to_string(),
+            ticket: ticket.clone(),
+            slot: 0,
+            evicted: false,
+            cost: 13.2,
+        });
+    }
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(23.3)));
+    let job = &state.jobs[&job_id];
+    assert!(
+        !job.terminal && job.error.is_none(),
+        "the ruling never pre-refuses a replacement the card can settle: {:?}",
+        job.error
+    );
+    assert_eq!(
+        job.state,
+        SwapState::Dispose,
+        "the replacement still releases"
+    );
+}
+
+/// Per the DECISIONS 2026-11-26 rows, edge case (c): a shortfall covered by another load's
+/// in-flight booking, with no same-slot victim, still PARKS — the pre-refuse
+/// (which requires a victim) never turns a wait into a refusal, even when the
+/// card also holds a protected resident the planner names as a blocker.
+/// Falsifier: make the pre-refuse victim-optional and this row terminalizes
+/// `AdmitFail` where it used to wait: the non-terminal and pending legs red.
+#[tokio::test]
+async fn a_booking_covered_shortfall_without_a_victim_still_parks_not_refuses() {
+    let dir = crate::testutil::temp_dir("pre-refuse-park");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let yaml = dir.join("waiter.yaml");
+    std::fs::write(&yaml, "engine: mock\ncategory: work\nvram_gb: 45\n").expect("seed");
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.cfg.witness_tolerance_gb = 2.0;
+    let entry = rescan_entry(&yaml, "waiter");
+    state.catalog = vec![entry.clone()];
+    state.slots = (0..3)
+        .map(|index| Slot {
+            category: CategoryId::Work,
+            index,
+            engine_port: 18_180 + index as u16,
+            occupant: (index == 0).then(|| ruling_resident("swift", 13.2, Some(23.3), 18_180)),
+            job: None,
+        })
+        .collect();
+    // The in-flight booking on slot 1: armed like `start_queued_load` arms a
+    // row, no occupant installed yet (the witness already counts its bytes).
+    let booking_yaml = dir.join("booking.yaml");
+    std::fs::write(&booking_yaml, "engine: mock\ncategory: work\nvram_gb: 30\n").expect("seed");
+    let booking_entry = rescan_entry(&booking_yaml, "booking");
+    state.catalog.push(booking_entry.clone());
+    let booking = state.register_queued_load(1, &booking_entry, Vec::new());
+    state.slots[1].job = Some(booking);
+    state.jobs.get_mut(&booking).expect("booking row").need = Some(Gibibytes(30.0));
+    state.step(booking, SwapState::Admit);
+    // The waiting row on slot 2: free = 72 - 2 - 23.3 - 30 = 16.7 against
+    // need 45; swift is a named blocker (nothing evicts WORK) and the 30 GiB
+    // booking covers the 28.3 deficit — the park rule, unchanged.
+    let job_id = state.register_queued_load(2, &entry, Vec::new());
+    state.slots[2].job = Some(job_id);
+    state.jobs.get_mut(&job_id).expect("row").need = Some(Gibibytes(45.0));
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(23.3)));
+    let row = &state.jobs[&job_id];
+    assert!(
+        !row.terminal && row.error.is_none(),
+        "a booking-covered deficit without a victim waits: {:?}",
+        row.error
+    );
+    assert_eq!(row.state, SwapState::Idle, "the row is parked, not refused");
+    assert_eq!(state.pending.get(&2), Some(&job_id));
+    assert!(
+        state.slots[0].occupant.is_some(),
+        "the protected swift byte-holder is untouched by the park"
+    );
+}
+
+/// Per the DECISIONS 2026-11-26 rows, the sole-resident planner credit: the only installed
+/// GPU resident on a real reading is planned at `max(booking, its own live
+/// bytes)`, so a drain the booking alone cannot cover admits on the witness
+/// figure. Slot 1 holds a swift AUX resident booked 13.2 but folded 23.3;
+/// the 68.0 load sees free 46.7 (deficit 21.3) — the booking 13.2 is short,
+/// the live figure 23.3 covers, and the planner drains the resident (the
+/// pre-ruling shape refused this load at the gate).
+/// Falsifier: drop the sole-resident credit and the plan runs on 13.2 — the
+/// refusal returns, the rung leg and the victim leg go red.
+#[tokio::test]
+async fn the_sole_gpu_resident_is_planned_at_its_live_footprint_not_its_booking() {
+    let dir = crate::testutil::temp_dir("sole-resident-credit");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let yaml = dir.join("need68.yaml");
+    std::fs::write(&yaml, "engine: mock\ncategory: work\nvram_gb: 68\n").expect("seed");
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    let entry = rescan_entry(&yaml, "need68");
+    state.catalog = vec![entry.clone()];
+    state.slots = vec![
+        Slot {
+            category: CategoryId::Work,
+            index: 0,
+            engine_port: 18_185,
+            occupant: None,
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Aux,
+            index: 1,
+            engine_port: 18_186,
+            occupant: Some(ruling_resident("swift-holder", 13.2, Some(23.3), 18_186)),
+            job: None,
+        },
+    ];
+    let job_id = state.register_queued_load(0, &entry, Vec::new());
+    state.slots[0].job = Some(job_id);
+    state.jobs.get_mut(&job_id).expect("row").need = Some(Gibibytes(68.0));
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(23.3)));
+    let job = &state.jobs[&job_id];
+    assert!(
+        !job.terminal,
+        "the live figure covers the deficit the booking cannot: {:?}",
+        job.error
+    );
+    assert_eq!(job.path, Some(AdmissionPath::Drain));
+    assert_eq!(
+        job.victim.as_ref().map(|v| v.model.as_str()),
+        Some("swift-holder"),
+        "the sole resident is the planned victim"
+    );
+    assert_eq!(job.state, SwapState::Dispose);
+}
+
+/// Per the DECISIONS 2026-11-26 rows, the credit's three bounds, read from the refusal each
+/// one leaves behind. Leg A (never count foreign bytes): per-process
+/// attribution shows the resident holding 13.2 of 23.2 used — the 10.0
+/// foreign GiB never enters the figure, so a 61.0 load (deficit 14.2) still
+/// refuses and the report names 13.2, not 23.2. Leg B (the `max()` keeps the
+/// booking): the over-booked swift (24.0078 booked, 23.3 folded) reports
+/// 24.0 — the clamp applies to the witness term only, exactly as the ruling
+/// sentence says. Leg C (ledger-only mode unchanged): with no witness the
+/// figure is the booking — the same resident shape reports 13.2, never its
+/// fold.
+/// Falsifier: credit `used_gib` instead of `own minus foreign` and leg A
+/// admits; clamp the whole figure to the witness and leg B reads 23.3; let
+/// the credit fire on a `None` sample and leg C reads 23.3 — each leg goes
+/// red with its named figure.
+#[tokio::test]
+async fn the_sole_resident_figure_never_counts_foreign_and_the_booking_stays_the_floor() {
+    let dir = crate::testutil::temp_dir("sole-resident-bounds");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let yaml = dir.join("need.yaml");
+    std::fs::write(&yaml, "engine: mock\ncategory: work\nvram_gb: 61\n").expect("seed");
+    let need61 = rescan_entry(&yaml, "need");
+    let yaml90 = dir.join("need90.yaml");
+    std::fs::write(&yaml90, "engine: mock\ncategory: work\nvram_gb: 90\n").expect("seed");
+    let need90 = rescan_entry(&yaml90, "need90");
+
+    // Leg A: per-process attribution — foreign bytes never credited.
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.catalog = vec![need61.clone()];
+    state.slots = vec![
+        Slot {
+            category: CategoryId::Work,
+            index: 0,
+            engine_port: 18_187,
+            occupant: None,
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Aux,
+            index: 1,
+            engine_port: 18_188,
+            occupant: Some(ruling_resident("own-pid", 13.2, None, 18_188)),
+            job: None,
+        },
+    ];
+    let job_id = state.register_queued_load(0, &need61, Vec::new());
+    state.slots[0].job = Some(job_id);
+    state.jobs.get_mut(&job_id).expect("row").need = Some(Gibibytes(61.0));
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(
+        job_id,
+        Ok(crate::budget::MemorySample {
+            total_gib: 72.0,
+            used_gib: 23.2,
+            processes: vec![(4242, 13.2), (9999, 10.0)],
+            attribution: crate::budget::AttributionQuality::PerProcess,
+        }),
+    );
+    let job = &state.jobs[&job_id];
+    assert!(
+        job.terminal,
+        "13.2 attributable, 14.2 short: still a refusal"
+    );
+    let message = job.error.as_ref().expect("refusal").to_string();
+    assert!(
+        message.contains("insufficient VRAM") && message.contains("own-pid (AUX), 13.2 GiB"),
+        "the report credits the attributed figure only, never the 23.2 used: {message}"
+    );
+
+    // Leg B: over-booked victim — the max() keeps the booking.
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.catalog = vec![need90.clone()];
+    state.slots = vec![
+        Slot {
+            category: CategoryId::Work,
+            index: 0,
+            engine_port: 18_189,
+            occupant: None,
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Aux,
+            index: 1,
+            engine_port: 18_190,
+            occupant: Some(ruling_resident("swift-holder", 24.0078, Some(23.3), 18_190)),
+            job: None,
+        },
+    ];
+    let job_id = state.register_queued_load(0, &need90, Vec::new());
+    state.slots[0].job = Some(job_id);
+    state.jobs.get_mut(&job_id).expect("row").need = Some(Gibibytes(90.0));
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(23.3)));
+    let job = &state.jobs[&job_id];
+    assert!(job.terminal, "90 is short of even 24.0078 releasable");
+    let message = job.error.as_ref().expect("refusal").to_string();
+    assert!(
+        message.contains("swift-holder (AUX), 24.0 GiB"),
+        "the over-booked victim keeps its booking: {message}"
+    );
+
+    // Leg C: ledger-only mode — the figure stays the booking, the fold never
+    // enters without a witness.
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.catalog = vec![need90.clone()];
+    state.slots = vec![
+        Slot {
+            category: CategoryId::Work,
+            index: 0,
+            engine_port: 18_191,
+            occupant: None,
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Aux,
+            index: 1,
+            engine_port: 18_192,
+            occupant: Some(ruling_resident("swift-holder", 13.2, Some(23.3), 18_192)),
+            job: None,
+        },
+    ];
+    let job_id = state.register_queued_load(0, &need90, Vec::new());
+    state.slots[0].job = Some(job_id);
+    state.jobs.get_mut(&job_id).expect("row").need = Some(Gibibytes(90.0));
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Err("ledger-only: no witness".to_string()));
+    let job = &state.jobs[&job_id];
+    assert!(
+        job.terminal,
+        "the ledger route still refuses the short load"
+    );
+    let message = job.error.as_ref().expect("refusal").to_string();
+    assert!(
+        message.contains("swift-holder (AUX), 13.2 GiB"),
+        "no witness means no witness figure: the booking is planned: {message}"
+    );
+}
+
+/// Per the DECISIONS 2026-11-26 rows, the bounds of the sole test: it counts INSTALLED GPU
+/// residents. Leg A: an in-flight paper booking does not disqualify the one
+/// installed resident from the credit, and the paper row is never a victim
+/// and never a byte of the figure — the drain plans the resident alone.
+/// Leg B: with TWO installed GPU residents the credit is off entirely —
+/// every figure stays exactly its booking, so a 61.0 load whose combined
+/// bookings (13.2 + 5.0 = 18.2) miss the 19.2 deficit refuses naming both
+/// booking figures, not their larger folds.
+/// Falsifier: drop the sole test and leg B admits on 27.3 of credit; count
+/// paper rows as residents and leg A's credit (and its drain) disappear.
+#[tokio::test]
+async fn the_sole_test_counts_installed_residents_and_two_residents_stay_bookings() {
+    let dir = crate::testutil::temp_dir("sole-test-bounds");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let yaml = dir.join("need.yaml");
+    std::fs::write(&yaml, "engine: mock\ncategory: work\nvram_gb: 68\n").expect("seed");
+    let need68 = rescan_entry(&yaml, "need68");
+    let yaml61 = dir.join("need61.yaml");
+    std::fs::write(&yaml61, "engine: mock\ncategory: work\nvram_gb: 61\n").expect("seed");
+    let need61 = rescan_entry(&yaml61, "need61");
+
+    // Leg A: the paper booking neither qualifies nor disqualifies.
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.catalog = vec![need68.clone()];
+    state.slots = (0..3)
+        .map(|index| Slot {
+            category: if index == 1 {
+                CategoryId::Aux
+            } else {
+                CategoryId::Work
+            },
+            index,
+            engine_port: 18_195 + index as u16,
+            occupant: (index == 1)
+                .then(|| ruling_resident("swift-holder", 13.2, Some(23.3), 18_196)),
+            job: None,
+        })
+        .collect();
+    let booking = state.register_queued_load(2, &need68, Vec::new());
+    state.slots[2].job = Some(booking);
+    state.jobs.get_mut(&booking).expect("booking row").need = Some(Gibibytes(20.0));
+    state.step(booking, SwapState::Admit);
+    let job_id = state.register_queued_load(0, &need68, Vec::new());
+    state.slots[0].job = Some(job_id);
+    state.jobs.get_mut(&job_id).expect("row").need = Some(Gibibytes(48.0));
+    state.step(job_id, SwapState::Admit);
+    // free = 72 - 2 - 23.3 - 20 (in-flight) = 26.7; deficit 21.3; the sole
+    // resident's live 23.3 covers it (its 13.2 booking would not).
+    state.finish_admit_card(job_id, Ok(gate_sample(23.3)));
+    let job = &state.jobs[&job_id];
+    assert!(
+        !job.terminal,
+        "the credit survives the paper booking and covers the deficit: {:?}",
+        job.error
+    );
+    assert_eq!(
+        job.victim.as_ref().map(|v| v.model.as_str()),
+        Some("swift-holder"),
+        "the installed resident is the victim; paper is never plannable"
+    );
+
+    // Leg B: two residents, bookings only.
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.catalog = vec![need61.clone()];
+    state.slots = vec![
+        Slot {
+            category: CategoryId::Work,
+            index: 0,
+            engine_port: 18_200,
+            occupant: None,
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Aux,
+            index: 1,
+            engine_port: 18_201,
+            occupant: Some(ruling_resident("swift-holder", 13.2, Some(23.3), 18_201)),
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Aux,
+            index: 2,
+            engine_port: 18_202,
+            occupant: Some(ruling_resident("slow-holder", 5.0, Some(4.0), 18_202)),
+            job: None,
+        },
+    ];
+    let job_id = state.register_queued_load(0, &need61, Vec::new());
+    state.slots[0].job = Some(job_id);
+    state.jobs.get_mut(&job_id).expect("row").need = Some(Gibibytes(61.0));
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(28.2)));
+    let job = &state.jobs[&job_id];
+    assert!(
+        job.terminal,
+        "18.2 of booking cannot cover a 19.2 deficit when the credit is off: {:?}",
+        job.error
+    );
+    let message = job.error.as_ref().expect("refusal").to_string();
+    assert!(
+        message.contains("swift-holder (AUX), 13.2 GiB")
+            && message.contains("slow-holder (AUX), 5.0 GiB"),
+        "two residents: every figure stays its booking, never its fold: {message}"
+    );
+}
+
+/// Per the DECISIONS 2026-11-26 rows, the occupant-identity rule on the bound:
+/// the same model resident in two slots is a supported state (the twin pins in
+/// `workset.rs` seat one on purpose). The slot-1 twin sits inside its
+/// `min_turn` guard — a named never-releasable holder — while the slot-2 twin
+/// is past the guard, a live candidate whose bytes this decision's release
+/// COULD reclaim. The planner refuses holders by slot, never by model name, so
+/// only the guard-holder's witnessed 12.0 bounds the ceiling (72 - 12 = 60)
+/// and the 58.0 target inside it still takes release-first. A name-matching
+/// bound would also count the candidate slot's 5.0 — the very bytes a release
+/// reclaims — read the ceiling as 55.0, and refuse a swap whose settle gate
+/// can pass: the wrong refusal the ruling sentence forbids.
+/// Falsifier (red on name-matching holders): restore the model-name join in
+/// `never_releasable_holds` and this row refuses `SettleUnreachable` — the
+/// non-terminal, release-first and Dispose legs all go red.
+#[tokio::test]
+async fn a_same_model_candidate_in_another_slot_is_never_counted_as_never_releasable() {
+    let dir = crate::testutil::temp_dir("pre-refuse-identity");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let twin_yaml = dir.join("twin.yaml");
+    std::fs::write(
+        &twin_yaml,
+        "engine: mock\ncategory: aux\nvram_gb: 5\nmin_turn: 3600\n",
+    )
+    .expect("seed");
+    let big_yaml = dir.join("twinload.yaml");
+    std::fs::write(&big_yaml, "engine: mock\ncategory: work\nvram_gb: 58\n").expect("seed");
+    let twin = rescan_entry(&twin_yaml, "twin");
+    assert_eq!(twin.min_turn_s, Some(3600), "the guard knob scans");
+    let entry = rescan_entry(&big_yaml, "twinload");
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.cfg.witness_tolerance_gb = 2.0;
+    state.catalog = vec![twin.clone(), entry.clone()];
+    let mut stale_twin = ruling_resident("twin", 5.0, Some(5.0), 18_212);
+    // Past the guard: served far longer than the knob, so the planner treats
+    // this twin as the evictable candidate, never as the blocked holder. Its
+    // witnessed 5.0 is the bait a name join would wrongly count as
+    // never-releasable; the index-identified bound must ignore it.
+    stale_twin.loaded_at = Instant::now() - Duration::from_secs(7200);
+    state.slots = vec![
+        Slot {
+            category: CategoryId::Work,
+            index: 0,
+            engine_port: 18_210,
+            occupant: Some(ruling_resident("swift-v", 4.0, None, 18_210)),
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Aux,
+            index: 1,
+            engine_port: 18_211,
+            occupant: Some(ruling_resident("twin", 12.0, Some(12.0), 18_211)),
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Aux,
+            index: 2,
+            engine_port: 18_212,
+            occupant: Some(stale_twin),
+            job: None,
+        },
+    ];
+    let job_id = state.register_queued_load(0, &entry, Vec::new());
+    state.slots[0].job = Some(job_id);
+    if let Some(job) = state.jobs.get_mut(&job_id) {
+        job.need = Some(Gibibytes(58.0));
+        job.victim = Some(super::Victim {
+            model: "swift-v".to_string(),
+            ticket: fold_ticket(18_210),
+            slot: 0,
+            evicted: false,
+            cost: 4.0,
+        });
+    }
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(45.0)));
+    let job = &state.jobs[&job_id];
+    assert!(
+        !job.terminal,
+        "the candidate slot's 5.0 belongs to the release, not to the bound: \
+         58.0 fits the 60.0 ceiling: {:?}",
+        job.error
+    );
+    assert!(
+        job.error.is_none() && job.release_first,
+        "a target inside the identity-correct ceiling takes release-first: {:?}",
+        job.error
+    );
+    assert_eq!(job.state, SwapState::Dispose, "the release DID happen");
+}
+
+/// Per the DECISIONS 2026-11-26 rows, the bound claims witnessed bytes only:
+/// the over-booked swift class (the DECISIONS 2026-11-22 row books Fit
+/// 24.0078125 while the card held 23.3). The matrix-refused blocker booked
+/// 24.0078 but its own fold — the single figure the card proves for it — is
+/// 23.3, so the never-releasable bound is 23.3 and the ceiling is 48.7, not
+/// the booking-based 47.9922. A 48.5 settle target sits inside the
+/// witnessed ceiling and outside the booking-based one: release-first runs,
+/// the 0.7 GiB booking excess never becomes a refusal band. The bound is a
+/// lower bound on unreclaimable bytes, so claiming un-witnessed booking
+/// excess would refuse exactly the swaps some witness reading could settle —
+/// the direction the fail-closed asymmetry forbids.
+/// Falsifier (red on the booking-based term): restore `max(fold, booking)`
+/// in `never_releasable_holds` and the ceiling reads 47.9922 — 48.5 above it
+/// refuses `SettleUnreachable` and every leg here goes red.
+#[tokio::test]
+async fn the_over_booked_blocker_claims_no_unwitnessed_bytes_in_the_ceiling() {
+    let dir = crate::testutil::temp_dir("pre-refuse-overbooked");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let yaml = dir.join("over.yaml");
+    std::fs::write(&yaml, "engine: mock\ncategory: work\nvram_gb: 48.5\n").expect("seed");
+    let entry = rescan_entry(&yaml, "over");
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.cfg.witness_tolerance_gb = 2.0;
+    state.catalog = vec![entry.clone()];
+    state.slots = vec![
+        Slot {
+            category: CategoryId::Work,
+            index: 0,
+            engine_port: 18_213,
+            occupant: Some(ruling_resident("swift-v", 10.0, Some(10.0), 18_213)),
+            job: None,
+        },
+        Slot {
+            category: CategoryId::Work,
+            index: 1,
+            engine_port: 18_214,
+            occupant: Some(ruling_resident("swift-over", 24.0078, Some(23.3), 18_214)),
+            job: None,
+        },
+    ];
+    let job_id = state.register_queued_load(0, &entry, Vec::new());
+    state.slots[0].job = Some(job_id);
+    if let Some(job) = state.jobs.get_mut(&job_id) {
+        job.need = Some(Gibibytes(48.5));
+        job.victim = Some(super::Victim {
+            model: "swift-v".to_string(),
+            ticket: fold_ticket(18_213),
+            slot: 0,
+            evicted: false,
+            cost: 10.0,
+        });
+    }
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(job_id, Ok(gate_sample(33.3)));
+    let job = &state.jobs[&job_id];
+    assert!(
+        !job.terminal,
+        "the 0.7 booking excess may not shrink the ceiling past a settle-reachable \
+         target: {:?}",
+        job.error
+    );
+    assert!(
+        job.error.is_none() && job.release_first,
+        "the booking excess is a projection the bound never claims: release-first: {:?}",
+        job.error
+    );
+    assert_eq!(job.state, SwapState::Dispose, "the release DID happen");
+}
+
+/// Per the DECISIONS 2026-11-26 rows, the message names holders only when a
+/// holder exists: when the bound rides foreign per-process bytes only, no
+/// harness holder was named, and the refusal says so — it names the need and
+/// the ceiling, quantifies the unreleasable bound, and points the operator at
+/// the foreign residents instead of printing an empty holder list.
+/// Falsifier: revert the pre-refuse tail to the bare blocker list and the
+/// message prints no reason at all for a foreign-only bound — the
+/// `check foreign residents` leg goes red while the blocker-naming legs of
+/// the other pins stay green (they name a holder and never take this arm).
+#[tokio::test]
+async fn a_foreign_only_bound_names_no_holder_and_points_at_foreign_residents() {
+    let dir = crate::testutil::temp_dir("pre-refuse-foreign-only");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let yaml = dir.join("huge.yaml");
+    std::fs::write(&yaml, "engine: mock\ncategory: work\nvram_gb: 74\n").expect("seed");
+    let entry = rescan_entry(&yaml, "huge");
+    let mut state = fold_state(&dir);
+    state.cfg.vram_total_gb = 72.0;
+    state.cfg.vram_reserve_gb = 2.0;
+    state.cfg.witness_tolerance_gb = 2.0;
+    state.catalog = vec![entry.clone()];
+    state.slots = vec![Slot {
+        category: CategoryId::Work,
+        index: 0,
+        engine_port: 18_215,
+        occupant: Some(ruling_resident("swift", 13.2, Some(23.3), 18_215)),
+        job: None,
+    }];
+    let job_id = state.register_queued_load(0, &entry, Vec::new());
+    state.slots[0].job = Some(job_id);
+    if let Some(job) = state.jobs.get_mut(&job_id) {
+        job.need = Some(Gibibytes(74.0));
+        job.victim = Some(super::Victim {
+            model: "swift".to_string(),
+            ticket: fold_ticket(18_215),
+            slot: 0,
+            evicted: false,
+            cost: 13.2,
+        });
+    }
+    state.step(job_id, SwapState::Admit);
+    state.finish_admit_card(
+        job_id,
+        Ok(crate::budget::MemorySample {
+            total_gib: 72.0,
+            used_gib: 23.3,
+            processes: vec![(999_999, 12.0)],
+            attribution: crate::budget::AttributionQuality::PerProcess,
+        }),
+    );
+    let job = &state.jobs[&job_id];
+    let error = match &job.error {
+        Some(SchedulerError::Admission(AdmissionError::SettleUnreachable { blockers, .. })) => {
+            assert!(
+                blockers.is_empty(),
+                "a foreign-only bound has no harness holder to name: {blockers:?}"
+            );
+            job.error.as_ref().expect("refusal")
+        }
+        other => panic!("the foreign-only bound still pre-refuses: {other:?}"),
+    };
+    let message = error.to_string();
+    assert!(
+        message.contains("need 74.0 GiB") && message.contains("ceiling 60.0 GiB"),
+        "the refusal keeps need and ceiling even with no holder: {message}"
+    );
+    assert!(
+        message.contains("12.0 GiB unreleasable"),
+        "the bound quantifies the foreign bytes it counted: {message}"
+    );
+    assert!(
+        !message.contains("blocked by:"),
+        "no holder was named, so the message names none: {message}"
+    );
+    assert!(
+        message.contains("check foreign residents"),
+        "with no harness holder the message points at the foreign residents: {message}"
     );
 }

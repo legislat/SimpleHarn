@@ -857,3 +857,20 @@ references still resolve. Every entry carries one status prefix:
   path is documented and proven from a fresh public clone. Citations only -
   no status, date, commit, or binding clause changes; pushed history is never
   rewritten | 2026-11-25 | operator decision (this session)
+- **Accepted** Same-slot pre-refuse matrix, option B (operator go 2026-11-26):
+  "a same-slot re-admit refuses at the gate, before any release, only when its
+  own settle gate could never pass on any witness reading of this card - settle
+  target plus reserve minus the witness tolerance exceeds the most free GiB
+  total minus what no harness release can reclaim - and the refusal names the
+  need, the ceiling, and the never-releasable holders; every other shortfall
+  keeps release-then-resample." Edge-case table and analysis in the private
+  layer (record same-slot-pre-refuse) | 2026-11-26 | operator go on the
+  2026-11-26 elaboration
+- **Accepted** Sole-resident floor credit (operator go 2026-11-26): "the floor
+  projection may credit a victim that is the only booked GPU resident at
+  max(booked, card holds minus other installed bookings), bounded by the live
+  witness and never counting foreign or unattributable bytes; it is a
+  projection, never a booking, and the physical gate, the settle re-gate, the
+  in-flight debit rule, and ledger-only mode stay unchanged." Edge-case table
+  and analysis in the private layer (record booking-credit-02-residual) |
+  2026-11-26 | operator go on the 2026-11-26 elaboration

@@ -7,7 +7,7 @@
 
 use thiserror::Error;
 
-/// A VRAM quantity in GiB (Step 17 newtype: never mix a GiB with a raw float).
+/// A VRAM quantity in GiB: a newtype so a GiB never mixes with a raw float.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
 pub struct Gibibytes(pub f64);
 
@@ -17,7 +17,7 @@ impl std::fmt::Display for Gibibytes {
     }
 }
 
-/// A candidate victim the eviction planner considered (Step 6 refusal contract).
+/// A candidate victim the eviction planner considered, named in the refusal.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VictimInfo {
     /// Harness name of the candidate.
@@ -35,7 +35,8 @@ pub struct VictimInfo {
 /// the contract between the two sites, so neither may reword it alone.
 pub(crate) const RELEASE_IN_PROGRESS_REASON: &str = "release in progress";
 
-/// A model that blocks the load and cannot be evicted (Step 6 hard filters).
+/// A model that blocks the load and cannot be evicted: a hard filter turned
+/// it down, so it rides the refusal as a named blocker.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockerInfo {
     /// Harness name of the blocker.
@@ -242,8 +243,8 @@ pub enum AdmissionError {
         reason: String,
     },
     /// The gate rejected the load and no sufficient eviction set exists; the
-    /// numbers, the candidates considered, and the named blockers all travel with
-    /// the refusal (Step 6 contract, G6).
+    /// numbers, the candidates considered, and the named blockers all travel
+    /// with the refusal (G6).
     #[error("insufficient VRAM: need {need}, free {free}, reserve {reserve}{detail}{tail}",
         detail = .facts.detail(*free),
         tail = insufficient_tail(.victims_considered, .blockers)
@@ -266,8 +267,9 @@ pub enum AdmissionError {
         wait_hint: WaitHint,
     },
     /// The host-RAM gate refused a CPU-resident load and nothing the RAM
-    /// gate may release covers the deficit: the same Step 6 refusal contract
-    /// as [`AdmissionError::Insufficient`], judged on the RAM ladder —
+    /// gate may release covers the deficit: the same refusal contract as
+    /// [`AdmissionError::Insufficient`] — numbers, considered candidates, and
+    /// named blockers — judged on the RAM ladder:
     /// `ram_total - ram_reserve - observed ram_used`, credited once for the
     /// same-slot RAM resident. The planner
     /// considers Ram residents only: a GPU resident's
@@ -370,8 +372,49 @@ pub enum AdmissionError {
         /// `unreleasable` figure in the message instead.
         blockers: Vec<BlockerInfo>,
         /// What the decision knows about waiting (estimate + place), computed
-        /// at refusal time beside these numbers.
+        /// at decision time beside these numbers.
         wait_hint: WaitHint,
+    },
+    /// Same-slot pre-refuse (per the DECISIONS 2026-11-26 rows): the replacement
+    /// refuses at the gate BEFORE any release, because its settle target —
+    /// the physical free the settle window must reach before spawn — sits
+    /// above the highest free that no release the harness commands can ever
+    /// return. The ceiling is `total - never_releasable`, and the guard is
+    /// `target + reserve - witness tolerance > ceiling`: below it every
+    /// shortfall keeps the release-then-resample posture unchanged, so only a
+    /// need no release can satisfy pays the eviction first. The refusal names
+    /// the harness holders a release cannot reclaim when the planner named any;
+    /// when the bound rides foreign per-process bytes only, no harness holder
+    /// exists to name, and the quantified `unreleasable` figure plus the
+    /// foreign-resident pointer ride the message instead — the message never
+    /// claims a holder it does not print. The refusal never parks (a victim
+    /// exists, so there is nothing waitable to wait for).
+    #[error("settle target unreachable before release: need {need}, settle target {target}, ceiling {ceiling}, free {free}, reserve {reserve}{detail}{tail}",
+        detail = .facts.detail(*free),
+        tail = settle_unreachable_tail(.blockers, .facts.unreleasable)
+    )]
+    SettleUnreachable {
+        /// Declared or estimated cost of the wanted load.
+        need: Gibibytes,
+        /// The figure the settle window must physically reach (the same
+        /// `gate_target` the release-first path would re-gate on).
+        target: Gibibytes,
+        /// The highest reachable free: `total - never_releasable`, where
+        /// `never_releasable` is a proven lower bound, never a projection
+        /// guess.
+        ceiling: Gibibytes,
+        /// The figure the gate actually compared (G13).
+        free: Gibibytes,
+        /// Reserve subtracted before the gate.
+        reserve: Gibibytes,
+        /// The inputs `free` was derived from (ledger / observed); the
+        /// `unreleasable` field carries the never-releasable lower bound.
+        facts: Box<BudgetFacts>,
+        /// The holders a release for this decision cannot reclaim: named
+        /// blocker occupants that survive the release (matrix-refused,
+        /// `min_turn`) and, when the witness reports per-process bytes, the
+        /// foreign holders no harness pid owns.
+        blockers: Vec<BlockerInfo>,
     },
 }
 
@@ -402,13 +445,31 @@ fn insufficient_tail(victims_considered: &[VictimInfo], blockers: &[BlockerInfo]
     tail
 }
 
+/// The tail of the [`AdmissionError::SettleUnreachable`] message: the harness
+/// holders a release cannot reclaim, named only when the planner named any.
+/// With an empty holder list the bound came from foreign per-process bytes
+/// alone — there is no harness holder to name, so the message names none (the
+/// quantified `unreleasable` figure in [`BudgetFacts::detail`] already prints
+/// the bound) and points the operator at the foreign residents instead, in the
+/// same shape the unreachable-floor guard's sentence uses.
+fn settle_unreachable_tail(blockers: &[BlockerInfo], unreleasable: Option<Gibibytes>) -> String {
+    if !blockers.is_empty() {
+        return insufficient_tail(&[], blockers);
+    }
+    if unreleasable.is_some_and(|u| u.0 > DISAGREE_GIB) {
+        return "; no harness holder to name: the bound rides foreign bytes, check foreign residents"
+            .to_string();
+    }
+    String::new()
+}
+
 /// GGUF-size fallback factor kept from v3.3.
 const GGUF_FACTOR: f64 = 1.15;
 /// Flat GiB added on top of the GGUF-size estimate (v3.3 formula).
 const GGUF_OVERHEAD: f64 = 2.0;
 
 /// Admission cost of a load: declared `vram_gb`, else GGUF size x 1.15 + 2, else
-/// [`AdmissionError::UnderSpecified`] (Step 4 rule 1).
+/// [`AdmissionError::UnderSpecified`].
 ///
 /// # Errors
 ///
@@ -478,7 +539,7 @@ pub fn attribution_from_processes(processes: &[(u32, f64)]) -> AttributionQualit
     }
 }
 
-/// One witness observation of the card (Step 4 rules 2-4).
+/// One witness observation of the card.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemorySample {
     /// Total VRAM in GiB.
@@ -598,9 +659,17 @@ pub fn parse_smi_sample(gpu_csv: &str, apps_csv: &str) -> Result<MemorySample, S
         // `parse::<f64>` accepts "NaN"/"inf"/"-inf"; a half-wedged
         // nvidia-smi printing garbage must not hand it through as a figure.
         // Rejecting here fails the whole sample, which the gate treats as a
-        // refusal instead of resting on the downstream guards.
+        // refusal instead of resting on the downstream guards. A negative
+        // column is the same garbage the other way:
+        // it would inflate `free` instead of shrinking it, so it fails the
+        // whole sample too — never a clamp into a flattering figure.
         if !mib.is_finite() {
             return Err(format!("not a finite number in --query-gpu line: {line:?}"));
+        }
+        if mib < 0.0 {
+            return Err(format!(
+                "negative memory figure in --query-gpu line: {line:?}"
+            ));
         }
         Ok(mib / 1024.0)
     };
@@ -617,10 +686,11 @@ pub fn parse_smi_sample(gpu_csv: &str, apps_csv: &str) -> Result<MemorySample, S
             Err(_) => continue,
         };
         let used: f64 = match used.trim().trim_end_matches(" MiB").parse::<f64>() {
-            // A garbage (`NaN`/`inf`) process figure is dropped like
-            // any other unreadable entry — the totals still gate, the entry is
-            // never booked.
-            Ok(mib) if mib.is_finite() => mib / 1024.0,
+            // A garbage (`NaN`/`inf`) or negative process figure is dropped
+            // like any other unreadable entry — the totals still gate, the
+            // entry is never booked, and a negative byte count never votes on
+            // attribution quality either.
+            Ok(mib) if mib.is_finite() && mib >= 0.0 => mib / 1024.0,
             _ => continue,
         };
         processes.push((pid, used));
@@ -897,7 +967,10 @@ mod tests {
     /// a memory column used to produce a "valid" `MemorySample` whose honesty
     /// rested entirely on the downstream guards. The gpu columns now reject it at
     /// the source — the sample fails, so the gate refuses (fail-closed) rather
-    /// than comparing garbage. The guards stay as defence-in-depth.
+    /// than comparing garbage. The guards stay as defence-in-depth. A NEGATIVE
+    /// column is the same garbage the other way: it would
+    /// inflate `free` at the gate, so both gpu columns reject it at the source
+    /// too — and `0` stays legal (an idle card is a real reading).
     #[test]
     fn smi_parser_rejects_non_finite_gpu_figures() {
         for garbage in ["NaN", "inf", "-inf", "infinity"] {
@@ -910,17 +983,31 @@ mod tests {
                 "used {garbage:?} is driver garbage, not a figure"
             );
         }
+        for garbage in ["-0.5", "-1024", "-73728.0"] {
+            assert!(
+                parse_smi_sample(&format!("{garbage}, 4096"), "").is_err(),
+                "negative total {garbage:?} is driver garbage, not a figure"
+            );
+            assert!(
+                parse_smi_sample(&format!("73728, {garbage}"), "").is_err(),
+                "negative used {garbage:?} is driver garbage, not a figure"
+            );
+        }
         // The finite pair still parses (rejection is the garbage, not the rule).
         let s = parse_smi_sample("73728, 30720", "").expect("finite pair parses");
         assert!(close(s.total_gib, 72.0) && close(s.used_gib, 30.0));
+        // Zero is an idle card, not garbage.
+        let idle = parse_smi_sample("73728, 0", "").expect("idle pair parses");
+        assert!(close(idle.used_gib, 0.0));
     }
 
     /// Same rejection for the `--query-compute-apps` column: a garbage process
     /// figure is dropped like any other unreadable entry (the totals still gate),
-    /// and all-garbage attribution reports absence, never a fake entry.
+    /// and all-garbage attribution reports absence, never a fake entry. A
+    /// negative entry is dropped by the same rule.
     #[test]
     fn smi_parser_drops_non_finite_process_figures() {
-        for garbage in ["NaN", "inf", "-inf"] {
+        for garbage in ["NaN", "inf", "-inf", "-1024"] {
             let s = parse_smi_sample("73728, 30720", &format!("42, {garbage}\n7, 1024"))
                 .expect("the totals are finite");
             assert_eq!(

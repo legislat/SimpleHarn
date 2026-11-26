@@ -16,6 +16,40 @@ impl crate::witness::RamWitness for SilentRamWitness {
     }
 }
 
+/// The garbage host witness: a finite negative `used` (the Windows reading is
+/// a float subtraction of the reported figures, and the witness trait is a
+/// public injection seam whose honesty rule is `None`, not a figure range),
+/// so the decision point — not the open set of drivers — must fail closed.
+struct NegativeRamWitness;
+
+impl crate::witness::RamWitness for NegativeRamWitness {
+    fn sample(&self) -> Option<crate::witness::RamSample> {
+        Some(crate::witness::RamSample {
+            total_gib: 64.0,
+            used_gib: -5.0,
+        })
+    }
+}
+
+/// Sane for its first reading (the admit dispatch), garbage for every reading
+/// after — the mid-window flip the RAM settle window must ride out.
+#[derive(Default)]
+struct NegativeAfterFirstRamWitness {
+    reads: std::sync::atomic::AtomicUsize,
+}
+
+impl crate::witness::RamWitness for NegativeAfterFirstRamWitness {
+    fn sample(&self) -> Option<crate::witness::RamSample> {
+        let n = self
+            .reads
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Some(crate::witness::RamSample {
+            total_gib: 64.0,
+            used_gib: if n == 0 { 44.0 } else { -5.0 },
+        })
+    }
+}
+
 /// Slots for the RAM pins: an empty WORK slot and an empty AUX slot.
 fn ram_slots() -> Vec<Slot> {
     vec![
@@ -507,6 +541,76 @@ async fn a_cpu_row_refuses_closed_when_the_host_witness_is_silent() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Falsifier (the RAM twin of the card gate's negative-reading refusal, the
+/// DECISIONS 2026-11-26 fail-closed family): a finite negative host `used` is
+/// garbage, and `free_gib()` clamps only its floor — the reading INFLATES the
+/// compared free (64 + 8-side reserve and all) past every budget. The RAM gate
+/// must refuse it as unreadable BEFORE the arithmetic, quoting the raw figure,
+/// exactly like the card gate. The honesty rule of the witness seam is `None`,
+/// not a figure range, so the decision point itself carries the guard.
+/// Falsifier: delete the negative-reading guard in `finish_admit_ram` and the
+/// seeded row rides the inflated free to a FitsNow admit — the terminal and
+/// refusal-shape legs here go red.
+#[tokio::test]
+async fn a_negative_host_reading_refuses_at_the_ram_gate_before_the_arithmetic() {
+    use super::{AdmissionError, SchedulerError};
+    let dir = crate::testutil::temp_dir("ram-witness-garbage");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let cpu_yaml = write_cpu_row_yaml(&dir, "cpu", "10");
+    let (tx, mut rx) = mpsc::unbounded_channel::<ActorMsg>();
+    let mut adapters = BTreeMap::new();
+    adapters.insert(
+        "llama".to_string(),
+        Arc::new(MockAdapter) as Arc<dyn EngineAdapter>,
+    );
+    let mut state = ActorState::empty(
+        crate::config::AppConfig::default(),
+        dir.to_path_buf(),
+        adapters,
+        Arc::new(NeverRuntime) as Arc<dyn crate::engine::EngineRuntime>,
+        Arc::new(LedgerOnlyWitness) as Arc<dyn crate::budget::VramWitness>,
+        tx,
+    );
+    state.ram_witness = Arc::new(NegativeRamWitness);
+    let cpu = rescan_entry(&cpu_yaml, "cpu");
+    state.catalog = vec![cpu.clone()];
+    state.slots = ram_slots();
+    let job_id = state.register_queued_load(0, &cpu, Vec::new());
+    state.start_queued_load(job_id, 0, cpu.clone());
+    let msg = rx
+        .recv()
+        .await
+        .expect("the admit task dispatched its reading");
+    match msg {
+        ActorMsg::Event { job, event } => match event {
+            super::Event::Admitted(card, ram) => {
+                assert!(card.is_none(), "a RAM row never samples the card");
+                assert!(ram.is_some(), "the garbage witness does answer");
+                state.apply_event(job, super::Event::Admitted(card, ram));
+            }
+            other => panic!("the admit task sends its sample: {other:?}"),
+        },
+        _ => panic!("expected an event"),
+    }
+    let job = &state.jobs[&job_id];
+    assert!(
+        job.terminal,
+        "a garbage host reading is a refusal, never an inflated admit"
+    );
+    let error = job.error.as_ref().expect("the refusal rides the row");
+    assert!(
+        matches!(
+            error,
+            SchedulerError::Admission(AdmissionError::WitnessUnavailable { reason })
+                if reason.contains("unreadable ram witness reading")
+                    && reason.contains("-5 GiB used")
+        ),
+        "the refusal names the RAM witness and quotes its raw garbage: {error}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// State wired for the settle legs: a counting host witness, a kill-confirming
 /// runtime, and the card witness never consulted (a RAM row must not read it —
 /// `LedgerOnlyWitness` keeps any accidental card question loud).
@@ -760,6 +864,84 @@ async fn a_ram_settle_timeout_fails_the_incoming_load_never_the_victim() {
         fx.state.ram_ledger_sum(),
         Gibibytes(0.0),
         "the released holder's debit stays committed off the ledger"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The settle window's negative-reading rule, the RAM mirror of the card
+/// window: a host reading that turns negative mid-window inflates the
+/// compared free (`free_gib()` clamps only its floor) past the required
+/// figure, and the window must HOLD on it exactly like a silent reading —
+/// then expire naming the garbage it saw, never a flattering free. The
+/// proven release stays proven; only the incoming row fails.
+/// Falsifier: delete the `used_gib >= 0.0` filter in `spawn_ram_settle_task`
+/// and the window settles green on the flip's garbage — the panic arm below
+/// fires at `Settled(Ok)`.
+#[tokio::test]
+async fn the_ram_settle_window_holds_a_negative_host_reading() {
+    let dir = crate::testutil::temp_dir("ram-settle-garbage");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let cpu_yaml = write_cpu_row_yaml(&dir, "cpu", "20");
+    let cpu = rescan_entry(&cpu_yaml, "cpu");
+    let mut fx = ram_swap_fixture(
+        &dir,
+        crate::config::AppConfig {
+            settle_timeout_s: 1,
+            ..crate::config::AppConfig::default()
+        },
+        vec![
+            Slot {
+                category: CategoryId::Work,
+                index: 0,
+                engine_port: 18_130,
+                occupant: Some(ram_settle_seat("old-cpu", 0.0, Some(10.0), 18_130)),
+                job: None,
+            },
+            Slot {
+                category: CategoryId::Aux,
+                index: 1,
+                engine_port: 18_131,
+                occupant: None,
+                job: None,
+            },
+        ],
+        true,
+    );
+    // The flip witness: sane for the admit reading (free 22.0 credits the
+    // same-slot release the row waits on), negative for every window reading.
+    fx.state.ram_witness = Arc::new(NegativeAfterFirstRamWitness::default());
+    fx.state.catalog = vec![cpu.clone()];
+    let job_id = fx.state.register_queued_load(0, &cpu, Vec::new());
+    fx.state.start_queued_load(job_id, 0, cpu.clone());
+    drive_ram_admit(&mut fx.state, &mut fx.rx, job_id).await;
+    assert_eq!(fx.state.jobs[&job_id].state, SwapState::Dispose);
+    assert!(
+        drive_ram_release(&mut fx.state, &mut fx.rx).await,
+        "the release itself is proven"
+    );
+    match next_ram_event(&mut fx.rx, job_id, "the settle verdict").await {
+        super::Event::Settled(Err(reason)) => {
+            fx.state
+                .apply_event(job_id, super::Event::Settled(Err(reason)));
+        }
+        other => {
+            panic!("a garbage window reading must hold the spawn, never settle it green: {other:?}")
+        }
+    }
+    let job = &fx.state.jobs[&job_id];
+    assert!(job.terminal, "the load is done, not parked");
+    let error = job.error.as_ref().expect("the row carries its reason");
+    assert!(
+        matches!(error, super::SchedulerError::SettleTimeout { reason }
+            if reason.contains("unreadable ram witness reading during settle")
+                && reason.contains("-5 GiB used")),
+        "the expiry names the garbage it held on, not the inflated free: {error}"
+    );
+    assert_eq!(fx.runtime.spawns(), 0, "garbage never spawns");
+    assert!(
+        fx.state.slots[0].occupant.is_none(),
+        "the proven release stays proven — only the incoming row failed"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

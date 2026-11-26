@@ -233,6 +233,15 @@ page claims no full OpenAI parameter coverage.
   - The whole-machine gate: the code stays `unavailable`, and the message
     reads "whole machine requested" and names the holders. Test
     `a_whole_machine_refusal_travels_as_unavailable`.
+  - The same-slot settle-unreachable pre-refuse: the code stays
+    `unavailable`, and the message reads "settle target unreachable before
+    release" and names the need and the ceiling; it names the harness holders
+    a release cannot reclaim when the planner named any, and when the bound
+    rides foreign bytes only it quantifies the unreleasable figure and points
+    at foreign residents. The harness refuses before any release: the resident
+    survives and nothing spawns. Tests
+    `aux_load_cannot_evict_anything_cross_category` and
+    `a_foreign_only_bound_names_no_holder_and_points_at_foreign_residents`.
 - One class covers request-shape refusals: 400 (operator ruling 2026-11-04).
   Examples: `unload_body_with_both_model_and_category_is_refused`,
   `default_model_requires_the_model_key_and_rejects_wrong_types`,

@@ -27,9 +27,17 @@ macro_rules! invariant_guard {
 
 enum VictimPlan {
     Planned(Vec<Victim>),
+    /// The refusal arms' reads: the candidates considered, the named blockers,
+    /// and the slot indices of the occupants this decision can never release
+    /// (matrix-refused and `min_turn` holders — never a committed release,
+    /// which is leaving under command). The third read identifies holders by
+    /// the slot the planner stood in, never by model name: the same model in
+    /// two slots is a supported state, and only the refused occupant is a
+    /// holder (the occupant-identity rule, `BlockerInfo::is_release_in_progress`).
     NoPlan(
         Vec<crate::budget::VictimInfo>,
         Vec<crate::budget::BlockerInfo>,
+        Vec<usize>,
     ),
     Invariant(String),
 }
@@ -418,6 +426,24 @@ impl ActorState {
             self.finish(job_id, Err(error), "witness down");
             return;
         }
+        // A finite negative `used` is the same garbage as NaN at the other
+        // sign: subtracting it would INFLATE the compared free instead of
+        // shrinking it. The nvidia-smi parser refuses it now, but the NVML
+        // in-process path builds samples without that parser and the witness
+        // is an open set, so the decision point itself fails closed on it
+        // (DOCTRINE item 4): an unreadable reading, never a silent clamp and
+        // never a flattering figure.
+        if let Ok(sample) = &sample {
+            if sample.used_gib < 0.0 {
+                self.step(job_id, SwapState::AdmitFail);
+                let error = SchedulerError::Admission(AdmissionError::WitnessUnavailable {
+                    reason: format!("unreadable witness reading: {} GiB used", sample.used_gib),
+                });
+                self.log_refusal(job_id, &error, "witness");
+                self.finish(job_id, Err(error), "witness unreadable");
+                return;
+            }
+        }
         let (total_gib, occupied, observed_free) = match &sample {
             Ok(sample) => (sample.total_gib, sample.used_gib, Some(sample.free_gib())),
             Err(_) => {
@@ -613,15 +639,19 @@ impl ActorState {
             job.gate_target = Some(gate_target);
         }
         if deficit > 0.0 {
-            // Step 6: try to cover the deficit with evictable cross-category
+            // Try to cover the deficit with evictable cross-category
             // victims before refusing — cheapest sufficient set, hard filters.
             // A `whole` row that stands here has already passed the whole-
             // machine leg, so the planner provably has no candidate to find —
             // and must never be asked: the whole gate never evicts.
             let planned = if whole {
-                VictimPlan::NoPlan(Vec::new(), Vec::new())
+                VictimPlan::NoPlan(Vec::new(), Vec::new(), Vec::new())
             } else {
-                self.plan_victims(job_id, deficit)
+                // `Some` here is exactly a real witness reading (the
+                // `ledger_only` route holds an `Err` sample): the sole-
+                // resident planner credit is bounded by that reading and is
+                // never invented in ledger-only mode.
+                self.plan_victims(job_id, deficit, sample.as_ref().ok())
             };
             match planned {
                 VictimPlan::Planned(victims) => {
@@ -643,7 +673,7 @@ impl ActorState {
                     self.finish(job_id, Err(error), "invariant");
                     return;
                 }
-                VictimPlan::NoPlan(considered, blockers) => {
+                VictimPlan::NoPlan(considered, blockers, never_releasable_slots) => {
                     // Launch-floor guard: when NO release the harness
                     // may perform reaches the floor, refuse BEFORE any kill —
                     // "no releases allow for the VRAM floor - check foreign
@@ -725,6 +755,58 @@ impl ActorState {
                         && !has_victim
                         && !no_releases_reach
                         && has_slot;
+                    // Same-slot pre-refuse (per the DECISIONS 2026-11-26 rows): a
+                    // need no release can ever satisfy must refuse at the
+                    // gate BEFORE any release, not after a settle timeout has
+                    // already killed the resident. The settle target must sit
+                    // inside `total - never_releasable` once the reserve band
+                    // and the witness tolerance are counted; above that
+                    // ceiling the settle window can never close, so the
+                    // eviction would only buy a dead swap. Every other
+                    // shortfall — a floor the guard above already shaped, a
+                    // park (no victim, so disjoint here), and any target at
+                    // or below the ceiling — keeps the release-then-resample
+                    // posture unchanged. A row already release-first is AFTER
+                    // its release; its re-gate refusal is the unchanged
+                    // shortage/floor shape. A `whole` row never evicts and is
+                    // never re-shaped here, and the bound counts only what a
+                    // release provably cannot reclaim, so a feasible swap is
+                    // never refused.
+                    let never_releasable = self.never_releasable_holds(
+                        job_id,
+                        &never_releasable_slots,
+                        sample.as_ref().ok(),
+                    );
+                    let settle_unreachable = !no_releases_reach
+                        && !whole
+                        && has_victim
+                        && !release_first
+                        && observed_free.is_some()
+                        && gate_target + self.cfg.vram_reserve_gb - self.cfg.witness_tolerance_gb
+                            > total_gib - never_releasable;
+                    if settle_unreachable {
+                        self.step(job_id, SwapState::AdmitFail);
+                        let mut facts = facts;
+                        facts.unreleasable = Some(Gibibytes(never_releasable));
+                        facts.used_gib = Some(Gibibytes(occupied));
+                        facts.booked_total = Some(self.ledger_sum());
+                        let error = AdmissionError::SettleUnreachable {
+                            need,
+                            target: Gibibytes(gate_target),
+                            ceiling: Gibibytes((total_gib - never_releasable).max(0.0)),
+                            free,
+                            reserve: Gibibytes(self.cfg.vram_reserve_gb),
+                            facts: Box::new(facts),
+                            blockers,
+                        };
+                        self.log_refusal(job_id, &SchedulerError::Admission(error.clone()), "gate");
+                        self.finish(
+                            job_id,
+                            Err(SchedulerError::Admission(error)),
+                            "admission refused",
+                        );
+                        return;
+                    }
                     if !no_releases_reach && has_victim && !release_first {
                         if let Some(job) = self.jobs.get_mut(&job_id) {
                             job.release_first = true;
@@ -996,6 +1078,27 @@ impl ActorState {
             self.finish(job_id, Err(error), "ram witness down");
             return;
         };
+        // The card leg's negative-reading rule, mirrored here (DOCTRINE item 4):
+        // a finite negative `used` would INFLATE the compared free instead of
+        // shrinking it. Reachable at this decision point without any parser
+        // defect: the host witness is an open set — `Arc<dyn RamWitness>` is
+        // injected (its honesty rule is `None`, not a figure range), and even
+        // the live reader computes `used` as a float subtraction
+        // `total - available`, which a contradicting kernel figure turns
+        // negative. So the decision point itself fails closed on it before any
+        // arithmetic, never a silent clamp and never a flattering figure.
+        if sample.used_gib < 0.0 {
+            self.step(job_id, SwapState::AdmitFail);
+            let error = SchedulerError::Admission(AdmissionError::WitnessUnavailable {
+                reason: format!(
+                    "unreadable ram witness reading: {} GiB used",
+                    sample.used_gib
+                ),
+            });
+            self.log_refusal(job_id, &error, "witness");
+            self.finish(job_id, Err(error), "ram witness unreadable");
+            return;
+        }
         let Some((need, job_slot)) = self
             .jobs
             .get(&job_id)
@@ -1047,7 +1150,11 @@ impl ActorState {
             // only: a host-RAM shortage evicts Ram
             // residents through the unchanged release path, never a GPU
             // resident — its host RAM rides the reading, uncontrolled.
-            match self.plan_victims(job_id, need.0 - free.0) {
+            // The card sample never drives the RAM ladder: the planner
+            // credit for a sole booked GPU resident is a CARD figure, and a
+            // RAM deficit never spends one (`None` keeps every RAM figure
+            // exactly the booking it was).
+            match self.plan_victims(job_id, need.0 - free.0, None) {
                 VictimPlan::Planned(victims) => {
                     let names: Vec<String> = victims.iter().map(|v| v.model.clone()).collect();
                     if let Some(job) = self.jobs.get_mut(&job_id) {
@@ -1067,7 +1174,10 @@ impl ActorState {
                     self.finish(job_id, Err(error), "invariant");
                     return;
                 }
-                VictimPlan::NoPlan(considered, blockers) => {
+                // The never-releasable slot list is the card pre-refuse's read;
+                // the RAM ladder never bounds a ceiling with it (no settle
+                // pre-refuse exists on this leg), so the arm drops it.
+                VictimPlan::NoPlan(considered, blockers, _) => {
                     self.step(job_id, SwapState::AdmitFail);
                     // Mirrored on the RAM leg: the RAM no eviction can
                     // reclaim is the host reading minus the same-slot credit
@@ -1333,13 +1443,52 @@ impl ActorState {
     /// is named as an uncontrolled blocker but never considered. The
     /// `evictable_by` matrix stays category-scoped and resource-agnostic.
     /// Release order: least-protected first, LRU within a category.
-    fn plan_victims(&self, job_id: JobId, deficit: f64) -> VictimPlan {
+    ///
+    /// When `card` carries a real witness reading and the planned resource is
+    /// the card, a victim that is the only installed GPU resident on the card
+    /// is planned at `max(book, its own live bytes)` — the sole-resident
+    /// planner credit (per the DECISIONS 2026-11-26 rows): a live greedy resident
+    /// often books far below what the card says it holds, and a swap that
+    /// physically fits must not die on paper. The live figure never counts a
+    /// foreign or unattributable byte; with more than one GPU resident, or
+    /// with no card reading, every figure stays exactly the booking it was.
+    /// The credit is a projection for the planner alone — the physical gate,
+    /// the settle re-gate, and the in-flight debit are unchanged, and it
+    /// never books a byte.
+    fn plan_victims(
+        &self,
+        job_id: JobId,
+        deficit: f64,
+        card: Option<&crate::budget::MemorySample>,
+    ) -> VictimPlan {
         let Some((load_category, job_slot, planned)) = self
             .jobs
             .get(&job_id)
             .map(|job| (job.category, job.slot, job.resource))
         else {
             return VictimPlan::Invariant("the load row exists while planning victims".to_string());
+        };
+        // The sole-resident test, computed once: exactly one installed GPU
+        // resident on the whole card (paper and in-flight rows never count —
+        // they hold no measured bytes). Only then may the planner spend the
+        // witness bound, and only on the card ladder with a real reading.
+        let gpu_residents = self
+            .slots
+            .iter()
+            .filter(|slot| slot.occupant.as_ref().is_some_and(|o| o.ram_need.is_none()))
+            .count();
+        let sole_gpu_resident =
+            card.is_some() && planned == crate::model::Resource::Gpu && gpu_residents == 1;
+        // Every pid a harness slot owns — the resident list the foreign-byte
+        // test subtracts. Occupants only: a paper booking has no process and
+        // its bytes are not attributable, so they are never credited.
+        let harness_pids: Vec<u32> = if sole_gpu_resident {
+            self.slots
+                .iter()
+                .filter_map(|slot| slot.occupant.as_ref().map(|o| o.ticket.pid))
+                .collect()
+        } else {
+            Vec::new()
         };
         // The one resource this job is short on: a Ram row deficits its
         // `ram_need`, every other row the card. The filter below is derived
@@ -1356,6 +1505,14 @@ impl ActorState {
         let mut candidates: Vec<(usize, f64, usize)> = Vec::new();
         let mut considered = Vec::new();
         let mut blockers = Vec::new();
+        // The slots whose occupant this decision can never release: the
+        // `min_turn` and matrix refusals below — recorded by slot index, the
+        // occupant's identity, never by model name — feed the pre-refuse
+        // ceiling bound so a same-model occupant in another slot is never
+        // mistaken for the refused one. A committed release (the
+        // `RELEASE_IN_PROGRESS_REASON` blocker) is leaving under command and
+        // never enters this list.
+        let mut never_releasable_slots: Vec<usize> = Vec::new();
         for (index, slot) in self.slots.iter().enumerate() {
             if job_slot == Some(index) {
                 continue; // the same-slot replacement is already accounted
@@ -1406,8 +1563,24 @@ impl ActorState {
                 continue;
             }
             // The figure this occupant frees in the planned resource: its RAM
-            // booking on the RAM planner, its VRAM booking on the card one.
-            let figure = occupant.ram_need.map_or(occupant.need.0, |need| need.0);
+            // booking on the RAM planner, its VRAM booking on the card one —
+            // except for the sole installed GPU resident on a real reading,
+            // which the planner credits at its own live bytes when the card
+            // says it holds more than it booked (the ruled figure:
+            // `max(booking, card holds minus other installed
+            // bookings minus foreign/unattributable bytes)`, bounded by the
+            // witness; under the sole test "other installed bookings" is the
+            // empty sum, and the figure's own `max()` keeps the booking
+            // when it is the larger figure).
+            let figure = match (card, sole_gpu_resident) {
+                (Some(sample), true) => Self::sole_resident_credit(
+                    sample,
+                    &harness_pids,
+                    occupant,
+                    occupant.ram_need.map_or(occupant.need.0, |need| need.0),
+                ),
+                _ => occupant.ram_need.map_or(occupant.need.0, |need| need.0),
+            };
             let allowed_list = evictable_by(slot.category);
             if allowed_list.contains(&load_category) {
                 // `min_turn` juggle guard: a holder
@@ -1436,6 +1609,7 @@ impl ActorState {
                             category: slot.category.to_string(),
                             reason: format!("served {served}s of its {min_turn}s min_turn guard"),
                         });
+                        never_releasable_slots.push(index);
                         continue;
                     }
                 }
@@ -1464,11 +1638,12 @@ impl ActorState {
                     category: slot.category.to_string(),
                     reason,
                 });
+                never_releasable_slots.push(index);
             }
         }
         let n = candidates.len();
         if n == 0 {
-            return VictimPlan::NoPlan(considered, blockers);
+            return VictimPlan::NoPlan(considered, blockers, never_releasable_slots);
         }
         // Exhaustive cheapest covering subset (n ≤ 9 slots → ≤512 masks).
         //
@@ -1504,7 +1679,7 @@ impl ActorState {
             }
         }
         let Some(mask) = best else {
-            return VictimPlan::NoPlan(considered, blockers);
+            return VictimPlan::NoPlan(considered, blockers, never_releasable_slots);
         };
         // Release order: least-protected first (more categories may evict it),
         // LRU within the same protection level.
@@ -1548,8 +1723,124 @@ impl ActorState {
         VictimPlan::Planned(victims)
     }
 
+    /// The sole-resident planner credit (per the DECISIONS 2026-11-26 rows): the
+    /// only installed GPU resident on the card is planned at
+    /// `max(booked, its own live bytes)`. The live figure is a projection
+    /// bounded by the witness and it never counts a byte the reading cannot
+    /// attribute to this resident: with per-process bytes it is the resident's
+    /// own concrete figure (clamped by the card minus the concrete bytes of
+    /// every pid no harness slot owns); with no per-process bytes — the WDDM
+    /// degradation — only the resident's own witnessed fold is creditable,
+    /// clamped by the reading. Nothing creditable at all means the figure is
+    /// exactly the booking, and a paper or in-flight row is never here at all:
+    /// this plans installed residents only. Never a booking, never a promise:
+    /// the physical gate and the settle re-gate stay the truth this figure
+    /// cannot overcommit through.
+    fn sole_resident_credit(
+        card: &crate::budget::MemorySample,
+        harness_pids: &[u32],
+        occupant: &super::Occupant,
+        booked: f64,
+    ) -> f64 {
+        if !card.used_gib.is_finite() || card.used_gib < 0.0 {
+            // A garbage reading credits nothing beyond the booking; the gate's
+            // own fail-closed guard refuses the row this figure was for.
+            return booked;
+        }
+        let concrete = card
+            .own_gib(&[occupant.ticket.pid])
+            .or(occupant.live_measured_gb)
+            .unwrap_or(0.0);
+        let foreign = if card.attribution == crate::budget::AttributionQuality::PerProcess {
+            card.processes
+                .iter()
+                .filter(|(pid, used)| {
+                    used.is_finite() && *used > 0.0 && !harness_pids.contains(pid)
+                })
+                .map(|(_, used)| *used)
+                .sum::<f64>()
+        } else {
+            // No per-process reading: nothing here is attributable to a
+            // foreign pid, and nothing foreign may be credited either — only
+            // the resident's own fold rides the figure, never the raw `used`.
+            0.0
+        };
+        let live = concrete.min((card.used_gib - foreign).max(0.0));
+        booked.max(live).max(0.0)
+    }
+
+    /// The never-releasable lower bound for the same-slot pre-refuse ceiling
+    /// (per the DECISIONS 2026-11-26 rows): the bytes no release this decision
+    /// commands can return, proven conservatively. Holders are the exact
+    /// occupants `plan_victims` refused — identified by slot index, the
+    /// occupant's identity, never matched by model name: with the same model
+    /// resident in two slots, a name join would count the other occupant's
+    /// bytes (a live candidate's, or a committed release's, both reclaimable)
+    /// and shrink the ceiling below a reading the settle window could pass —
+    /// the exact wrong refusal the ruling sentence forbids. A holder's term
+    /// is its own WITNESSED fold only: a booking is a projection, not a
+    /// proven byte, and the sentence refuses only what "could never pass on
+    /// ANY witness reading", which demands an under-claim (generous ceiling,
+    /// fewer refusals); claiming un-witnessed booking excess into the bound
+    /// would refuse a swap some witness reading could settle. A holder with
+    /// no witnessed fold therefore contributes nothing — the accepted side of
+    /// the fail-closed asymmetry: a truly permanent row whose holder carries
+    /// no witnessed bytes keeps the wasted settle a release attempt buys,
+    /// never a wrong pre-kill refusal. Plus the concrete per-process bytes
+    /// the witness attributes to a pid no harness slot owns. A driver with no
+    /// per-process bytes invents no foreign hold: the bound stays at its
+    /// floor and a wrong release attempt stays the accepted residual (the
+    /// DECISIONS 2026-11-06 row) — this figure refuses only what is provably
+    /// unreachable, never a feasible swap.
+    fn never_releasable_holds(
+        &self,
+        job_id: JobId,
+        never_releasable_slots: &[usize],
+        card: Option<&crate::budget::MemorySample>,
+    ) -> f64 {
+        let occupied = card.map_or(0.0, |s| s.used_gib);
+        let own_slot = self.jobs.get(&job_id).and_then(|job| job.slot);
+        let mut holds = 0.0;
+        let mut pids: Vec<u32> = Vec::new();
+        for slot in &self.slots {
+            if let Some(occupant) = &slot.occupant {
+                pids.push(occupant.ticket.pid);
+            }
+        }
+        for &index in never_releasable_slots {
+            let Some(occupant) = self
+                .slots
+                .get(index)
+                .and_then(|slot| slot.occupant.as_ref())
+            else {
+                continue;
+            };
+            if occupant.ram_need.is_some() || Some(index) == own_slot {
+                // A CPU resident holds no card bytes; the own-slot victim is
+                // the release this decision commands, never a bound on it.
+                // Defensive: the card planner records neither kind.
+                continue;
+            }
+            // Witnessed bytes only — the occupant's own fold is the single
+            // figure the card proves for it; `min(occupied)` keeps even a
+            // stale fold inside the reading's own ceiling.
+            holds += occupant.live_measured_gb.unwrap_or(0.0).min(occupied);
+        }
+        if let Some(card) = card {
+            if card.attribution == crate::budget::AttributionQuality::PerProcess {
+                holds += card
+                    .processes
+                    .iter()
+                    .filter(|(pid, used)| used.is_finite() && *used > 0.0 && !pids.contains(pid))
+                    .map(|(_, used)| *used)
+                    .sum::<f64>();
+            }
+        }
+        holds.min(occupied.max(0.0))
+    }
+
     /// Moves the next queued victim into the release slot; `false` when the queue
-    /// is empty (Step 6: one at a time).
+    /// is empty: victims are released one at a time.
     pub(super) fn dequeue_victim(&mut self, job_id: JobId) -> bool {
         let Some(job) = self.jobs.get_mut(&job_id) else {
             return false;

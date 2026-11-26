@@ -69,8 +69,22 @@ impl ActorState {
             loop {
                 match witness.sample().await {
                     Ok(sample) => {
-                        let observed_free = sample.free_gib();
-                        if sample.freed_for(required, tolerance) {
+                        // The admission gate's negative-reading rule rides this
+                        // decision point too: `free_gib()` clamps its FLOOR, so
+                        // a negative `used_gib` INFLATES the compared free past
+                        // the card total and a garbage reading could settle the
+                        // spawn green (the gate's own rationale applies verbatim
+                        // — the witness is an open set, so the decision point
+                        // itself fails closed). An unreadable reading holds the
+                        // spawn exactly like a lost witness: wait, never a
+                        // flattering figure.
+                        if sample.used_gib < 0.0 {
+                            tracing::warn!(
+                                used_gib = sample.used_gib,
+                                "unreadable witness reading during settle; holding the spawn until a sane reading answers"
+                            );
+                        } else if sample.freed_for(required, tolerance) {
+                            let observed_free = sample.free_gib();
                             if crate::observability::extended_logging() {
                                 tracing::info!(
                                     used_gib = sample.used_gib,
@@ -105,6 +119,26 @@ impl ActorState {
                 }
                 if started.elapsed() >= deadline {
                     let numbers = match witness.sample().await {
+                        Ok(sample) if sample.used_gib < 0.0 => {
+                            // The timeout names the garbage it actually saw —
+                            // never the inflated free the clamp would have
+                            // printed (the fail-closed rule's other half: a
+                            // refusal that misquotes its own figures is the
+                            // same defect wearing a refusal's face).
+                            tracing::warn!(
+                                %job_id,
+                                %model,
+                                used_gib = sample.used_gib,
+                                gate_gib = gate,
+                                reserve_gib = reserve,
+                                required_gib = required,
+                                "settle timeout: the witness only ever answered garbage"
+                            );
+                            format!(
+                                "unreadable witness reading during settle: {} GiB used",
+                                sample.used_gib
+                            )
+                        }
                         Ok(sample) => {
                             let observed_free = sample.free_gib();
                             // G13: the figures the window actually compared, reserve
@@ -183,7 +217,12 @@ impl ActorState {
         let handle = tokio::spawn(async move {
             let started = Instant::now();
             loop {
-                if let Some(sample) = ram_witness.sample() {
+                // The card window's negative-reading rule, mirrored: `free_gib()`
+                // clamps its floor, so a negative host `used` inflates the
+                // compared free and would settle the spawn green on garbage.
+                // An unreadable host reading holds the spawn exactly like a
+                // silent one — fail closed, wait, never a flattering figure.
+                if let Some(sample) = ram_witness.sample().filter(|s| s.used_gib >= 0.0) {
                     if sample.freed_for(required, tolerance) {
                         if crate::observability::extended_logging() {
                             tracing::info!(
@@ -205,6 +244,21 @@ impl ActorState {
                 }
                 if started.elapsed() >= deadline {
                     let numbers = match ram_witness.sample() {
+                        Some(sample) if sample.used_gib < 0.0 => {
+                            tracing::warn!(
+                                %job_id,
+                                %model,
+                                used_gib = sample.used_gib,
+                                gate_gib = gate,
+                                reserve_gib = reserve,
+                                required_gib = required,
+                                "ram settle timeout: the host witness only ever answered garbage"
+                            );
+                            format!(
+                                "unreadable ram witness reading during settle: {} GiB used",
+                                sample.used_gib
+                            )
+                        }
                         Some(sample) => {
                             // G13: the figures the window actually compared, the
                             // reserve band named inside the required figure.
@@ -249,7 +303,7 @@ impl ActorState {
         self.attach_task(job_id, handle)
     }
 
-    /// The engine port the slot plan assigned to this job's slot (Step 8/11).
+    /// The engine port the slot plan assigned to this job's slot.
     fn slot_engine_port(&self, job_id: JobId) -> u16 {
         self.jobs
             .get(&job_id)
@@ -443,7 +497,7 @@ impl ActorState {
         self.attach_task(job_id, handle)
     }
 
-    /// Readiness loop as a task; sends exactly one terminal event (Step 7 + §0.3).
+    /// Readiness loop as a task; sends exactly one terminal event.
     pub(super) fn spawn_probe_task(&mut self, job_id: JobId, port: u16) -> bool {
         let Some((readiness, container, load_timeout_s)) = self.jobs.get(&job_id).map(|job| {
             (

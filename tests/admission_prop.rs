@@ -18,14 +18,15 @@
 //! - Figures are integer quarter GiB (a multiple of 0.25). Every f64 stays exact in
 //!   binary, so the oracle compares with equality, not epsilon, and the `{:.1}`
 //!   figures quoted in refusal messages are pinned exactly.
-//! - Open finding reported with this task (do NOT read the two negative-figure legs
-//!   as "gap closed"): the gate refuses NaN and infinite readings (fail closed,
-//!   DOCTRINE item 4), and a negative total refuses as a shortage, but a FINITE
-//!   negative `used_gib` is not refused today — `finish_admit` subtracts the raw
-//!   reading (`src/scheduler/admission.rs` `free = total - reserve - occupied + ...`),
-//!   so a garbage negative column inflates the compared figure instead of refusing.
-//!   The leg pins that the figure flows through the formula arithmetically (never a
-//!   silent clamp); a follow-up gate guard is an orchestrator decision.
+//! - Negative-figure posture (the fail-closed gap close):
+//!   the gate refuses NaN and infinite readings (fail closed, DOCTRINE item 4),
+//!   a negative TOTAL refuses as a shortage (the figure is information, pinned
+//!   below), and a FINITE negative `used_gib` now refuses fail-closed as an
+//!   unreadable witness reading — the gate checks the raw reading before any
+//!   arithmetic (`src/scheduler/admission.rs`), so a garbage negative column can
+//!   never inflate the compared figure, and it is never clamped into a flattering
+//!   one. The `nvidia-smi` parser (`parse_smi_sample`) rejects a negative GPU
+//!   column outright, so the text route never even hands such a sample down.
 //!
 //! Seeded PRNG (fixed, reproducible, no entropy source, no clock):
 //!
@@ -446,24 +447,28 @@ async fn a_negative_total_reading_refuses_as_a_shortage_not_a_pass() {
     assert!(status.slots.iter().all(|slot| slot.model.is_none()));
 }
 
-/// Property (the review #8 "negative" leg — see the module doc for the open gap):
-/// a FINITE negative `used_gib` is not refused at the VRAM gate today. The leg
-/// pins the weaker contract that actually holds and that a fix must not weaken: the
-/// garbage figure flows through the doctrine formula arithmetically — the compared
-/// figure is exactly `total - reserve + |used|`, the observed figure exactly
-/// `total + |used|` — and is never silently clamped into a flattering number. An
-/// implementation that DOES grow the promised fail-closed refusal is also accepted
-/// here (the named shapes below), so this leg stays green across the follow-up and
-/// red only if garbage ever passes uncounted.
+/// Property (the review #8 "negative" leg, closed fail-closed at the gate):
+/// a FINITE negative `used_gib` is garbage the same way NaN is, so
+/// the gate refuses it fail-closed BEFORE any arithmetic. The compared figure is
+/// never the inflated formula `total - reserve + |used|`, the row never books,
+/// and nothing spawns. The refusal is the named unreadable-witness shape and it
+/// quotes the raw garbage figure verbatim — a silent clamp into a flattering
+/// number is the other half of the same defect and stays refused.
+///
+/// Falsifier: delete the `used_gib < 0.0` guard at the gate in
+/// `src/scheduler/admission.rs` and the seeded load rides the inflated figure to
+/// a spawn (this leg goes red at the `expect_err`); clamp it instead of refusing
+/// and the message leg goes red.
 #[tokio::test]
-async fn a_finite_negative_used_reading_never_quietly_clamps_at_the_gate() {
+async fn a_finite_negative_used_reading_refuses_fail_closed_at_the_gate() {
     let mut rng = Rng::new(4);
     let total = q(288); // 72.0
     let reserve = 2.0;
     let negative = rng.quarters(2, 48); // |used| in 0.5 ..= 12.0
     let used = -negative;
-    let need = plain_free(total, reserve, 0.0) + negative / 2.0; // above the honest budget, inside the inflated one
-    let inflated_free = plain_free(total, reserve, used);
+    // The old (pre-ruling) pass shape: a need above the honest budget that the
+    // inflated figure would have admitted. It must never load now.
+    let need = plain_free(total, reserve, 0.0) + negative / 2.0;
 
     let witness = FakeWitness::new(total, used);
     let cfg = AppConfig {
@@ -481,38 +486,110 @@ async fn a_finite_negative_used_reading_never_quietly_clamps_at_the_gate() {
         witness,
     );
 
-    match handle.swap("negativeused", CategoryId::Work).await {
-        Ok(reply) => {
-            let Reply::Loaded(receipt) = reply else {
-                panic!("expected Loaded");
-            };
-            assert_eq!(receipt.model, "negativeused");
-            let status = handle.status().await.expect("actor alive");
-            let job = job_row(&status, "negativeused");
-            assert_eq!(
-                job.free_at_admit_gib,
-                Some(inflated_free),
-                "the compared figure must be the raw formula over the garbage reading, never a clamp: {job:?}"
-            );
-            assert_eq!(
-                job.observed_at_admit_gib,
-                Some(total + negative),
-                "the observed figure is the clamped-only-if-negative accessor: {job:?}"
-            );
-            assert_eq!(runtime.spawn_count(), 1);
-        }
-        Err(error) => {
-            // Accepted future shape: a named fail-closed refusal.
-            let message = error.to_string();
-            assert!(
-                message.contains("insufficient VRAM")
-                    || message.contains("witness unavailable")
-                    || message.contains("launch floor not met"),
-                "a refusal must be a named gate shape: {message}"
-            );
-            assert_eq!(runtime.spawn_count(), 0, "refused before spawn");
-        }
-    }
+    let error = handle
+        .swap("negativeused", CategoryId::Work)
+        .await
+        .expect_err("a finite negative used column is not a measurement: fail closed");
+    let message = error.to_string();
+    assert!(
+        message.contains("witness unavailable")
+            && message.contains("unreadable witness reading")
+            && message.contains(&format!("{used} GiB used")),
+        "the refusal must name the raw garbage figure verbatim: {message}"
+    );
+    assert_eq!(runtime.spawn_count(), 0, "refused before spawn");
+    let status = handle.status().await.expect("actor alive");
+    let job = job_row(&status, "negativeused");
+    assert_eq!(job.free_at_admit_gib, None, "{job:?}");
+    assert_eq!(
+        job.outcome.as_deref(),
+        Some("witness unreadable"),
+        "{job:?}"
+    );
+    assert!(status.slots.iter().all(|slot| slot.model.is_none()));
+}
+
+/// Property (the settle-window twin of the gate's negative-reading refusal):
+/// a finite negative `used_gib` that arrives WHILE a release-first settle
+/// window is open must hold the spawn the same way the gate refuses the load,
+/// never settle it green. `free_gib()` clamps only its floor, so the garbage
+/// reading inflates the compared free far past the card total — the exact
+/// fail-open the batch closed at the gate, at its one other reader.
+///
+/// Falsifier: delete the `used_gib < 0.0` hold in `spawn_settle_task` and the
+/// seeded swap rides the inflated reading to a green settle — the leg goes
+/// red at the `expect_err`, and the spawn/server counts below show the extra
+/// engine the garbage bought.
+#[tokio::test]
+async fn a_negative_used_reading_holds_the_settle_window_like_the_gate_holds_the_load() {
+    let total = q(288); // 72.0
+    let reserve = 2.0; // the shipped default, pinned by reading, never inherited
+    let host = 10.0;
+    let need = 40.0;
+    let witness = FakeWitness::new(total, 0.0);
+    let cfg = AppConfig {
+        settle_timeout_s: 1,
+        vram_reserve_gb: reserve,
+        ..AppConfig::default()
+    };
+    let (handle, runtime, _dir) = harness(
+        cfg,
+        &[
+            (
+                "settlehost",
+                &format!("name: settlehost\nengine: mock\ncategory: WORK\nvram_gb: {host}\n"),
+            ),
+            (
+                "settlerepl",
+                &format!("name: settlerepl\nengine: mock\ncategory: WORK\nvram_gb: {need}\n"),
+            ),
+        ],
+        witness.clone(),
+    );
+    handle
+        .swap("settlehost", CategoryId::Work)
+        .await
+        .expect("the host loads onto the empty card");
+    // The card now holds the host plus occupancy nobody can credit: the
+    // same-slot replacement is short on paper and takes the release-first
+    // path, so its settle window opens behind the release. The honest free
+    // (12.0) sits far under the 42.0 target, and the bound never pre-refuses
+    // (nothing is proven unreleasable here) — the window is the last guard.
+    witness.set(total, q(240)); // 60.0
+    let swapping = {
+        let handle = handle.clone();
+        tokio::spawn(async move { handle.swap("settlerepl", CategoryId::Work).await })
+    };
+    wait_until(&handle, 10, |status| {
+        status
+            .jobs
+            .iter()
+            .any(|job| job.model == "settlerepl" && job.state == SwapState::Dispose)
+    })
+    .await;
+    // Mid-window the witness turns to garbage: an honest reading keeps the
+    // window open; the clamped free reads 78.0 and would settle it green.
+    witness.set(total, q(-32)); // -8.0
+    let error = tokio::time::timeout(Duration::from_secs(15), swapping)
+        .await
+        .expect("the window expires, it never hangs")
+        .expect("task alive")
+        .expect_err("a garbage window reading must never settle a spawn green");
+    let message = error.to_string();
+    assert!(
+        message.contains("settle") && message.contains("unreadable"),
+        "the expiry must name the garbage it held on, not an inflated free: {message}"
+    );
+    assert_eq!(
+        runtime.spawn_count(),
+        1,
+        "the replacement never spawned on garbage"
+    );
+    assert_eq!(
+        runtime.server_count(),
+        0,
+        "the expired window leaves no live engine behind"
+    );
 }
 
 // ---------- gate legs: the reserve boundary ------------------------------------

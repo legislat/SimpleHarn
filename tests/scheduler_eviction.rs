@@ -9,11 +9,11 @@ mod port_plan;
 use async_trait::async_trait;
 use mock_runtime::MockRuntime;
 use port_plan::reserve_engine_plan;
-use simpleharn::budget::{MemorySample, VramWitness};
+use simpleharn::budget::{AdmissionError, MemorySample, VramWitness};
 use simpleharn::config::{AppConfig, CategoryId};
 use simpleharn::engine::mock::MockAdapter;
 use simpleharn::engine::{EngineAdapter, EngineRuntime};
-use simpleharn::scheduler::{Reply, Scheduler, SchedulerHandle};
+use simpleharn::scheduler::{Reply, Scheduler, SchedulerError, SchedulerHandle};
 use std::collections::{BTreeMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -75,6 +75,18 @@ fn sample(total: f64, used: f64) -> MemorySample {
         used_gib: used,
         processes: vec![],
         attribution: simpleharn::budget::AttributionQuality::Unavailable,
+    }
+}
+
+/// Same card, but the occupancy is attributed per process and NONE of it
+/// belongs to the harness: the pid is foreign (`MockRuntime` owns no process
+/// and reports pid 0, tests/mock_runtime.rs).
+fn foreign_sample(total: f64, used: f64, foreign_pid: u32, foreign_gib: f64) -> MemorySample {
+    MemorySample {
+        total_gib: total,
+        used_gib: used,
+        processes: vec![(foreign_pid, foreign_gib)],
+        attribution: simpleharn::budget::AttributionQuality::PerProcess,
     }
 }
 
@@ -813,16 +825,30 @@ async fn rp_load_cannot_evict_work_and_refuses_with_blockers() {
 
 #[tokio::test]
 async fn aux_load_cannot_evict_anything_cross_category() {
-    // AUX x2 holds 30 + 20 (ledger 50, free 20); a 55 GiB AUX load replaces its
-    // LRU own occupant (allowed) but still falls 5 short - and AUX may evict
-    // nobody outside its own slots. Release-first (operator ruling, revisable):
-    // the same-slot victim is destroyed on the booked credit and the SETTLE window
-    // re-gates on the re-sampled card - the card stays full, so the load refuses
-    // with the settle numbers. aux20 (a cross-category non-candidate) survives;
-    // aux30 is the accepted casualty of a swap that did not fit. Falsifier:
-    // refusing before the kill (pre-ruling shape) leaves aux30 serving.
-    let witness = FakeWitness::with(vec![sample(72.0, 30.0), sample(72.0, 50.0)]);
-    let handle = harness(
+    // AUX x2 holds 30 + 20 (ledger 50, the card says so); a 55 GiB AUX load
+    // replaces its LRU own occupant aux30 (allowed) and falls 5 short - and AUX
+    // may evict nobody outside its own slots, so aux20 is a named blocker (only
+    // WORK and RP can evict AUX). The never-releasable bound is the card's
+    // WITNESSED 20 GiB, attributed to one foreign process by the per-process
+    // table: the mock reports no card-hold figure for aux20, and its 20 GiB
+    // booking is a projection the bound may not claim (per the DECISIONS
+    // 2026-11-26 rows). The reachable ceiling is 72 - 20 = 52. The settle
+    // target 55 sits above it (55 + 2 - 2 > 52), so per the DECISIONS
+    // 2026-11-26 rows the refusal arrives at the gate BEFORE any release - the
+    // kill would buy a swap that could never settle. The contract STRENGTHENS
+    // the pre-ruling shape: aux30 SURVIVES, the refusal names the holder, and
+    // no engine dies. aux55 never spawns.
+    // Falsifiers: delete the pre-refuse arm and the row takes release-first -
+    // the card stays full, the answer becomes the settle timeout, aux30 dies,
+    // and every assertion below goes red. Restore the bound to claim the
+    // blocker's bare booking, or join holders by model name, and aux20's
+    // unproven 20 rides the bound twice - the ceiling reads 32.0, below the
+    // witness the ruling forbids claiming, and the ceiling assertion goes red.
+    let witness = FakeWitness::with(vec![
+        sample(72.0, 30.0),
+        foreign_sample(72.0, 50.0, 999_999, 20.0),
+    ]);
+    let (handle, runtime) = harness_rt(
         2,
         &[
             ("aux30", "mock", CategoryId::Aux, 30.0),
@@ -830,12 +856,16 @@ async fn aux_load_cannot_evict_anything_cross_category() {
             ("aux55", "mock", CategoryId::Aux, 55.0),
         ],
         Arc::new(witness),
+        5,
     );
 
-    handle
+    let Reply::Loaded(aux30) = handle
         .swap("aux30", CategoryId::Aux)
         .await
-        .expect("aux30 loads");
+        .expect("aux30 loads")
+    else {
+        panic!("expected Loaded");
+    };
     handle
         .swap("aux20", CategoryId::Aux)
         .await
@@ -843,21 +873,81 @@ async fn aux_load_cannot_evict_anything_cross_category() {
     let error = handle
         .swap("aux55", CategoryId::Aux)
         .await
-        .expect_err("the card never frees what release-first spent");
+        .expect_err("a need above the reachable ceiling refuses at the gate");
     let message = error.to_string();
-    assert!(message.contains("settle timeout"), "was: {message}");
     assert!(
-        message.contains("22.0 GiB free after release, 57.0 GiB required incl. 2.0 GiB reserve"),
-        "the re-gate must name the physical truth and its guard band: {message}"
+        message.contains("settle target unreachable before release")
+            && message.contains("need 55.0 GiB")
+            && message.contains("ceiling 52.0 GiB")
+            && message.contains("blocked by: aux20 (only WORK and RP can evict AUX)"),
+        "the wire refusal names the need, the ceiling, and the holder: {message}"
     );
+    let SchedulerError::Admission(admission) = error else {
+        panic!("the gate refusal is an admission refusal, not {error:?}")
+    };
+    let AdmissionError::SettleUnreachable {
+        need,
+        target,
+        ceiling,
+        free,
+        reserve,
+        blockers,
+        ..
+    } = admission
+    else {
+        panic!(
+            "the refusal is the settle-unreachable pre-refuse, not another \
+             admission class: {admission:?}"
+        )
+    };
+    assert_eq!(need.0, 55.0, "the refusal names the need");
+    assert_eq!(target.0, 55.0, "the settle target is the compared figure");
+    assert_eq!(
+        ceiling.0, 52.0,
+        "the ceiling is the card minus the witnessed never-releasable bytes: 72 - 20"
+    );
+    assert_eq!(
+        free.0, 50.0,
+        "the compared figure already credits the doomed-by-request victim"
+    );
+    assert_eq!(reserve.0, 2.0, "the refusal names the reserve it guarded");
+    assert!(
+        blockers
+            .iter()
+            .any(|b| b.model == "aux20" && b.reason == "only WORK and RP can evict AUX"),
+        "the refusal names the holder the release cannot reclaim: {blockers:?}"
+    );
+
     let status = handle.status().await.expect("actor alive");
     let aux = aux_models(&status);
     assert!(aux.contains(&Some("aux20".to_string())), "{aux:?}");
     assert!(
-        !aux.contains(&Some("aux30".to_string())),
-        "the same-slot victim was released first: {aux:?}"
+        aux.contains(&Some("aux30".to_string())),
+        "the refusal arrives before any release: the same-slot victim survives: {aux:?}"
     );
     assert!(!aux.contains(&Some("aux55".to_string())), "{aux:?}");
+    let job = job_row(&status, "aux55");
+    assert!(job.terminal, "{job:?}");
+    assert_eq!(
+        job.outcome.as_deref(),
+        Some("admission refused"),
+        "refused at the gate, never at settle: {job:?}"
+    );
+    assert!(
+        job.victims_released.is_empty(),
+        "the refusal spent no release: {:?}",
+        job.victims_released
+    );
+    assert_eq!(runtime.spawn_count(), 2, "the refused load never spawned");
+    assert_eq!(
+        runtime.server_count(),
+        2,
+        "no engine died and none was born"
+    );
+    assert!(
+        !runtime.is_dead(aux30.port).await,
+        "the resident the refusal spared still answers"
+    );
 }
 
 #[tokio::test]
