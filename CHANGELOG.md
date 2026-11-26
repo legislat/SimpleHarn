@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, maintainer]
 source_of_truth_for: [release history]
-last_reviewed: 2026-11-25
+last_reviewed: 2026-11-26
 review_trigger: release
 ---
 
@@ -251,7 +251,7 @@ built 2026-11-10, SHA256
   Every engine row carries its host platforms; ninfer lists both and runs its
   container inside the distro without the `wsl.exe` hop. llama, strata, basalt,
   maya and xolotl serve on Linux from the Windows stores through `/mnt`, and the
-  Windows-authored card legs have a bash runner (release-card/run-linux.sh, private handoff repository).
+  Windows-authored card legs have a bash runner in the private handoff release-card suite.
   CI adds ubuntu check/test/clippy/fmt and Linux MSRV legs; the tag workflow
   builds a Linux artifact.
 - New engine `xolotl`: the harness supervises the Xolotl DeepSeek-V4.1-Flash

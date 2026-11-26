@@ -232,14 +232,14 @@ loaded. The control routes, memory provenance, and error codes are in
 
 ## Security
 
-The API is unauthenticated by default, and it binds to loopback. Set
+The API binds to loopback by default, and a loopback bind needs no token. Set
 `SIMPLEHARN_TOKEN` (or `control_token`) before any non-loopback bind. A
-non-loopback `internal_host` such as `0.0.0.0` with no token now refuses to
-start; the refusal names both remedies. To accept that posture on purpose, set
-`allow_unauthenticated_network_bind` to `true`; the harness then boots and the
-control page shows a persistent warning banner on every read. Do not expose the
-harness to a LAN without a token. With a token set,
-every route except the page assets requires it. The harness forces every
+non-loopback `internal_host` such as `0.0.0.0` with no token refuses to
+start, and the refusal names both remedies. To accept an unauthenticated
+network bind on purpose, set `allow_unauthenticated_network_bind` to `true`.
+The harness then starts, and the control page shows a persistent warning banner
+on every read. Do not expose the harness to a LAN without a token. With a token
+set, every route except the page assets requires it. The harness forces every
 engine it starts onto a loopback listener, whatever `internal_host` says. The
 full policy is in [SECURITY.md](SECURITY.md); the token and bind keys are in
 [docs/reference/CONFIG.md](docs/reference/CONFIG.md).

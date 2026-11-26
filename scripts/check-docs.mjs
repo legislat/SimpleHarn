@@ -14,11 +14,17 @@
 //   5. Every durable doc is listed in docs/DOCS_README.md by exact path or by a
 //      link that resolves to it.
 //   6. No literal DRAFT in a doc whose front matter status is active.
-//   7. Repo-relative paths written as inline code resolve to existing files.
-//      Local-only paths (handoff/, ModelConf/, archive/, base-archive/, .kilo/)
-//      are exempt; a path that names a line range keeps its base file. The
-//      historical DESIGN.md is exempt from this rule only: its dated research
-//      references are frozen history.
+//   7. Repo-relative paths written as inline code or plain prose resolve to
+//      existing files. Local-only paths (handoff/, ModelConf/, archive/,
+//      base-archive/, .kilo/) are exempt; a path that names a line range keeps
+//      its base file. The prose pass is shape-conservative: a letter-leading
+//      first segment, no spaces, and an extension or a tracked top-level
+//      directory; dated evidence-run names and domains are not repo paths.
+//      The historical DESIGN.md is exempt from this rule only: its dated
+//      research references are frozen history.
+//   8. Semantic cross-check: every measured_attribution wire variant parsed by
+//      src/model/mod.rs (the BadAttribution error string) is listed on the
+//      measured_attribution line of docs/reference/API.md.
 // Not scanned: handoff/* (local), archive/ and base-archive/ (frozen). The
 // frozen pages inside docs/archive/ are not scanned either; only its README,
 // the archive index itself, is a durable checked document.
@@ -184,33 +190,110 @@ function isLocalOnly(target) {
 // design"). Every other rule still applies to it.
 const PATH_RULE_EXEMPT = new Set(["DESIGN.md"]);
 
+// Shared shape gate for rule 7. A candidate must be a simple repo-relative
+// path: no spaces, no scheme, no drive or backslash, not absolute, not a flag,
+// no glob or placeholder, at least one separator, an extension or a tracked
+// top-level directory, and not under the exempt local-only layer.
+function isPathShape(target) {
+  if (target === "" || /\s/.test(target)) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return false; // URL, scheme, or drive
+  if (target.includes("\\")) return false; // absolute Windows path
+  if (target.startsWith("/") || target.startsWith("-")) return false; // absolute or flag
+  if (/[*?<>{}|$]/.test(target)) return false; // glob, placeholder, pipe
+  if (!target.includes("/")) return false; // bare names and identifiers
+  if (isLocalOnly(target)) return false;
+  if (target.endsWith("/")) return false; // a directory reference (policy target)
+  const stripped = target.replace(/:\d+(?:-\d+)?$/, ""); // file.rs:120-130
+  if (!HAS_EXTENSION.test(stripped) &&
+      !TRACKED_PREFIXES.some((p) => stripped.startsWith(p))) return false;
+  return true;
+}
+
+function checkPathResolves(rel, n, display, target) {
+  const stripped = target.replace(/:\d+(?:-\d+)?$/, "");
+  const roots = [ROOT, join(ROOT, "src"), join(ROOT, "tests"), join(ROOT, "scripts")];
+  if (!roots.some((root) => existsSync(resolve(root, stripped)))) {
+    fail(rel, n, `unresolved path reference: ${display}`);
+  }
+}
+
+// Prose-pass guard: the first segment must start with a letter. That keeps
+// dated evidence-run names (for example 2026-11-09-linux-basalt/PROOF.md,
+// which point at the private handoff evidence directory) and bare domains
+// (quay.io/...) out of the rule. A real top-level repo directory always starts
+// with a letter.
+const LETTER_FIRST_SEGMENT = /^[A-Za-z][A-Za-z0-9_-]*\//;
+
 function checkInlinePaths(rel, entries) {
   if (PATH_RULE_EXEMPT.has(rel)) return;
-  const baseDir = join(ROOT, rel);
   for (const e of entries) {
     if (e.inFence) continue;
+    // Inline code spans.
     const re = /`([^`\n]+)`/g;
     let m;
     while ((m = re.exec(e.line)) !== null) {
-      let target = m[1].trim();
-      if (target === "" || /\s/.test(target)) continue;
-      if (/^[a-z][a-z0-9+.-]*:/i.test(target)) continue; // URL or scheme
-      if (/^[A-Za-z]:[\\/]/.test(target) || target.includes("\\")) continue; // absolute
-      if (target.startsWith("/") || target.startsWith("-")) continue;
-      if (/[*?<>{}|$]/.test(target)) continue; // glob, placeholder, pipe
-      if (!target.includes("/")) continue; // bare names and identifiers
-      // Strip a trailing line reference: file.rs:120-130
-      target = target.replace(/:\d+(?:-\d+)?$/, "");
-      if (!HAS_EXTENSION.test(target) &&
-          !TRACKED_PREFIXES.some((p) => target.startsWith(p))) continue;
-      if (isLocalOnly(target)) continue;
-      if (target.endsWith("/")) continue; // a directory reference (policy target)
-      const roots = [ROOT, join(ROOT, "src"), join(ROOT, "tests"), join(ROOT, "scripts")];
-      if (!roots.some((root) => existsSync(resolve(root, target)))) {
-        fail(rel, e.n, `unresolved path reference: ${m[1]}`);
-      }
+      const target = m[1].trim();
+      if (!isPathShape(target)) continue;
+      checkPathResolves(rel, e.n, m[1], target);
+    }
+    // Plain prose, outside code spans and link targets (rule 2 owns links).
+    const prose = e.line
+      .replace(/`[^`\n]*`/g, " ")
+      .replace(/\]\([^)\s]*(?:\s+"[^"]*")?\)/g, " ");
+    for (const raw of prose.split(/\s+/)) {
+      const target = raw
+        .replace(/^[(\[{<>"'`]+/, "")
+        .replace(/[.,;:!?)\]}>;"'`]+$/, "");
+      if (!isPathShape(target) || !LETTER_FIRST_SEGMENT.test(target)) continue;
+      checkPathResolves(rel, e.n, target, target);
     }
   }
+}
+
+// Rule 8: the wire enum for measured_attribution. The parser refuses an
+// unknown token with the BadAttribution error, whose string lists every
+// variant the code accepts; the check takes that list as truth and demands
+// each variant in the API.md field line.
+function checkAttributionWire() {
+  const apiRel = "docs/reference/API.md";
+  const variants = wireAttributionVariants();
+  if (!variants) {
+    fail(apiRel, 1,
+      "wire cross-check: cannot parse the measured_attribution variant list from the BadAttribution error string in src/model/mod.rs");
+    return;
+  }
+  if (!existsSync(join(ROOT, apiRel))) {
+    fail(apiRel, 1, "wire cross-check: docs/reference/API.md is missing");
+    return;
+  }
+  const api = readFileSync(join(ROOT, apiRel), "utf8").split(/\r?\n/);
+  const start = api.findIndex((l) => /^\s*-\s+`measured_attribution`:/.test(l));
+  if (start < 0) {
+    fail(apiRel, 1, "wire cross-check: no measured_attribution field line in docs/reference/API.md");
+    return;
+  }
+  let block = api[start];
+  for (let i = start + 1; i < api.length && /^\s{2,}\S/.test(api[i]); i += 1) {
+    block += " " + api[i];
+  }
+  for (const v of variants) {
+    if (!block.includes(v)) {
+      fail(apiRel, start + 1,
+        `wire cross-check: API.md measured_attribution list is missing the wire variant \`${v}\` (src/model/mod.rs parses ${variants.join("|")})`);
+    }
+  }
+}
+
+function wireAttributionVariants() {
+  const srcRel = "src/model/mod.rs";
+  if (!existsSync(join(ROOT, srcRel))) return null;
+  const src = readFileSync(join(ROOT, srcRel), "utf8");
+  const at = src.indexOf("BadAttribution");
+  if (at < 0) return null;
+  const errors = [...src.slice(0, at).matchAll(/#\[error\("([^"]+)"\)\]/g)];
+  const last = errors[errors.length - 1];
+  const list = last && last[1].match(/is not one of ([A-Za-z0-9_]+(?:\|[A-Za-z0-9_]+)+)/);
+  return list ? list[1].split("|") : null;
 }
 
 const indexText = existsSync(join(ROOT, INDEX))
@@ -314,6 +397,8 @@ for (const rel of docs) {
     }
   }
 }
+
+checkAttributionWire();
 
 for (const f of failures) console.log(f);
 if (failures.length > 0) {

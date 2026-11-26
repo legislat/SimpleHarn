@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent]
 source_of_truth_for: [HTTP control API contract, error codes, memory provenance]
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-26
 review_trigger: behavior-change, release
 ---
 
@@ -186,8 +186,8 @@ never a re-label and never zero.
 - `cost_basis`: `declared`, `measured`, `fit`, `estimate`, or `undeclared`.
   On a `cpu_offload` row it names the booked **RAM** rung, never a VRAM
   rung; on a GPU row it keeps the VRAM ladder unchanged.
-- `measured_attribution`: `engine_report`, `per_process`, `total_diff`, or
-  `null`.
+- `measured_attribution`: `engine_report`, `engine_status`, `per_process`,
+  `total_diff`, or `null`.
 - `required_to_free_gb`: the figure the model needs free. It is present only
   when `cost_basis` is `measured`.
 

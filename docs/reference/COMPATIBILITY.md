@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent]
 source_of_truth_for: [OpenAI-compatible surface scope, known-good configurations]
-last_reviewed: 2026-11-25
+last_reviewed: 2026-11-26
 review_trigger: behavior-change, release
 ---
 
@@ -306,12 +306,12 @@ the renamed wire values.
 
 Linux live legs are on record in WSL2 Ubuntu 24.04: llama, strata, basalt, maya,
 xolotl and the ninfer container each loaded, served and unloaded (packs and
-bundles read from the Windows stores through `/mnt`). The card legs (load/chat,
-crash/restart, same-slot swap, measured stamp and the floor refusal) were
-replayed, the cross-engine swap (strata to llama) passes, and the bash runner
-release-card/run-linux.sh ran 10 PASS / 0 FAIL (private handoff evidence,
-`2026-11-09-linux-*`). The port builds headless, runs the unit and contract
-suites in CI, and builds its release artifact in CI; the Linux witness reports
+bundles read from the Windows stores through `/mnt`). The private release-card
+suite replayed the card legs on Linux: load, chat, crash and restart, same-slot
+swap, the measured stamp, and the floor refusal. Its cross-engine swap (strata
+to llama) passed. The private handoff evidence runs are `2026-11-09-linux-*`.
+The port builds headless, runs the unit and contract suites in CI, and builds
+its release artifact in CI; the Linux witness reports
 `source: NVML` with real totals. Gaps: maya has no Linux vision build yet, and
 the Windows-authored PowerShell suite remains the Windows runner. mock runs
 where the grant is on.

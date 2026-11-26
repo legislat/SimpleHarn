@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent]
 source_of_truth_for: [autostart, file layout, upgrade, uninstall, backup, log retention]
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-26
 review_trigger: behavior-change, release
 ---
 
@@ -66,6 +66,8 @@ The harness keeps its state beside the exe:
 | `logs\` | The harness log and the engine child logs. |
 | `.simpleharn\strata-profiles\` | The rendered strata profile JSONs, written at each load. |
 | `.simpleharn\basalt-profiles\` | The rendered basalt profile JSONs, written at each load. |
+| `.simpleharn\maya-profiles\` | The rendered maya config JSONs, written at each load. |
+| `.simpleharn\xolotl-profiles\` | The rendered xolotl serve profiles, written at each load. |
 | `ninfer-claims.json` | The ninfer claim ledger beside the harness exe. |
 | `autostart.vbs` | Present only when you registered autostart, at the path the `Run` key names. |
 

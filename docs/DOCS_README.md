@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, contributor, agent, architect]
 source_of_truth_for: [documentation routing]
-last_reviewed: 2026-11-09
+last_reviewed: 2026-11-26
 review_trigger: release, quarterly, new-decision
 ---
 
@@ -175,11 +175,18 @@ style.
   Documented product defaults in README/reference and exact quoted decisions are
   allowed; paths under a user profile are not.
 - Link only existing files; planned paths stay plain text until created.
-- A repo-relative path written as inline code must resolve (`check-docs` rule
-  7). The exempt layer (`handoff/` and `HANDOFF.md` in the private repository,
-  `ModelConf/`, `archive/`, `base-archive/`, `.kilo/`, `target/`,
-  `node_modules/`) is exempt; a trailing
-  `:line` range keeps its base file. `src/`, `tests/` and `scripts/` are also
-  tried as roots. `DESIGN.md` is exempt from this rule only.
+- A repo-relative path written as inline code or plain prose must resolve
+  (`check-docs` rule 7). The exempt layer (`handoff/` and `HANDOFF.md` in the
+  private repository, `ModelConf/`, `archive/`, `base-archive/`, `.kilo/`,
+  `target/`, `node_modules/`) is exempt; a trailing `:line` range keeps its
+  base file. `src/`, `tests/` and `scripts/` are also tried as roots.
+  `DESIGN.md` is exempt from this rule only. The prose pass is
+  shape-conservative: a letter-leading first segment, no spaces, and an
+  extension or a tracked top-level directory. Dated evidence-run names and
+  bare domains are not repo paths.
+- One semantic cross-check exists (`check-docs` rule 8): every
+  `measured_attribution` variant that `src/model/mod.rs` parses must appear
+  on the `measured_attribution` line of
+  [docs/reference/API.md](reference/API.md).
 - Durable docs state commands and invariants, not volatile counts or file
   line numbers; dated numbers live in evidence.

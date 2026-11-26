@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [user, operator, agent]
 source_of_truth_for: [minimal engine setup for the harness]
-last_reviewed: 2026-11-09
+last_reviewed: 2026-11-26
 review_trigger: engine-change, release
 ---
 
@@ -28,7 +28,7 @@ host-native path, because the harness does not translate it.
 
 ## llama.cpp
 
-Upstream: [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) (README,
+Upstream: [llama.cpp](https://github.com/ggml-org/llama.cpp) (README,
 releases).
 
 **Already installed.** Use the directory that holds `llama-server.exe` and its

@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [agent, reviewer, release-operator]
 source_of_truth_for: [git, release]
-last_reviewed: 2026-11-25
+last_reviewed: 2026-11-26
 review_trigger: behavior-change, release
 ---
 
@@ -139,9 +139,10 @@ A release is a task with acceptance criteria. Run the steps in this order:
     (`release-card/run.ps1 -Version <tag>` from the private handoff repository) and
     require every leg to PASS or be named BLOCKED with its reason. Patch releases are
     exempt. The suite never substitutes for the cardless gate; it proves hardware
-    behavior that CI cannot. On Linux or WSL the same legs run with
-    release-card/run-linux.sh (private handoff repository) (bash, curl, python3; same report shape); it also
-    refuses to start while a protected port or a harness is present.
+    behavior that CI cannot. On Linux or WSL the same legs run with the bash
+    twin of the release-card suite in the private handoff repository (bash,
+    curl, python3, same report shape). It also refuses to start while a
+    protected port or a harness is present.
 9. Push the commits and the tag. Each push needs operator approval.
 10. Download the Windows (`simpleharn-win-x64`) and Linux (`simpleharn-linux-x64`)
    workflow artifacts from the tag run. Render the release notes with
