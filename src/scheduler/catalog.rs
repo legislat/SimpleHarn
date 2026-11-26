@@ -284,8 +284,8 @@ impl ActorState {
     /// cost field actually differs (a comment edit, a same-bytes re-save) is
     /// NOT a cost move: the marker round's conservatism stays in charge.
     fn cost_only_move(old: &ModelEntry, new: &ModelEntry) -> bool {
-        // The RAM pair belongs to this surface exactly as its VRAM twin does
-        // exactly as its VRAM twin does: the harness writes it from
+        // The RAM pair belongs to this surface exactly as its VRAM twin does:
+        // the harness writes it from
         // the working-set fold, and an
         // operator correcting it is moving a booked number, not a launch
         // flag — ambering it would accuse the resident of a config change its

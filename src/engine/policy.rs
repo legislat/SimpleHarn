@@ -203,6 +203,13 @@ pub(crate) const LLAMA_FORBIDDEN_EXTRA_WORDS: &[&str] = &[
     "--models-memory-margin",
     "--slot-save-path",
     "--media-path",
+    // An engine-side config file is a second door for every word this record
+    // refuses: the row could smuggle the whole forbidden surface into the
+    // file the flag points at, past the argv name filter. Denied whether or
+    // not the pinned build parses it - denying an absent flag is harmless,
+    // admitting a present one would not be (the basalt row denies `--config`
+    // for the same reason).
+    "--config",
     // Readiness contract and server globals the harness talks to.
     "--api-prefix",
     "--props",
@@ -727,6 +734,11 @@ pub(crate) const LLAMA_EXTRA_ARG_OWNERS: &[(&str, &str)] = &[
     ),
     ("--slot-save-path", "slot custody paths are harness-owned"),
     ("--media-path", "static roots are harness-owned"),
+    (
+        "--config",
+        "the launch line is the harness's; an engine-side config file would \
+         smuggle refused options past the argv filter",
+    ),
     ("--api-prefix", "moves `/health` off the readiness contract"),
     (
         "--props",

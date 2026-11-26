@@ -1149,10 +1149,13 @@ impl EngineAdapter for XolotlAdapter {
         let row = super::policy::engine_policy("xolotl")
             .expect("the compiled-in table ships a xolotl row");
         let v = validate_row(model).map_err(XolotlRowError::into_engine_error)?;
-        // Location custody (the row's executed-path roots, Fork C):
-        // while the cells are open it admits everything (ruling 5), and it
-        // will enforce unchanged once a later copy-in slice populates them
-        // (the strata posture).
+        // Location custody (the row's executed-path roots, Fork C): this
+        // call protects nothing today. The xolotl exec cells are empty, an
+        // empty cell admits everything (ruling 5), and the trust model is
+        // yaml-equals-operator: a path a row names is an operator choice, not
+        // an attack surface. The call stands here so the same site enforces
+        // unchanged once a later copy-in slice populates the cells (the
+        // strata posture); until then it makes no protection claim.
         super::policy::admit_custody_path(
             row,
             super::policy::CustodyClass::Executed,

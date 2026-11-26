@@ -87,6 +87,14 @@ jobs:
       - name: Admission conformance (scripted witness)
         run: cargo test --locked --test admission_conformance
 
+      # Headless form must serve and answer Ctrl+C, not bind and exit at
+      # uptime zero. Serves on the dedicated test ports only; starts no
+      # engine and loads no model. The binary under smoke is the plain
+      # debug binary that the Test step already compiled.
+      - name: Headless serve-and-exit smoke
+        shell: pwsh
+        run: ./scripts/smoke-headless.ps1 -ExePath target/debug/simpleharn
+
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
 

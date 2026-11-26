@@ -38,7 +38,7 @@ use crate::model::scan::{normalized_line, parse_flat_yaml, split_value_comment};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 /// Every failure this module answers with, typed (the DEFERRED
@@ -551,7 +551,7 @@ pub(crate) fn commit_verified(
             io: error.to_string(),
         });
     }
-    if let Err(error) = std::fs::rename(&tmp, path) {
+    if let Err(error) = rename_with_retry(&tmp, path) {
         let _ = std::fs::remove_file(&tmp);
         return Err(WritebackError::RenameFailed {
             file: path.to_path_buf(),
@@ -635,6 +635,60 @@ pub(crate) fn write_synced(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .open(path)?;
     file.write_all(bytes)?;
     file.sync_all()
+}
+
+/// Total rename attempts by [`rename_with_retry`] (first try plus retries).
+const RENAME_ATTEMPTS: usize = 3;
+
+/// Pause between rename retries: long enough for an antivirus/indexer handle
+/// that just peeked at the target to close, short enough that even a fully
+/// exhausted retry stays invisible behind the write gate.
+const RENAME_RETRY_BACKOFF: Duration = Duration::from_millis(25);
+
+/// Whether a failed rename hit a transient sharing lock rather than a real
+/// defect: a refusal whose cause is a handle somebody else still holds.
+#[cfg(windows)]
+fn is_transient_share_lock(error: &std::io::Error) -> bool {
+    // ERROR_ACCESS_DENIED (5): a minifilter/indexer handle blocks the replace;
+    // ERROR_SHARING_VIOLATION (32): the target was opened without sharing.
+    // `std` maps 5 to `PermissionDenied` but 32 to `Uncategorized`, so the
+    // raw code is what separates these transient refusals (the holder closes
+    // within milliseconds) from a genuine denial.
+    matches!(error.raw_os_error(), Some(5) | Some(32))
+}
+
+/// Whether a failed rename hit a transient sharing lock rather than a real
+/// defect: a refusal whose cause is a handle somebody else still holds.
+#[cfg(not(windows))]
+fn is_transient_share_lock(error: &std::io::Error) -> bool {
+    // EACCES/EAGAIN on a file held elsewhere surface as `PermissionDenied`;
+    // anything else (read-only fs, cross-device) is a real defect.
+    error.kind() == std::io::ErrorKind::PermissionDenied
+}
+
+/// `std::fs::rename` with a bounded retry on transient sharing locks.
+///
+/// Publishing a temp over a config or row file can meet an antivirus or
+/// indexer handle that has the target open for a millisecond scan; the first
+/// rename then answers ACCESS_DENIED/SHARING_VIOLATION while nothing is wrong
+/// with the file. Retrying a few times with a short backoff turns that
+/// honest-looking but false `RenameFailed` into the success it should be.
+/// After the attempts are exhausted the caller's failure path is exactly the
+/// one a single rename would have produced - same error, same typed outcome.
+pub(crate) fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match std::fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                if attempt >= RENAME_ATTEMPTS || !is_transient_share_lock(&error) {
+                    return Err(error);
+                }
+                std::thread::sleep(RENAME_RETRY_BACKOFF);
+            }
+        }
+    }
 }
 
 /// The post-write validation failed (unreadable or unparseable re-read): the
@@ -816,7 +870,7 @@ fn restore_original_bytes(path: &Path, original: &str) -> Result<(), String> {
         let _ = std::fs::remove_file(&tmp);
         return Err(error);
     }
-    std::fs::rename(&tmp, path).map_err(|e| {
+    rename_with_retry(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("rename -> {}: {e}", path.display())
     })?;
@@ -2145,6 +2199,41 @@ mod tests {
         assert!(error.contains("cannot replace"), "{error}");
         assert_no_temp_leftovers(&dir);
         drop(_lock);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Windows falsifier for the bounded rename retry: a share lock on the
+    /// target that lifts within the retry window (the millisecond scan of an
+    /// antivirus or the indexer) must not turn a real publish into a false
+    /// `RenameFailed`. The publish lands and no temp remains. Pre-fix (a
+    /// single rename) the one attempt hit the held lock and the publish was
+    /// refused, so this assertion is the red leg; the sibling test above
+    /// pins that a lock held past every attempt is still refused honestly.
+    #[cfg(windows)]
+    #[test]
+    fn a_share_locked_publish_retries_and_lands() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = crate::testutil::temp_dir("writeback-rename-retry");
+        let path = seed(&dir, CLEAN);
+        let locker = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x3) // FILE_SHARE_READ | FILE_SHARE_WRITE: DELETE refused
+            .open(&path)
+            .expect("share-lock the target");
+        let released = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            drop(locker);
+        });
+        set_flag_on_file(&path, "cpu_offload", Some("true"))
+            .expect("the retried rename must land after the lock releases");
+        released.join().expect("the locker thread ends");
+        assert!(
+            std::fs::read_to_string(&path)
+                .expect("target")
+                .contains("cpu_offload: true"),
+            "the retried publish must be the bytes on disk"
+        );
+        assert_no_temp_leftovers(&dir);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

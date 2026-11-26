@@ -313,7 +313,7 @@ fn handle_menu(id: MenuId) {
 fn open_web_ui(ctx: &TrayCtx) {
     let url = ctx.control_url.clone();
     if let Err(error) = std::thread::Builder::new()
-        .name("se-open-web-ui".to_string())
+        .name("simpleharn-open-web-ui".to_string())
         .spawn(move || {
             let mut opener = std::process::Command::new("cmd");
             #[cfg(windows)]

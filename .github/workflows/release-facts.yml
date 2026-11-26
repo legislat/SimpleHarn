@@ -1,6 +1,8 @@
-# Release-facts CI. Cardless: no card tests, no model loads, no engine start,
-# and no port bind in either job; the card gate stays operator-only per
-# docs/process/VERIFICATION.md.
+# Release-facts CI. Cardless: no card tests, no model loads, and no engine
+# start in any job; the card gate stays operator-only per
+# docs/process/VERIFICATION.md. The headless smokes bind only the dedicated
+# loopback test port set named in the script header, never the harness port
+# set or a protected port.
 #
 # Trigger A (tag push, v*): re-runs the release facts on the pushed tag, the
 # same way step 7 of the release section in docs/process/GIT_WORKFLOW.md
@@ -182,6 +184,19 @@ jobs:
           path: dist/SimpleHarn-*.tar.gz*
           if-no-files-found: error
 
+      # The packaged artifact IS the headless Linux form, so the exact bytes
+      # that ship must prove they serve and exit: a headless build that drops
+      # its shutdown sender binds every listener and exits SUCCESS at uptime
+      # zero, and a hash alone never catches that. The manylinux binary runs
+      # on this host; the smoke serves on the dedicated test ports only and
+      # starts no engine and loads no model.
+      - name: Headless serve-and-exit smoke on the packaged binary
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -LiteralPath dist -Recurse -Filter simpleharn | Select-Object -First 1
+          if ($null -eq $exe) { throw 'packaged Linux binary is missing from dist' }
+          ./scripts/smoke-headless.ps1 -ExePath $exe.FullName
+
   # Trigger A, Windows port: build the shipped tray binary from the exact tag,
   # package the five-entry zip, prove the embedded release identity and the
   # absence of stale product strings, and upload a workflow artifact. The
@@ -247,6 +262,18 @@ jobs:
           "HASH=$a" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "REPRO=$repro" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "- repro: $repro ($a vs $b); a difference is the MSVC PE timestamp/debug directory, not a build-input difference" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      # No-tray Windows build (the config-forced-headless path is not the
+      # shipped form, but the headless code path must stay servable): its own
+      # target directory, because the exe name is identical to the tray
+      # build's. Serves on the dedicated test ports only; starts no engine
+      # and loads no model.
+      - name: Headless serve-and-exit smoke (no-tray build)
+        shell: pwsh
+        run: |
+          $env:CARGO_TARGET_DIR = "$PWD\target-headless"
+          cargo build --release --locked
+          ./scripts/smoke-headless.ps1 -ExePath target-headless\release\simpleharn.exe
 
       - name: Package the five-entry Windows zip and sums
         shell: pwsh

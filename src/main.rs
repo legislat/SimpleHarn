@@ -462,19 +462,18 @@ async fn main() -> ExitCode {
         Arc::clone(&witness) as Arc<dyn simpleharn::budget::VramWitness>,
         boot,
     ));
-    // Boot gate for the unauthenticated network bind: already decided above,
-    // before the scheduler, the catalog scan, and every listener. This is a
-    // debug-only re-check, not a second gate: the first-run fill touches no
-    // posture field (`internal_host`, `control_token`, the opt-in), so the
-    // answer cannot change in between. A future fill that touched one would
-    // trip the assert in debug builds and be caught before release.
-    debug_assert!(
-        state
-            .config
-            .unauthenticated_network_bind_refusal(state.requires_token())
-            .is_none(),
-        "the bind posture gate must run before the scheduler exists"
-    );
+    // Boot gate for the unauthenticated network bind: decided above, before
+    // the scheduler, the catalog scan, and every listener. This re-check runs
+    // in every build profile: a debug-only assert promises the refusal
+    // without enforcing it in the shipped binary, so a posture that turned
+    // unauthenticated between the two gates (a future materialization that
+    // touched `internal_host`, `control_token`, or the opt-in) would bind
+    // every listener in release. The refusal here is the real check; the
+    // first gate stays the last-printed-message path.
+    if let Err(reason) = verify_bind_posture(&state.config, state.requires_token()) {
+        tracing::error!(reason = %reason, "bind posture refused at the pre-run re-check");
+        return ExitCode::FAILURE;
+    }
 
     // One shutdown channel for every exit path: Ctrl+C and the tray's Exit item
     // (v3.3 §20 lesson: a single Notify can only wake one waiter).
@@ -492,16 +491,34 @@ async fn main() -> ExitCode {
     }
     // A binary built without the `tray` feature is headless: the config key is
     // honored as "no tray", said once on the log, never silently dropped.
+    // The sender lives for the whole `run()` here: `run` treats a channel
+    // whose last sender is gone as a shutdown request, so a sender dropped in
+    // the headless branch would make the harness bind every listener and exit
+    // SUCCESS at uptime zero on exactly the fresh-install default
+    // (`tray_enabled = true`). It cannot move into the `if` block - that scope
+    // ends before `run` starts - so the keepalive binding lives at function
+    // scope. The scheduler and listeners locals ride along because the tray
+    // arm moves them and the headless arm has no other consumer; `state`
+    // already owns its own clones of both.
+    #[cfg(not(feature = "tray"))]
+    let _shutdown_keepalive = (scheduler, listeners, shutdown);
     #[cfg(not(feature = "tray"))]
     if config.tray_enabled {
-        let _ = (scheduler, listeners, shutdown);
         tracing::warn!(
             "tray_enabled is set, but this binary was built without the tray feature; \
              the tray stays off"
         );
     }
 
-    match run(state, shutdown_rx, boot_started, boot_runtime).await {
+    match run(
+        state,
+        shutdown_rx,
+        boot_started,
+        boot_runtime,
+        SHUTDOWN_WATCHDOG,
+    )
+    .await
+    {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             tracing::error!(error = %error, "harness stopped with an error");
@@ -536,6 +553,36 @@ const BOOT_VERDICT_POLL: Duration = Duration::from_millis(5);
 /// Grace between aborting the listener supervisors and returning from `run`, so a
 /// supervisor mid-teardown finishes without racing the process exit.
 const SHUTDOWN_DRAIN_GRACE: Duration = Duration::from_millis(100);
+
+/// Exit deadline armed the moment shutdown is requested: past it, a process
+/// still alive is stuck in an exit path that cannot be cancelled (a blocking
+/// job parked in kernel I/O holds the runtime drop forever), so the watchdog
+/// hard-exits with 0 instead of hanging. Armed only after a shutdown request,
+/// never during normal operation - see [`simpleharn::shutdown::arm_exit_deadline`].
+const SHUTDOWN_WATCHDOG: Duration = Duration::from_secs(15);
+
+/// The bind-posture re-check for the pre-run gate. Returns `Err` with the
+/// refusal reason when the config would boot an unauthenticated network bind;
+/// `Ok` is the posture the first gate approved. A real check in every build
+/// profile - a `debug_assert!` here would let the shipped release binary bind
+/// every listener on a refused posture. Extracted so both verdicts are
+/// unit-pinned without a live bind.
+fn verify_bind_posture(config: &AppConfig, requires_token: bool) -> anyhow::Result<()> {
+    match config.unauthenticated_network_bind_refusal(requires_token) {
+        None => Ok(()),
+        Some(reason) => Err(anyhow::anyhow!(reason)),
+    }
+}
+
+/// Records the boot-ready `bind_ms` measure on a lock whose previous writer
+/// may have panicked: a poisoned writer does not invalidate the value a new
+/// writer records, so this takes the guard through the poison instead of
+/// panicking on a trivial write. Extracted so the poison leg is testable.
+fn record_bind_ms(boot: &std::sync::RwLock<simpleharn::api::BootTimings>, bind_ms: u64) {
+    boot.write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .set_bound(bind_ms);
+}
 
 /// First-start gate: materialization fires only for the beside-the-exe
 /// `simpleharn.json` that is absent — never for a differently named file, and
@@ -1004,11 +1051,16 @@ fn gate_verdict(
 /// `boot_runtime` is the same [`ProcessRuntime`] instance the scheduler drives:
 /// the container reclaim consults the very ledger that runtime's spawn/release
 /// paths maintain, so ownership evidence cannot disagree between the two.
+/// `shutdown_watchdog` is the exit deadline armed once shutdown is requested
+/// (the shipped value is [`SHUTDOWN_WATCHDOG`]; a test injects a deadline far
+/// past its own lifetime so the armed thread can never reach its `exit` in a
+/// test binary).
 async fn run(
     state: Arc<ApiState>,
     mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     boot_started: std::time::Instant,
     boot_runtime: ProcessRuntime,
+    shutdown_watchdog: Duration,
 ) -> anyhow::Result<()> {
     tracing::info!(
         control = %state.control_addr,
@@ -1058,11 +1110,7 @@ async fn run(
         let verdict = gate_verdict(&state.listeners.snapshot());
         let bind_ms = boot_started.elapsed().as_millis() as u64;
         if verdict.resolved() {
-            state
-                .boot
-                .write()
-                .expect("boot timings lock poisoned by a writer panic")
-                .set_bound(bind_ms);
+            record_bind_ms(&state.boot, bind_ms);
             tracing::info!(
                 bind_ms,
                 serving = verdict.serving,
@@ -1171,6 +1219,12 @@ async fn run(
         log_write_failures = observability::log_write_failures(),
         "shutdown requested; stopping listeners"
     );
+    // Armed here, once, only after the request: the remaining exit is
+    // cooperative, and a `spawn_blocking` fs call parked in kernel I/O cannot
+    // be cancelled, so without a deadline a wedged drive turns this return
+    // into a permanent hang. The watchdog thread is the honest bound; a
+    // healthy shutdown is long gone before it fires.
+    simpleharn::shutdown::arm_exit_deadline(shutdown_watchdog);
     for supervisor in supervisors {
         supervisor.abort();
     }
@@ -1190,7 +1244,7 @@ mod tests {
     use super::{
         boot_config, boot_order, console_is_interactive, decode_console_output, first_run_target,
         gate_verdict, llama_binary_warning, log_boot_banner, parse_excluded_ranges, probe_outcome,
-        run, run_cli, supervise_listener,
+        record_bind_ms, run, run_cli, supervise_listener, verify_bind_posture,
     };
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
@@ -2006,11 +2060,16 @@ Start Port    End Port
         let (_scheduler, state) = boot_wiring(&config, Arc::new(NeverRuntime));
         let boot_runtime = simpleharn::process::ProcessRuntime::new();
         let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+        // One day: far past this test binary's lifetime, so the watchdog
+        // armed at the shutdown leg can never fire in-process. The child-
+        // process pin of the arm-fire mechanism lives in the integration
+        // target that re-invokes a parked helper.
         let running = tokio::spawn(run(
             Arc::clone(&state),
             shutdown_rx,
             std::time::Instant::now(),
             boot_runtime,
+            Duration::from_secs(86_400),
         ));
         let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
         while !boot_order::RECLAIM_DISPATCHED.load(Ordering::SeqCst)
@@ -2057,5 +2116,64 @@ Start Port    End Port
         );
         drop(shutdown);
         running.await.expect("run task").expect("run returns Ok");
+    }
+
+    /// The pre-run bind-posture re-check must refuse in every build profile.
+    /// The regression this pins: the re-check used to be a `debug_assert!`, so
+    /// the shipped release binary silently bound every listener on a posture
+    /// the boot gate would refuse (a materialization that touched a posture
+    /// field would ship an open bind). Refusing posture -> `Err` naming the
+    /// remedy; both permitting postures -> `Ok`.
+    #[test]
+    fn the_bind_posture_recheck_refuses_an_open_bind_in_release() {
+        let open = AppConfig {
+            internal_host: std::net::IpAddr::from([0, 0, 0, 0]),
+            ..AppConfig::default()
+        };
+        let refusal = verify_bind_posture(&open, false)
+            .expect_err("non-loopback bind, no token, no opt-in: the re-check must refuse");
+        assert!(
+            refusal.to_string().contains("control_token"),
+            "the refusal names the remedy: {refusal}"
+        );
+        assert!(
+            verify_bind_posture(&open, true).is_ok(),
+            "a resolved token is the supported LAN posture"
+        );
+        assert!(
+            verify_bind_posture(&AppConfig::default(), false).is_ok(),
+            "the default loopback boot is the supported posture"
+        );
+    }
+
+    /// A poisoned boot-timings lock must still accept the boot measure. The
+    /// regression this pins: the record site was an `.expect(...)` that turned
+    /// any other writer's panic into a panic on a trivial write in the main
+    /// path, while the value a poisoned writer left behind is still valid for
+    /// the next writer. After poisoning, the record lands.
+    #[test]
+    fn a_poisoned_boot_timings_writer_still_lets_the_record_land() {
+        use std::sync::RwLock;
+        let timings = RwLock::new(simpleharn::api::BootTimings::default());
+        // Poison the lock: a writer panics while holding the write guard.
+        // Silence the default hook so the intentional panic stays out of the
+        // test output.
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let poisoned = std::panic::catch_unwind(|| {
+            let _guard = timings.write().expect("a fresh lock cannot be poisoned");
+            panic!("simulated writer panic, the poison source");
+        });
+        std::panic::set_hook(previous_hook);
+        assert!(poisoned.is_err(), "the simulated writer must have panicked");
+        record_bind_ms(&timings, 42);
+        assert_eq!(
+            timings
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .bind_ms,
+            Some(42),
+            "the record must land through the poison, not panic"
+        );
     }
 }

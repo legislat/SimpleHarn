@@ -64,10 +64,15 @@ pub struct NinferAdapter {
 /// rule is the character class rather than bash's expansion positions: an interior
 /// `~` (inert to the shell) is refused too, deliberately, so one charset is the
 /// whole story. Every launch word the harness renders is already absolute
-/// (`/home/...`), and profile words never need it. What this rule still does NOT do
-/// is bound *which* absolute paths are admissible: the distro-side root allow-list
-/// is the ninfer `custody_exec_roots` cell of the [`crate::engine::policy`]
-/// `EnginePolicy` table (still open admission at the table level; the custody slice enforces it).
+/// (`/home/...`), and profile words never need it. What this rule still does NOT
+/// do is bound *which* absolute paths are admissible - and no other gate binds
+/// them today either. The distro-side root allow-list is the ninfer
+/// `custody_exec_roots` cell of the [`crate::engine::policy`] `EnginePolicy`
+/// table; the cell is populated (it is the single home of the staged-scripts
+/// root the staging writer reads), but under the yaml-equals-operator trust
+/// model these launch words are never admitted against it - wiring them
+/// through the shared admission call is the later custody slice. Until that
+/// slice lands, this buys no path-bound protection and none is claimed.
 fn valid_word(value: &str) -> bool {
     !value.is_empty()
         && !value.starts_with('-')

@@ -1123,6 +1123,27 @@ mod tests {
         }
     }
 
+    /// Falsifier for the `--config` entry of the forbidden record: a row must
+    /// not smuggle a whole engine-side config file past the name filter - the
+    /// referenced file can carry any option the filter refuses on the argv.
+    /// Both spellings (spaced, inline `=`) and the abbreviation leg refuse by
+    /// resolving to `--config`. Pre-fix (no `--config` entry) every probe
+    /// below passed the filter into the launch line.
+    #[test]
+    fn an_engine_side_config_file_is_refused_in_every_spelling() {
+        for smuggle in [
+            "--config evil.json",
+            "--config=evil.json",
+            "--conf=evil.json",
+        ] {
+            let reason = refused_reason(smuggle);
+            assert!(
+                reason.contains("`--config`"),
+                "`{smuggle}` must resolve to `--config`: {reason}"
+            );
+        }
+    }
+
     #[test]
     fn benign_extra_args_still_pass_through() {
         // The only real usage in the catalog (ModelConf/embeddinggemma-2-GGUF.yaml).

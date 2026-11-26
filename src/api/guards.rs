@@ -166,9 +166,12 @@ pub(super) fn token_matches(given: &[u8], expected: &[u8]) -> bool {
 ///   ports; a hostname, an address outside the bind, a foreign port or a missing
 ///   `Host` is refused `400` before any handler runs (DNS-rebinding guard; the
 ///   gate runs on every request, not only the ones that bother to declare a Host);
-/// - **Origin** (when the client sends one — browsers do on cross-site POSTs) must
-///   match the request's Host authority, else `403` (CSRF guard);
-/// - a **POST** body must declare `application/json`, else `415`;
+/// - **Origin** (when the client sends one - browsers do on cross-site mutating
+///   requests) must match the request's Host authority on any non-safe method
+///   (anything other than GET, HEAD, OPTIONS), else `403` (CSRF guard);
+/// - a mutating request must declare `Content-Type: application/json`, else `415`
+///   (strict by default: a future bodyless mutating method revisits this rule
+///   before it joins the routes);
 /// - the **request id** comes from the client's `x-request-id` only when it is
 ///   short and printable (see `accepted_request_id`) and is generated otherwise,
 ///   echoed in the response header, and logged at request completion (G6).
@@ -267,7 +270,20 @@ fn reject_reason(state: &ApiState, request: &axum::extract::Request) -> Option<A
             });
         }
     }
-    if request.method() == axum::http::Method::POST {
+    // The Origin and JSON gates run on every mutating method - anything other
+    // than GET, HEAD, and OPTIONS (the RFC 9110 safe set). Every mutating
+    // route this harness serves today is a POST, so widening the set from
+    // POST alone changes no current answer; it closes the silent bypass a
+    // future PUT/DELETE/PATCH route would otherwise walk into, because both
+    // gates would have quietly skipped it. The JSON rule is strict by default
+    // on the whole mutating set: a future bodyless mutating method must
+    // revisit whether a `Content-Type: application/json` declaration is what
+    // it should demand before it joins the routes.
+    let method = request.method();
+    let mutating = !(method == axum::http::Method::GET
+        || method == axum::http::Method::HEAD
+        || method == axum::http::Method::OPTIONS);
+    if mutating {
         if let Some(origin) = headers
             .get(axum::http::header::ORIGIN)
             .and_then(|value| value.to_str().ok())
@@ -281,7 +297,8 @@ fn reject_reason(state: &ApiState, request: &axum::extract::Request) -> Option<A
             if !same_authority {
                 return Some(ApiError::Forbidden {
                     reason: format!(
-                        "Origin `{origin}` does not match this listener; cross-site POSTs are refused (CSRF guard)"
+                        "Origin `{origin}` does not match this listener; cross-site mutating \
+                         requests are refused (CSRF guard)"
                     ),
                 });
             }
@@ -299,7 +316,8 @@ fn reject_reason(state: &ApiState, request: &axum::extract::Request) -> Option<A
             });
         if !json {
             return Some(ApiError::UnsupportedMedia {
-                reason: "POST bodies must declare Content-Type: application/json".to_string(),
+                reason: "mutating request bodies must declare Content-Type: application/json"
+                    .to_string(),
             });
         }
     }

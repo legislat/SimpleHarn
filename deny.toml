@@ -4,10 +4,16 @@
 
 [advisories]
 yanked = "deny"
-# RUSTSEC-2024-0370 (proc-macro-error unmaintained): reached only through
-# tray-icon -> libappindicator -> gtk -> glib -> glib-macros, a Linux-only
-# chain. This crate builds on Windows only, so the advisory never describes
-# built code. No safe upgrade exists; revisit when tray-icon updates.
+# RUSTSEC-2024-0370 (proc-macro-error unmaintained): reached through
+# tray-icon -> libappindicator/muda -> gtk -> glib -> glib-macros and
+# gtk3-macros, and reverse-tree checks show that chain exists only when the
+# tray feature is built for a Linux target. A Windows build (with or without
+# tray) uses the win32 backend and pulls no gtk chain; a headless build pulls
+# none on any target, and the published Linux artifact builds without tray,
+# so no shipped artifact ever contains the crate. The ignore stays because
+# cargo-deny scans the whole lock graph, platform-conditional edges included.
+# No safe upgrade exists (it is a proc-macro dependency of the pinned glib
+# 0.18 stack); revisit when tray-icon or the gtk stack updates.
 ignore = ["RUSTSEC-2024-0370"]
 
 [licenses]

@@ -26,6 +26,7 @@ pub mod platform;
 pub mod prefetch;
 pub mod process;
 pub mod scheduler;
+pub mod shutdown;
 pub mod testutil;
 #[cfg(feature = "tray")]
 pub mod tray;

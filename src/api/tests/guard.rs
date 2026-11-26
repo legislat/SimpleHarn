@@ -953,3 +953,90 @@ async fn structural_refusals_are_answered_before_the_token_is_consulted() {
         "with nothing structural to refuse, the token is what gates the route"
     );
 }
+
+/// The Origin (CSRF) and JSON content-type gates run on every non-safe method,
+/// not POST alone: a future PUT/DELETE/PATCH route must not walk silently past
+/// both. Falsifier (the pre-fix code): with the gates behind `method == POST`,
+/// every mutating-method probe below reached the token check, so each 403 and
+/// 415 leg answered `401` instead, and the CSRF guard was POST-only while
+/// doctrine states structural refusals precede the token. The safe-method legs
+/// pin the unchanged behavior: a cross-site GET is still a token question, and
+/// a browser preflight (OPTIONS) must not be refused as a mutating request.
+#[tokio::test]
+async fn mutating_methods_other_than_post_run_both_structural_gates() {
+    let config = AppConfig {
+        control_token: Some("a-token-never-presented".to_string()),
+        ..AppConfig::default()
+    };
+    let api = Arc::new(ApiState::new(
+        config,
+        SchedulerHandle::test_dummy(),
+        crate::listeners::ListenerRegistry::new(),
+        Arc::new(crate::budget::LedgerOnlyWitness),
+        BootTimings::default(),
+    ));
+    let structural = |builder: axum::http::request::Builder| async {
+        control_router(Arc::clone(&api))
+            .oneshot(builder.body(Body::empty()).expect("probe request"))
+            .await
+            .expect("in-process probe")
+            .status()
+    };
+    for (label, method_probe) in [
+        ("PUT", Request::put("/har/rescan")),
+        ("DELETE", Request::delete("/har/rescan")),
+        ("PATCH", Request::patch("/har/rescan")),
+    ] {
+        assert_eq!(
+            structural(
+                method_probe
+                    .header("host", "127.0.0.1:8708")
+                    .header("content-type", "application/json")
+                    .header("origin", "http://evil.example")
+            )
+            .await,
+            StatusCode::FORBIDDEN,
+            "a cross-site {label} is a 403, never a 401"
+        );
+    }
+    for (label, method_probe) in [
+        ("PUT", Request::put("/har/rescan")),
+        ("DELETE", Request::delete("/har/rescan")),
+        ("PATCH", Request::patch("/har/rescan")),
+    ] {
+        assert_eq!(
+            structural(
+                method_probe
+                    .header("host", "127.0.0.1:8708")
+                    .header("origin", "http://127.0.0.1:8708")
+            )
+            .await,
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "a {label} without an application/json declaration is a 415, never a 401"
+        );
+    }
+    // Unchanged behavior for the safe set: GET keeps answering the token
+    // question even with a cross-site Origin (the CSRF gate is not widened to
+    // it), and a preflight OPTIONS must not be refused as mutating.
+    let get_cross_site = structural(
+        Request::get("/har/status")
+            .header("host", "127.0.0.1:8708")
+            .header("origin", "http://evil.example"),
+    )
+    .await;
+    assert_eq!(
+        get_cross_site,
+        StatusCode::UNAUTHORIZED,
+        "a safe GET with a foreign Origin is still the token's call, not a 403"
+    );
+    let preflight = structural(
+        Request::options("/har/rescan")
+            .header("host", "127.0.0.1:8708")
+            .header("origin", "http://evil.example"),
+    )
+    .await;
+    assert!(
+        preflight != StatusCode::FORBIDDEN && preflight != StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        "a preflight OPTIONS must not meet the mutating gates, got {preflight}"
+    );
+}

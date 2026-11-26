@@ -255,7 +255,7 @@ pub(super) fn persist_default_model(
             tracing::warn!(error = %error, "could not write config backup; continuing");
         }
     }
-    if let Err(error) = std::fs::rename(&tmp, &path) {
+    if let Err(error) = crate::model::writeback::rename_with_retry(&tmp, &path) {
         // The temp is ours alone; leaving it behind turned a failed write into
         // permanent litter (writeback does the same on its rename failure).
         let _ = std::fs::remove_file(&tmp);
