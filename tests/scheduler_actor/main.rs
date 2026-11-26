@@ -5,8 +5,11 @@
 
 #[path = "../mock_runtime.rs"]
 mod mock_runtime;
+#[path = "../port_plan.rs"]
+mod port_plan;
 
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::budget::{MemorySample, VramWitness};
 use simpleharn::config::{AppConfig, CategoryId};
 use simpleharn::engine::llama::LlamaAdapter;
@@ -24,10 +27,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 fn config(load_timeout_s: u64) -> AppConfig {
-    AppConfig {
+    let mut config = AppConfig {
         load_timeout_s,
         ..AppConfig::default()
-    }
+    };
+    // Parallel schedulers must never share a planned engine port: the spawn
+    // probe binds it, and two schedulers on one number refuse each other.
+    reserve_engine_plan(&mut config);
+    config
 }
 
 type Spec = (&'static str, &'static str, CategoryId, Option<f64>);
@@ -81,10 +88,14 @@ fn harness5(cfg: AppConfig, specs: &[Spec5]) -> (SchedulerHandle, MockRuntime) {
 /// `harness5` against a caller-supplied witness, for the cases that must control when
 /// an admission decision is allowed to land.
 fn harness5_witness(
-    cfg: AppConfig,
+    mut cfg: AppConfig,
     specs: &[Spec5],
     witness: Arc<dyn VramWitness>,
 ) -> (SchedulerHandle, MockRuntime) {
+    // Catch every entry path, including configs a test built inline rather than
+    // through `config`: categories still on the automatic plan get this
+    // fixture's own reserved ports, an already-reserved plan stays untouched.
+    reserve_engine_plan(&mut cfg);
     let runtime = MockRuntime::new();
     let mut adapters = BTreeMap::new();
     let adapter: Arc<dyn simpleharn::engine::EngineAdapter> = Arc::new(MockAdapter);

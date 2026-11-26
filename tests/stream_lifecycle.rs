@@ -15,11 +15,14 @@
 //! Both tests are cardless: ephemeral ports, no real engine, no model load,
 //! bounded timeouts on every await.
 
+mod port_plan;
+
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::response::Response;
 use axum::Router;
+use port_plan::reserve_engine_plan;
 use serde_json::Value;
 use simpleharn::api::{category_router, control_router, ApiState, BootTimings};
 use simpleharn::budget::LedgerOnlyWitness;
@@ -440,10 +443,11 @@ fn wire_app(model: &str, engine: &str) -> (Router, Router, Arc<WireRuntime>, Pat
         format!("name: {model}\nengine: {engine}\ncategory: WORK\nvram_gb: 4.0\n"),
     )
     .expect("model yaml");
-    let config = AppConfig {
+    let mut config = AppConfig {
         source_path: Some(dir.join("simpleharn.json")),
         ..AppConfig::default()
     };
+    reserve_engine_plan(&mut config);
     let runtime = Arc::new(WireRuntime::new());
     let scheduler = Scheduler::start(
         config.clone(),

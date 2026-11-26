@@ -4,9 +4,11 @@
 //! named blockers when nothing evictable can cover the deficit.
 
 mod mock_runtime;
+mod port_plan;
 
 use async_trait::async_trait;
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::budget::{MemorySample, VramWitness};
 use simpleharn::config::{AppConfig, CategoryId};
 use simpleharn::engine::mock::MockAdapter;
@@ -142,6 +144,7 @@ fn harness_rt_dir(
     cfg.category_mut(CategoryId::Aux)
         .expect("default config has AUX")
         .max_models = aux_slots;
+    reserve_engine_plan(&mut cfg);
     let handle = Scheduler::start(
         cfg,
         dir.clone(),
@@ -181,6 +184,7 @@ fn harness_rt_idle(
     cfg.category_mut(CategoryId::Rp)
         .expect("default config has RP")
         .idle_timeout_s = rp_idle_s;
+    reserve_engine_plan(&mut cfg);
     let handle = Scheduler::start(
         cfg,
         write_modelconf(specs),
@@ -1019,6 +1023,7 @@ fn harness_ext_rt(
     cfg.category_mut(CategoryId::Aux)
         .expect("default config has AUX")
         .max_models = 1;
+    reserve_engine_plan(&mut cfg);
     let handle = Scheduler::start(
         cfg,
         write_modelconf_ext(specs),
@@ -1960,6 +1965,7 @@ async fn a_stale_victim_never_aborts_the_reap_of_the_own_spawn() {
     cfg.category_mut(CategoryId::Aux)
         .expect("default config has AUX")
         .max_models = 1;
+    reserve_engine_plan(&mut cfg);
     let handle = Scheduler::start(
         cfg,
         write_modelconf(&[

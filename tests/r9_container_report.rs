@@ -8,8 +8,10 @@
 #![cfg(windows)]
 
 mod mock_runtime;
+mod port_plan;
 
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::config::{AppConfig, CategoryId};
 use simpleharn::engine::llama::LlamaAdapter;
 use simpleharn::engine::mock::MockAdapter;
@@ -87,11 +89,13 @@ fn harness(specs: &[Spec]) -> (SchedulerHandle, MockRuntime, PathBuf) {
     ] {
         adapters.insert(adapter.engine_id().to_string(), adapter);
     }
+    let mut cfg = AppConfig {
+        load_timeout_s: 5,
+        ..AppConfig::default()
+    };
+    reserve_engine_plan(&mut cfg);
     let handle = Scheduler::start(
-        AppConfig {
-            load_timeout_s: 5,
-            ..AppConfig::default()
-        },
+        cfg,
         dir.clone(),
         adapters,
         Arc::new(runtime.clone()) as Arc<dyn EngineRuntime>,
@@ -459,11 +463,13 @@ fn trust_harness(container: &'static str) -> TrustHarness {
             container,
         }) as Arc<dyn EngineAdapter>,
     );
+    let mut cfg = AppConfig {
+        load_timeout_s: 5,
+        ..AppConfig::default()
+    };
+    reserve_engine_plan(&mut cfg);
     let handle = Scheduler::start(
-        AppConfig {
-            load_timeout_s: 5,
-            ..AppConfig::default()
-        },
+        cfg,
         dir.clone(),
         adapters,
         Arc::new(runtime.clone()) as Arc<dyn EngineRuntime>,
@@ -549,16 +555,18 @@ async fn a_failed_launch_snapshots_its_container_log_and_can_snapshot_again() {
             container: "ninfer-doomed",
         }) as Arc<dyn EngineAdapter>,
     );
+    let mut cfg = AppConfig {
+        load_timeout_s: 1,
+        // The held kill never completes, so the leg ends on this deadline
+        // expiring (Failed -> Reap), not on a confirmed release. The default
+        // 60 s waited out twice per run for no additional proof; 1 s is the
+        // tightest legal deadline and takes the same failure path.
+        release_timeout_s: 1,
+        ..AppConfig::default()
+    };
+    reserve_engine_plan(&mut cfg);
     let handle = Scheduler::start(
-        AppConfig {
-            load_timeout_s: 1,
-            // The held kill never completes, so the leg ends on this deadline
-            // expiring (Failed -> Reap), not on a confirmed release. The default
-            // 60 s waited out twice per run for no additional proof; 1 s is the
-            // tightest legal deadline and takes the same failure path.
-            release_timeout_s: 1,
-            ..AppConfig::default()
-        },
+        cfg,
         dir.clone(),
         adapters,
         Arc::new(runtime.clone()) as Arc<dyn EngineRuntime>,

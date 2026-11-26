@@ -36,9 +36,11 @@
 //!   whole run replays identically and one test's draws cannot shift another's.
 
 mod mock_runtime;
+mod port_plan;
 
 use async_trait::async_trait;
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::budget::{
     free_gb, need_gb, AdmissionError, AttributionQuality, Gibibytes, MemorySample, VramWitness,
 };
@@ -136,10 +138,11 @@ fn sample(total: f64, used: f64) -> MemorySample {
 /// (`tests/admission_conformance.rs` `harness`). Returns the runtime handle too: the
 /// kill/spawn counts falsify every "refused before any spawn" claim.
 fn harness(
-    cfg: AppConfig,
+    mut cfg: AppConfig,
     specs: &[(&str, &str)],
     witness: FakeWitness,
 ) -> (SchedulerHandle, MockRuntime, PathBuf) {
+    reserve_engine_plan(&mut cfg);
     let runtime = MockRuntime::new();
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
     adapters.insert("mock".to_string(), Arc::new(MockAdapter));

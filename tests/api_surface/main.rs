@@ -9,6 +9,8 @@
 
 #[path = "../mock_runtime.rs"]
 mod mock_runtime;
+#[path = "../port_plan.rs"]
+mod port_plan;
 
 mod catalog_retag;
 mod config_writeback;
@@ -19,6 +21,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::Router;
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use serde_json::Value;
 use simpleharn::api::{category_router, control_router, ApiState};
 use simpleharn::config::{AppConfig, CategoryId};
@@ -92,6 +95,11 @@ fn build_app(
     if config.source_path.is_none() {
         config.source_path = Some(dir.join(TEST_CONFIG_NAME));
     }
+    // The config is final here (slot counts included), so this is the choke
+    // point where every api_surface app gets its own reserved engine plan:
+    // parallel apps sharing the default plan probe one port and refuse each
+    // other's spawns.
+    reserve_engine_plan(&mut config);
     let scheduler = Scheduler::start(
         config.clone(),
         dir.clone(),

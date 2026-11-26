@@ -8,8 +8,10 @@
 //! is really made.
 
 mod mock_runtime;
+mod port_plan;
 
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::budget::LedgerOnlyWitness;
 use simpleharn::config::{AppConfig, CategoryId};
 use simpleharn::engine::mock::MockAdapter;
@@ -38,9 +40,10 @@ fn write_modelconf(
 }
 
 fn harness(
-    cfg: AppConfig,
+    mut cfg: AppConfig,
     specs: &[(&'static str, &'static str, CategoryId, f64, Option<&str>)],
 ) -> (SchedulerHandle, MockRuntime) {
+    reserve_engine_plan(&mut cfg);
     let runtime = MockRuntime::new();
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
     adapters.insert("mock".to_string(), Arc::new(MockAdapter));

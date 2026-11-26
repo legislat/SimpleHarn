@@ -6,9 +6,11 @@
 //! skip-safe live NVML sample.
 
 mod mock_runtime;
+mod port_plan;
 
 use async_trait::async_trait;
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::budget::{parse_smi_sample, MemorySample, VramWitness};
 use simpleharn::config::{AppConfig, CategoryId};
 use simpleharn::engine::mock::MockAdapter;
@@ -91,10 +93,11 @@ fn sample(total: f64, used: f64, processes: Vec<(u32, f64)>) -> MemorySample {
 }
 
 fn harness(
-    cfg: AppConfig,
+    mut cfg: AppConfig,
     specs: &[(&'static str, CategoryId)],
     witness: Arc<dyn VramWitness>,
 ) -> SchedulerHandle {
+    reserve_engine_plan(&mut cfg);
     let runtime = MockRuntime::new();
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
     adapters.insert("mock".to_string(), Arc::new(MockAdapter));
@@ -760,10 +763,11 @@ async fn a_nonsense_witness_reading_is_never_persisted() {
 /// `harness` with a per-model `vram_gb` (the shared one pins 4 GiB for everything).
 /// Returns the catalog directory too: write-back tests read the yaml back from it.
 fn harness_models(
-    cfg: AppConfig,
+    mut cfg: AppConfig,
     specs: &[(&'static str, CategoryId, f64)],
     witness: Arc<dyn VramWitness>,
 ) -> (SchedulerHandle, std::path::PathBuf) {
+    reserve_engine_plan(&mut cfg);
     let runtime = MockRuntime::new();
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
     adapters.insert("mock".to_string(), Arc::new(MockAdapter));

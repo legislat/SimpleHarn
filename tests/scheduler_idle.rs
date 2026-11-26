@@ -3,8 +3,10 @@
 //! guard keeps the sweep off swapping slots; and WORK's never-idle default holds.
 
 mod mock_runtime;
+mod port_plan;
 
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::budget::LedgerOnlyWitness;
 use simpleharn::config::{AppConfig, CategoryId};
 use simpleharn::engine::mock::MockAdapter;
@@ -14,7 +16,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-fn harness(config: AppConfig) -> SchedulerHandle {
+fn harness(mut config: AppConfig) -> SchedulerHandle {
+    reserve_engine_plan(&mut config);
     let runtime = MockRuntime::new();
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
     adapters.insert("mock".to_string(), Arc::new(MockAdapter));

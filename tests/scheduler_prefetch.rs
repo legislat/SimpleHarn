@@ -15,9 +15,11 @@
 //! select no targets and would observe nothing.
 
 mod mock_runtime;
+mod port_plan;
 
 use async_trait::async_trait;
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::budget::{MemorySample, VramWitness};
 use simpleharn::config::{AppConfig, CategoryId};
 use simpleharn::engine::mock::MockAdapter;
@@ -100,10 +102,11 @@ fn harness(knob: bool, rows: &[Row]) -> (SchedulerHandle, MockRuntime) {
     adapters.insert("mock".to_string(), Arc::new(MockAdapter));
     adapters.insert("mock-hold-kill".to_string(), Arc::new(MockAdapter));
     adapters.insert("llama".to_string(), Arc::new(MockAdapter));
-    let cfg = AppConfig {
+    let mut cfg = AppConfig {
         prefetch_on_release: knob,
         ..AppConfig::default()
     };
+    reserve_engine_plan(&mut cfg);
     let handle = Scheduler::start(
         cfg,
         write_modelconf(rows),

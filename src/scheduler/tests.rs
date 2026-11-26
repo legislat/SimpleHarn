@@ -26,6 +26,7 @@ mod fault;
 mod fit;
 mod gate;
 mod park;
+mod preflight;
 mod ram;
 mod release;
 mod swap;

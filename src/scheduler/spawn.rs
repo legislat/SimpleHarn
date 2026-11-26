@@ -1,7 +1,7 @@
 //! Actor-side spawn lifecycle: the post-release settle window, the launch
-//! preflight, the spawn, the readiness probe, the ownership-scoped reap, and
-//! the bounded late-release watch. The state and the actor loop stay owned by
-//! `mod.rs`.
+//! preflight, the engine-port bind probe, the spawn, the readiness probe, the
+//! ownership-scoped reap, and the bounded late-release watch. The state and the
+//! actor loop stay owned by `mod.rs`.
 
 use crate::engine::{EngineError, LaunchSpec, Probe, SpawnError};
 use crate::model::ModelEntry;
@@ -321,8 +321,58 @@ impl ActorState {
             .map_err(SchedulerError::from)
     }
 
+    /// Re-poll window of the pre-spawn engine-port bind probe: an
+    /// `AddrInUse` answer can be the tail of a release that confirmed only
+    /// moments ago, and that clears within a few polls; every other bind
+    /// refusal is final, because a reserved port range does not open inside
+    /// a probe window.
+    const PORT_PROBE_WINDOW: Duration = Duration::from_millis(250);
+    const PORT_PROBE_POLL: Duration = Duration::from_millis(25);
+
+    /// Bind-probe the slot's engine port on loopback before handing the spec
+    /// to the runtime. A port that cannot be bound here cannot be bound by
+    /// the engine either — when Windows reserves a port range for its
+    /// container networking, every engine started against a covered port
+    /// dies at its own bind with a bare exit code and the load fails as an
+    /// opaque upstream error — so the refusal lands here, naming the port,
+    /// instead of after a doomed process start.
+    ///
+    /// The probe binds and drops immediately: it carries no socket to the
+    /// spawn, so it cannot race the engine it probes. The probe proves
+    /// availability only up to its own drop: a foreign process can still
+    /// claim the port between the drop and the engine's bind, so the
+    /// engine's bind remains the final authority.
+    async fn engine_port_bind_probe(port: u16) -> Result<(), String> {
+        let addr = std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, port));
+        let started = Instant::now();
+        loop {
+            match tokio::net::TcpListener::bind(addr).await {
+                Ok(listener) => {
+                    drop(listener);
+                    return Ok(());
+                }
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::AddrInUse
+                        && started.elapsed() < Self::PORT_PROBE_WINDOW =>
+                {
+                    tokio::time::sleep(Self::PORT_PROBE_POLL).await;
+                }
+                Err(error) => {
+                    return Err(format!(
+                        "engine port {port} is not bindable: {error} (another listener \
+                         holds it, or the port sits inside a reserved Windows excluded \
+                         port range: check `netsh int ipv4 show excludedportrange \
+                         protocol=tcp`)"
+                    ));
+                }
+            }
+        }
+    }
+
     /// `Dispose -> Spawn` edge (G12): only called after release is confirmed, or when
-    /// there was nothing to release.
+    /// there was nothing to release. Before the runtime sees the spec, the slot's
+    /// engine port is bind-probed ([`Self::engine_port_bind_probe`]) and an
+    /// unusable port refuses the job with a spawn failure naming the port.
     pub(super) fn begin_spawn(&mut self, job_id: JobId) -> bool {
         if !self.step(job_id, SwapState::Spawn) {
             return false;
@@ -340,6 +390,13 @@ impl ActorState {
                 return true;
             }
         };
+        // Refuse an unusable engine port before any process starts. The probe
+        // never binds a protected port even for an instant: config validation
+        // keeps the engine-port plan disjoint from that set, so this filter is
+        // the second fence, not the only guarantee. A slot the plan never
+        // assigned (port 0) has nothing to probe.
+        let probe_port = (engine_port != 0 && !self.cfg.protected_ports.contains(&engine_port))
+            .then_some(engine_port);
         let kind = match &spec.container {
             Some(name) => ResourceKind::Container { name: name.clone() },
             None => ResourceKind::ChildProcess,
@@ -364,6 +421,20 @@ impl ActorState {
         let tx = self.tx.clone();
         let runtime = Arc::clone(&self.runtime);
         let handle = tokio::spawn(async move {
+            if let Some(port) = probe_port {
+                if let Err(reason) = Self::engine_port_bind_probe(port).await {
+                    tracing::warn!(
+                        %job_id,
+                        port,
+                        "engine port refused by the pre-spawn bind probe: the spawn never ran"
+                    );
+                    let _ = tx.send(ActorMsg::Event {
+                        job: job_id,
+                        event: spawn_error(reason),
+                    });
+                    return;
+                }
+            }
             let _ = tx.send(ActorMsg::Event {
                 job: job_id,
                 event: Event::Spawned(runtime.spawn(&spec, ticket).await),

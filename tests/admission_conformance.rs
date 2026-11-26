@@ -25,11 +25,13 @@
 //!   release projection to `min` and asserts this target goes red.
 
 mod mock_runtime;
+mod port_plan;
 
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::api::{control_router, ApiState, BootTimings};
 use simpleharn::budget::{LedgerOnlyWitness, MemorySample, VramWitness};
 use simpleharn::config::{AppConfig, CategoryId};
@@ -131,10 +133,11 @@ fn sample(total: f64, used: f64) -> MemorySample {
 /// keys the plain per-model builder cannot. Returns the runtime handle too:
 /// the kill/spawn counts falsify a "refused before any spawn" claim.
 fn harness(
-    cfg: AppConfig,
+    mut cfg: AppConfig,
     specs: &[(&str, &str)],
     witness: Arc<dyn VramWitness>,
 ) -> (SchedulerHandle, MockRuntime, PathBuf) {
+    reserve_engine_plan(&mut cfg);
     let runtime = MockRuntime::new();
     let mut adapters: BTreeMap<String, Arc<dyn EngineAdapter>> = BTreeMap::new();
     adapters.insert("mock".to_string(), Arc::new(MockAdapter));

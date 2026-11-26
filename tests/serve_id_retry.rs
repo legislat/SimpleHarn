@@ -7,11 +7,13 @@
 //! and every proxied request carried the harness name.
 
 mod mock_runtime;
+mod port_plan;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::Router;
 use mock_runtime::{MockLateIdAdapter, MockRuntime};
+use port_plan::reserve_engine_plan;
 use serde_json::Value;
 use simpleharn::api::{category_router, control_router, ApiState, BootTimings};
 use simpleharn::budget::LedgerOnlyWitness;
@@ -82,10 +84,11 @@ fn app() -> (Router, Router, std::path::PathBuf) {
         "name: late\nengine: mock-late-discovery\ncategory: WORK\nvram_gb: 4.0\n",
     )
     .expect("model yaml");
-    let config = AppConfig {
+    let mut config = AppConfig {
         source_path: Some(dir.join("simpleharn.json")),
         ..AppConfig::default()
     };
+    reserve_engine_plan(&mut config);
     let scheduler = Scheduler::start(
         config.clone(),
         dir.clone(),
@@ -165,10 +168,11 @@ fn silent_app(model: &str) -> (Router, Router) {
         format!("name: {model}\nengine: mock-nodiscovery\ncategory: WORK\nvram_gb: 4.0\n"),
     )
     .expect("model yaml");
-    let config = AppConfig {
+    let mut config = AppConfig {
         source_path: Some(dir.join("simpleharn.json")),
         ..AppConfig::default()
     };
+    reserve_engine_plan(&mut config);
     let scheduler = Scheduler::start(
         config.clone(),
         dir,

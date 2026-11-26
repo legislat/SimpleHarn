@@ -6,8 +6,10 @@
 //! container-backed spawns can carry the diagnosis at all).
 
 mod mock_runtime;
+mod port_plan;
 
 use mock_runtime::MockRuntime;
+use port_plan::reserve_engine_plan;
 use simpleharn::config::{AppConfig, CategoryId};
 use simpleharn::engine::mock::MockAdapter;
 use simpleharn::engine::{EngineAdapter, EngineRuntime, LaunchSpec};
@@ -68,15 +70,17 @@ fn harness(rows: &[(&str, &'static str)]) -> (SchedulerHandle, MockRuntime, Path
             Arc::new(CarryAdapter { engine, container }) as Arc<dyn EngineAdapter>,
         );
     }
+    let mut cfg = AppConfig {
+        load_timeout_s: 1,
+        // The never-ready engine's kill parks (mock_runtime's fake seam), so
+        // the release phase would otherwise burn the production 30 s window
+        // on every failure leg; two seconds exercises the same path.
+        release_timeout_s: 2,
+        ..AppConfig::default()
+    };
+    reserve_engine_plan(&mut cfg);
     let handle = Scheduler::start(
-        AppConfig {
-            load_timeout_s: 1,
-            // The never-ready engine's kill parks (mock_runtime's fake seam), so
-            // the release phase would otherwise burn the production 30 s window
-            // on every failure leg; two seconds exercises the same path.
-            release_timeout_s: 2,
-            ..AppConfig::default()
-        },
+        cfg,
         dir.clone(),
         adapters,
         Arc::new(runtime.clone()) as Arc<dyn EngineRuntime>,

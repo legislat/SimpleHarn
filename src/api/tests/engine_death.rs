@@ -118,13 +118,16 @@ async fn a_proxy_request_that_witnessed_its_engine_death_terminalizes_it() {
 /// head as death (or report on any 502) and the resident here goes red.
 #[tokio::test]
 async fn an_engine_that_drops_the_connection_serves_502_but_stays_serving() {
-    let engine = std::net::TcpListener::bind("127.0.0.1:0").expect("closed-before-answer engine");
-    let port = engine.local_addr().expect("addr").port();
-    std::thread::spawn(move || {
-        // The `Other` class engine: accepts, then drops the socket before any
-        // response head — a reset/closed connection, never a refused connect.
-        while engine.accept().is_ok() {}
-    });
+    // The honest spawn order: every real engine is harness-spawned and finds its
+    // planned port FREE at spawn time — the pre-spawn bind probe refuses a held
+    // port on purpose, so a listener may not sit on the plan before the load.
+    // The port is only reserved here (bind-then-drop, the same idiom as the
+    // fixture helper): the load's probe sees a free port and passes, and the
+    // engine's listener then appears AFTER the spawn, exactly as a real
+    // engine's bind would.
+    let reserved = std::net::TcpListener::bind("127.0.0.1:0").expect("free engine port");
+    let port = reserved.local_addr().expect("addr").port();
+    drop(reserved);
     let mut config = aux_config_on_reserved_ports(1, 120);
     config
         .category_mut(CategoryId::Aux)
@@ -136,6 +139,34 @@ async fn an_engine_that_drops_the_connection_serves_502_but_stays_serving() {
     );
     let (status, body) = post_control(&api, "/har/load", json!({ "model": "rc02-closed" })).await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    // The spawned engine's listener, established after the load. The port was
+    // released only moments ago, so the bind is retried inside a short bounded
+    // window: the kernel finishing with the dropped reservation socket, or a
+    // sibling test briefly reusing the ephemeral number, are the only ways it
+    // can answer `AddrInUse` here, and both clear within milliseconds; a
+    // refusal that outlasts the window is an environment fault, not a product
+    // one. Nothing on the harness side binds this port after the probe: the
+    // scripted runtime spawns no process and its readiness answer is scripted.
+    let rebind_deadline = tokio::time::Instant::now() + Duration::from_millis(500);
+    let engine = loop {
+        match std::net::TcpListener::bind(std::net::SocketAddr::from((
+            std::net::Ipv4Addr::LOCALHOST,
+            port,
+        ))) {
+            Ok(listener) => break listener,
+            Err(_) if tokio::time::Instant::now() < rebind_deadline => {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            Err(error) => {
+                panic!("the planned engine port {port} never freed up for its engine: {error}")
+            }
+        }
+    };
+    std::thread::spawn(move || {
+        // The `Other` class engine: accepts, then drops the socket before any
+        // response head — a reset/closed connection, never a refused connect.
+        while engine.accept().is_ok() {}
+    });
     let (status, body) = post_aux_chat(&api, chat_body("rc02-closed")).await;
     assert_eq!(status, StatusCode::BAD_GATEWAY, "{body}");
     assert_eq!(body["code"], json!("upstream"), "{body}");
