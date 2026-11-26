@@ -167,6 +167,10 @@ The queue index lives in `handoff/PENDING_CHECKLIST.md`. One row per task, one l
 The queue carries no commit hashes, no test counts, and no narratives. Those live in the
 task file or in evidence.
 
+A DONE row stays in the queue index for at most 2 days (operator rule,
+2026-11-26). Older DONE rows move to `handoff/archive/CHECKLIST_ARCHIVE.md`
+when spotted or during maintenance, with the row text unchanged.
+
 ## Definition of Ready
 
 A task may start only when all of these hold:
