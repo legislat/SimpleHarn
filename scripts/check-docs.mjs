@@ -250,17 +250,43 @@ function checkInlinePaths(rel, entries) {
   }
 }
 
-// Rule 8: the wire enum for measured_attribution. The parser refuses an
-// unknown token with the BadAttribution error, whose string lists every
-// variant the code accepts; the check takes that list as truth and demands
-// each variant in the API.md field line.
+// Rule 8: the wire enum for measured_attribution. Three lists must agree:
+// the parse arms the parser actually accepts, the BadAttribution error
+// string that names them, and the API.md field line. The check compares
+// arms to error string first (a new arm without a string update, or a
+// string entry no arm accepts, fails here), then demands every arm in the
+// API.md line.
 function checkAttributionWire() {
   const apiRel = "docs/reference/API.md";
+  const srcRel = "src/model/mod.rs";
   const variants = wireAttributionVariants();
   if (!variants) {
     fail(apiRel, 1,
       "wire cross-check: cannot parse the measured_attribution variant list from the BadAttribution error string in src/model/mod.rs");
     return;
+  }
+  const arms = attributionParseArms();
+  if (!arms) {
+    fail(srcRel, 1,
+      "wire cross-check: cannot parse the measured_attribution parse arms from src/model/mod.rs");
+    return;
+  }
+  const src = readFileSync(join(ROOT, srcRel), "utf8").split(/\r?\n/);
+  const armLine = (v) => {
+    const n = src.findIndex((l) => l.includes(`"${v}" => Ok(MeasuredAttribution::`));
+    return n < 0 ? 1 : n + 1;
+  };
+  for (const v of variants) {
+    if (!arms.includes(v)) {
+      fail(srcRel, armLine(v),
+        `wire cross-check: the BadAttribution error string lists \`${v}\` but no parse arm accepts it (arms: ${arms.join("|")})`);
+    }
+  }
+  for (const v of arms) {
+    if (!variants.includes(v)) {
+      fail(srcRel, armLine(v),
+        `wire cross-check: parse arm \`${v}\` is missing from the BadAttribution error string (string lists: ${variants.join("|")})`);
+    }
   }
   if (!existsSync(join(ROOT, apiRel))) {
     fail(apiRel, 1, "wire cross-check: docs/reference/API.md is missing");
@@ -276,12 +302,23 @@ function checkAttributionWire() {
   for (let i = start + 1; i < api.length && /^\s{2,}\S/.test(api[i]); i += 1) {
     block += " " + api[i];
   }
-  for (const v of variants) {
+  for (const v of arms) {
     if (!block.includes(v)) {
       fail(apiRel, start + 1,
-        `wire cross-check: API.md measured_attribution list is missing the wire variant \`${v}\` (src/model/mod.rs parses ${variants.join("|")})`);
+        `wire cross-check: API.md measured_attribution list is missing the wire variant \`${v}\` (src/model/mod.rs parses ${arms.join("|")})`);
     }
   }
+}
+
+// The parse arms: string literals the attribution parser answers with Ok.
+// This is the wire truth; the error string and the API.md line are checked
+// against it.
+function attributionParseArms() {
+  const srcRel = "src/model/mod.rs";
+  if (!existsSync(join(ROOT, srcRel))) return null;
+  const src = readFileSync(join(ROOT, srcRel), "utf8");
+  const arms = [...src.matchAll(/"([a-z_]+)"\s*=>\s*Ok\(MeasuredAttribution::/g)].map((m) => m[1]);
+  return arms.length > 0 ? [...new Set(arms)] : null;
 }
 
 function wireAttributionVariants() {

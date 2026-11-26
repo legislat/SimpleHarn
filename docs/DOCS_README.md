@@ -184,9 +184,10 @@ style.
   shape-conservative: a letter-leading first segment, no spaces, and an
   extension or a tracked top-level directory. Dated evidence-run names and
   bare domains are not repo paths.
-- One semantic cross-check exists (`check-docs` rule 8): every
-  `measured_attribution` variant that `src/model/mod.rs` parses must appear
-  on the `measured_attribution` line of
+- One semantic cross-check exists (`check-docs` rule 8): the
+  `measured_attribution` parse arms and the `BadAttribution` error string in
+  `src/model/mod.rs` must name the same variants, and every one of those
+  variants must appear on the `measured_attribution` line of
   [docs/reference/API.md](reference/API.md).
 - Durable docs state commands and invariants, not volatile counts or file
   line numbers; dated numbers live in evidence.

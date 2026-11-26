@@ -26,14 +26,23 @@ use std::time::Duration;
 /// process.
 pub fn arm_exit_deadline(deadline: Duration) {
     let armed = std::thread::Builder::new()
-        .name("simpleharn-shutdown-watchdog".to_string())
+        // 11 bytes: inside Linux's 15-character pthread name limit, so the
+        // watchdog keeps its name on a Linux thread dump.
+        .name("sh-watchdog".to_string())
         .spawn(move || {
             std::thread::sleep(deadline);
-            tracing::error!(
-                target: "simpleharn::shutdown",
-                deadline_ms = deadline.as_millis() as u64,
-                "shutdown deadline passed with the process still alive; hard-exiting now \
-                 (this is the deadline, not a crash: shutdown was already requested)"
+            // stderr, not the tracing stack: the wedge this thread exists to
+            // escape can BE the harness log volume (exe and `logs\` beside each
+            // other on a dead network path), and the file sink writes
+            // synchronously on the calling thread - a tracing line here could
+            // park the watchdog on its own log write and lose the bound. The
+            // arm-time line above already landed in the file during normal
+            // operation; this line is best-effort console output only.
+            eprintln!(
+                "simpleharn::shutdown: shutdown deadline of {}ms passed with the process \
+                 still alive; hard-exiting now (this is the deadline, not a crash: \
+                 shutdown was already requested)",
+                deadline.as_millis()
             );
             // Exit code 0: shutdown was requested and served, so the only
             // fault is that the cooperative exit never finished. Skipping
