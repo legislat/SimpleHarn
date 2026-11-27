@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [architect, agent]
 source_of_truth_for: [settled and deferred decisions]
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-27
 review_trigger: new-decision, release
 ---
 
@@ -26,8 +26,11 @@ change lifecycle labels, the section title, and reference qualifiers only; and t
 2026-11-22 hygiene pass may compress prose to decision data while preserving every
 status, date, commit, pointer, and binding clause; and the 2026-11-25 public/private
 pass may replace private-repository evidence-path citations with plain labels while
-preserving every status, date, commit, and binding clause. Ruling text may not change
-and no ruling may be deleted.
+preserving every status, date, commit, and binding clause; and the 2026-11-27
+private-decisions sweep may move rulings that concern the operator or the work
+process (not the app's architecture) to the private decision ledger, preserving
+status, date, and commit there. Ruling text may not change and no ruling may be
+deleted from its home.
 
 ## Contents
 
@@ -138,18 +141,9 @@ and no ruling may be deleted.
   `PUBLISH="${3:-$PORT}"` fallback (the last path that could host-publish a manual
   number) is replaced by `PUBLISH="${3:?...}"`: a missing publish argument fails the
   script, never borrows the host namespace. Live yamls drop the borrowed 8004/8005.
-- **The card window belongs to the handoff, never a served session** (2026-11-02):
-  the agent session is served by engines on this box, so no agent may start harness
-  instances, load models, or run `verify.ps1 -Card`; card evidence comes only from
-  the private wave-verify package run in an operator-spawned session. Behavior changes land
-  in the
-  PACKAGE (selftested cardless); the operator runs the window. Cardless in-tree work
-  (fmt, clippy, `cargo test`, DOM stub) is allowed - it execs no engine.
 
 ## DEFERRED (decided later - tripwire in parentheses re-opens it)
 
-- **FIXTRACK [5]** stale line-cites in frozen `t_switching` -> post-tag.
-- **Share gate-honesty harness with `t_switching`** -> post-tag.
 - **`name:` key** tolerate-iff-equal now -> hard-reject post-tag (frozen suites write
   matching pairs).
 - **Maya typed `maya_vision` overlay; per-engine `import` config mechanism** ->
@@ -185,11 +179,6 @@ references still resolve. Every entry carries one status prefix:
   editing row/config alone (typed or policy-filtered passthrough); hiding row fields
   is fine if adding them back works; requiring an adapter hotfix for a supported knob
   is a HIGH defect | 2026-11-15 | `0fec6b4`
-- **Accepted** Release cadence: normal releases at least seven days apart; urgent
-  hotfixes at most one per 24 hours for a P0, security, or named core-function
-  regression with no workaround; four-segment tags only for urgent hotfixes;
-  `scripts/publish-release.ps1` is the only supported publish path and enforces the
-  interval | 2026-11-13 | `e35515b`
 - **Closed** 13[4] Fork C strict scan + persist-reconcile; `commit_verified` blanket
   kept | 2026-10-28 | `e042b52`
 - **Closed** 13[5] Fork B restore temp+verify+rename + single-slot `.yaml.bak` +
@@ -205,8 +194,6 @@ references still resolve. Every entry carries one status prefix:
   `write_synced` flush-before-publish (inspection-tripwire, declared) | 2026-10-28 |
   `951023f`
 - **Closed** 13[12] `EDITABLE_FLAGS` deleted (dead code) | 2026-10-28 | `951023f`
-- **Rejected** Review "lib 215 (208+7)" finding [2]: per-round counts were true in
-  uncommitted states - decompositions must name their round | 2026-10-28
 - **Accepted** Editor race (harness patch vs operator save) = **acceptable doctrine**:
   edit yamls while harness idle / Rescan after; no CAS guard until doctrine fails |
   2026-10-28
@@ -279,14 +266,6 @@ references still resolve. Every entry carries one status prefix:
   echo `$PORT` (internal 8004, a protected port) while `--publish` honours `$3`, so
   the sole on-disk artifact of a launch misdirected a whole post-mortem |
   2026-10-29
-- **Closed** Chunk 10 (EnginePolicy / strata-custody, Fork C) PROMOTED to priority 1:
-  build first, ahead of the cardless Wave A cluster; cancels "Build lands when
-  promoted". Enforcement for the LOCKED external-engines rule; retires five debts:
-  full EnginePolicy custody, `extra_args` enforcement, `cpu_offload` sibling scoping,
-  reload-drift profile-layer variant, strata policy-field claim | 2026-10-29
-- **Implemented** Test-honesty batch 18/19/20 committed (14 items, mock_runtime
-  rebuild verdict FAITHFUL, KILL_ON_CLOSE finally tested) | 2026-10-28 | `a718149`
-- **Implemented** Docs-truth batch 22[1]/22[2] committed | 2026-10-28 | `301f5d0`
 - **Implemented** (empirical, manual test 2026-11-01) ninfer serve args ride the SPACE
   form - both shipped parsers reject `--flag=value`; `valid_serve_arg` admits bare
   value tokens, refuses single-dash options and every denylist name/prefix; an
@@ -440,11 +419,6 @@ references still resolve. Every entry carries one status prefix:
   schema and flag ownership). The single-writer scheduler semantics are unchanged.
   Implemented in the adapter; operator card run is final acceptance | 2026-11-03 |
   `TASK-BASALT`
-- **Accepted** Governance D1-D11 adopted: durable core tracked, live state local,
-  DESIGN historical, decisions in `docs/architecture/DECISIONS.md`, maximum two
-  working subagents, narrative commits, cardless CI, local gotchas/findings,
-  live-layer backup, version/changelog coupling, ASD-STE100 for durable docs. N2
-  closed | 2026-11-02 | `1bd78c8`
 - **Accepted** CALIBRATED (TASK-R11-FIT, C1 capture at `805c7d0`,
   the private wave-verify logs): llama Fit constants stay margin 3 / surcharge 2 /
   session slack 2.0. C1 row books 31,717 MiB / 1024 (CUDA0 only; Host excluded) +
@@ -495,21 +469,10 @@ references still resolve. Every entry carries one status prefix:
   blocking feature, narrow `tokio` features, dedupe `base64`/`syn` where a compatible
   upgrade exists. No new dependency; report any duplicate that cannot be removed
   without an upgrade | 2026-11-03 | `TASK-N7-DEPS`
-- **Implemented** RULED (release): release **1.1.0** after the chunked R2 review.
-  Version, changelog, README release claim, tag, deploy, and artifact hash move
-  together | 2026-11-03 | `TASK-RELEASE-NEXT`
 - **Implemented** RULED (import): GO for `simplehar-se import strata --apply
   <row.yaml>`: merge the emitted block into the live row, keep scheduling keys and
   `strata_python`, refuse on conflict, delete `strata_config` | 2026-11-03 |
   `TASK-IMPORT-APPLY`
-- **Accepted** RULED (priority): after release 1.1.0, Basalt is priority 1 and Berth
-  borrows priority 2; neither starts before the release | 2026-11-03 | `TASK-BASALT`,
-  `TASK-BERTH-BORROWS`
-- **Accepted** RULED (BL-23): the private FINDINGS-OPEN register is the single technical-debt
-  register (open findings and debt rows with severity, owner, target). Intake, triage,
-  aging, and accepted-risk rules are in its header. Deferred decisions live in this
-  ledger; aging reviewed at cycle start from task-file dates | 2026-11-03 |
-  `TASK-DOCS-MAINTENANCE`
 - **Implemented** RULED (TASK-ENGINE-MEASUREMENT phases 1-4): a process engine's own
   status figure books as `engine_status` - `EngineReport`-class max truth above the
   declared floor, valid without a profile stamp (profile identity stays ninfer-only),
@@ -577,12 +540,6 @@ references still resolve. Every entry carries one status prefix:
   `SIMPLEHARN_LOG` are read; `SIMPLEHAR_*` is inert. Wire values are `simpleharn_error` and
   `owned_by: "simpleharn"`; mutex `SimpleHarn-SingleInstance`; roots `.simpleharn/`.
   No fallback read, no migration | 2026-11-05 | `01f135d..`
-- **Accepted** B9/B10 demoted to IDEAS: priority classes and restart reconciliation
-  hold no queue slot or tier; notes live in `docs/architecture/DEFERRED-IDEAS.md`
-  with reopening triggers; no build without a new ruling | 2026-11-05 | `01f135d..`
-- **Accepted** 1.3 scope and 1.4 goal: release 1.3 is major and waits for a backlog
-  roundup; priorities are CPU-llama eviction and the module split. Project Maya is the
-  1.4 goal | 2026-11-05 | `01f135d..`
 - **Accepted** CPU-llama eviction rules: RAM is its own resource ladder - a CPU-only
   row bypasses VRAM legs, never blocks a `whole` request, and is never a VRAM victim;
   `ram_reserve_gb` defaults to 8 GiB; CPU rows are evicted only by CPU admissions and
@@ -601,21 +558,6 @@ references still resolve. Every entry carries one status prefix:
   `WORK/RP/AUX/EMB` stay the wire and eviction vocabulary (enum, yaml `category:`,
   `evictable_by`, engine-port order). Scheduled after `TASK-CPU-LLAMA-EVICTION`; see
   the private task record TASK-CATEGORY-LABELS | 2026-11-05 | `9c1bfda..`
-- **Accepted** CPU-llama W2 GO; Basalt start/stop granted for card windows: W2
-  approved (resource-parameterized RAM victim planner, release + RAM settle,
-  `measured_ram_gb` write-back). Operator session is API-driven; subagents are served
-  by the operator's local Basalt start script. The orchestrator may start/stop that
-  process for card-window tests, provided zero subagents are active during the tests
-  and nothing is delegated or run in parallel; restore and verify afterwards. W3
-  scope under review | 2026-11-05 | `22fdb7f..`
-- **Accepted** W3 approved; CPU card window executed: W3 (RAM booking surface + docs
-  in 1.3) approved. Card run was operator-granted: harness absent, Basalt stopped and
-  restarted/verified after, zero subagents, no delegation. Proof: real CPU llama loads
-  served, RAM bookings carried `need_gib`/`booked_gb` zero on the card, a WORK load
-  drained the RP CPU resident with confirmed release and RAM settle, measured pairs
-  wrote back (1.4 and 9.4 GiB). Card movement is CUDA-context only (~0.35 GiB per
-  llama process), recorded in `docs/evidence/v1.3.0-card-run.md` | 2026-11-05 |
-  `9e7ddb7..`
 - **Accepted** Unauthenticated asset list grows to seven: `/favicon.png` and
   `/favicon.ico` join `/`, `/index.html`, `/app.js`, `/style.css`, `/pico.min.css`;
   the control page serves its icon without a token. DOCTRINE item 7 and the
@@ -643,19 +585,10 @@ references still resolve. Every entry carries one status prefix:
   proceeds. An admission that queued a victim still fails if that victim cannot be
   released. Evidence the private evidence record 2026-11-06-ram-reclaim; card proof owed in
   the 1.3.2 window | 2026-11-06 | `938660b`
-- **Accepted** Build and release directories: manual test builds live in one tests
-  directory below the operator inference root and are deleted when the test
-  concludes. The release lives in `SimpleHarn_latest`; the previous release stays in
-  `SimpleHarn_fallback`. After every build or release, sweep every other version and
-  build-artifact directory once the new latest is verified. Exact machine paths stay
-  local-only; `GIT_WORKFLOW.md` owns the rule | 2026-11-06 | `ac7e197`
 - **Accepted** Hidden manual launcher: the release ships `SimpleHarn.vbs`, which
   starts `simpleharn.exe` with window style 0 from its own folder. The binary stays a
   console build; direct exe is the diagnostic path; no console `.bat` wrapper ships |
   2026-11-06 | `6a371a0`
-- **Accepted** Release 1.3.2 target: next release is 1.3.2 after the version display,
-  expert-offload reclaim rule, FR-08/FR-09, and owed card legs; includes Project
-  Maya, public card evidence, and the new directory rule | 2026-11-06 | `938660b`
 - **Accepted** Llama engine binary: optional global default and per-row fork override.
   No shipped `llama_server_exe` default. First start records a `llama-server.exe`
   found on absolute `PATH` entries into `simpleharn.json`. A llama row may name its
@@ -849,14 +782,6 @@ references still resolve. Every entry carries one status prefix:
   verified for the live case, and a witnessed-footprint credit stays a
   code-risk item for any other under-booked row | 2026-11-22 | ruling B,
   transcribed from the handoff snapshot on 2026-11-25
-- **Accepted** Public and private process are decoupled (operator decision
-  2026-11-25): public commits and public docs stop citing private evidence
-  paths - evidence, research, review-run, and package-run citations become
-  plain private-layer labels; commit subjects stay short (72 preferred, 100
-  hard cap, no exception) and the essay rides the body; a cardless contributor
-  path is documented and proven from a fresh public clone. Citations only -
-  no status, date, commit, or binding clause changes; pushed history is never
-  rewritten | 2026-11-25 | operator decision (this session)
 - **Accepted** Same-slot pre-refuse matrix, option B (operator go 2026-11-26):
   "a same-slot re-admit refuses at the gate, before any release, only when its
   own settle gate could never pass on any witness reading of this card - settle
