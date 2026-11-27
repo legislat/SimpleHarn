@@ -549,7 +549,7 @@ mod tests {
         let witness = NvmlWitness::new(0);
         assert!(
             !witness.nvml_initialized_for_test(),
-            "NvmlWitness::new() must not run Nvml::init()"
+            "the witness constructor must not run Nvml::init()"
         );
     }
 

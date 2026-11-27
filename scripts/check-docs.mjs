@@ -303,7 +303,7 @@ function checkAttributionWire() {
     block += " " + api[i];
   }
   for (const v of arms) {
-    if (!block.includes(v)) {
+    if (!new RegExp(`\\b${v}\\b`).test(block)) {
       fail(apiRel, start + 1,
         `wire cross-check: API.md measured_attribution list is missing the wire variant \`${v}\` (src/model/mod.rs parses ${arms.join("|")})`);
     }

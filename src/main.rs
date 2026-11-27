@@ -486,9 +486,18 @@ async fn main() -> ExitCode {
             listeners,
             control_url,
             tokio::runtime::Handle::current(),
-            shutdown,
+            shutdown.clone(),
         );
     }
+    // The tray thread can fail to build (menu, icon, or window) and drops its
+    // context - with the sender clone it holds - before `CTX.set`. `run` treats
+    // a channel whose last sender is gone as a shutdown request, so this
+    // function-scope sender is what keeps a tray-build failure a logged
+    // non-event instead of a silent exit SUCCESS; the tray is a view and
+    // losing it must not take the serving process with it. It cannot move into
+    // the `if` scope for the same reason as the headless arm below.
+    #[cfg(feature = "tray")]
+    let _tray_shutdown_keepalive = shutdown;
     // A binary built without the `tray` feature is headless: the config key is
     // honored as "no tray", said once on the log, never silently dropped.
     // The sender lives for the whole `run()` here: `run` treats a channel

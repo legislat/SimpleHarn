@@ -1786,7 +1786,7 @@ mod tests {
             "an index with no card on this machine must still boot: the witness decides"
         );
         for nonsense in ["-1", "1.5", "\"0\"", "null", "4294967296"] {
-            let outcome = AppConfig::parse(&format!("\"device_index\": {nonsense}"));
+            let outcome = AppConfig::parse(&format!("{{\"device_index\": {nonsense}}}"));
             assert!(
                 outcome.is_err(),
                 "`{nonsense}` is not a device index: {outcome:?}"

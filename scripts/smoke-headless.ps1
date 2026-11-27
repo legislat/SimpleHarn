@@ -185,7 +185,25 @@ try {
     if (-not $served) {
         throw "no HTTP 200 from the control listener within $ServeTimeoutSec s"
     }
-    Write-Output 'SMOKE: serving (HTTP 200 on the control listener)'
+    # A first 200 alone is not proof of liveness: the regression binds every
+    # listener and keeps serving for the ~100-200 ms drain before it exits, so a
+    # probe can catch a 200 inside that window and the later exit would be
+    # misread as the signal. Prove the process is still alive and still serving
+    # two seconds after the first 200, before any signal is raised.
+    Start-Sleep -Seconds 2
+    if ($child.HasExited) {
+        $child.Refresh()
+        $code = 'unknown'
+        try { $code = $child.ExitCode } catch { }
+        throw "exited within 2 s of the first 200 (headless sender drop) with code $code; the serve was a drain-window illusion"
+    }
+    try {
+        $response = Invoke-WebRequest -Uri "http://127.0.0.1:$ControlPort/" -UseBasicParsing -TimeoutSec 5
+        if ($response.StatusCode -ne 200) { throw "the control listener answered $($response.StatusCode) 2 s after serving began" }
+    } catch {
+        throw ("the control listener stopped serving 2 s after the first 200: " + $_.Exception.Message)
+    }
+    Write-Output 'SMOKE: serving and alive 2 s after the first 200 (HTTP 200 on the control listener)'
 
     # Leg 2: Ctrl+C ends the harness, bounded.
     if ($onWindows) {

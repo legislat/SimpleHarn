@@ -48,7 +48,7 @@ Notes on the rows:
 - **xolotl** has one row on this machine, so the swap did not run. Its cold
   load took 633.5 seconds because the weights and the engram are archived on a
   hard disk. Expect minutes, not seconds, for this engine on cold storage.
-- Every release finished in 3-6 seconds. A confirmed release is the state the
+- Every release finished in 2.9-5.5 seconds. A confirmed release is the state the
   next admission decision may credit.
 
 ## How to reproduce
