@@ -4,7 +4,7 @@ owner: operator
 status: active
 audience: [architect, agent]
 source_of_truth_for: [settled and deferred decisions]
-last_reviewed: 2026-11-27
+last_reviewed: 2026-11-22
 review_trigger: new-decision, release
 ---
 
@@ -874,12 +874,3 @@ references still resolve. Every entry carries one status prefix:
   in-flight debit rule, and ledger-only mode stay unchanged." Edge-case table
   and analysis in the private layer (record booking-credit-02-residual) |
   2026-11-26 | operator go on the 2026-11-26 elaboration
-- **Accepted** Commit identity, forward-only (operator ruling 2026-11-27):
-  future commits in the public code repo and the private handoff repo are
-  authored as `legislat@users.noreply.github.com`; `user.name` stays
-  `legislat`. History is not rewritten - force-push is forbidden and the
-  tag/hash chain stays intact - so the commits already public under the
-  earlier personal address remain as recorded. This ruling treats that
-  address as already public: the decision is to stop adding new associations,
-  not to scrub the past. Applies to both repositories; a future identity
-  change is a new ruling. | 2026-11-27 | operator ruling (this session)
