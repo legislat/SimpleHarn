@@ -117,6 +117,7 @@ is durable and belongs in this tree.
 | [v1.3.0-card-run.md](evidence/v1.3.0-card-run.md) | v1.3.0 CPU-llama card proof | historical |
 | [v1.3.2-card-run.md](evidence/v1.3.2-card-run.md) | v1.3.2 Project Maya engine card proof | historical |
 | [2026-11-04-engine-measurement.md](evidence/2026-11-04-engine-measurement.md) | Engine VRAM surface measurements (cited as current by MODELS.md) | active |
+| [2026-11-26-swap-benchmark.md](evidence/2026-11-26-swap-benchmark.md) | Swap benchmark per engine (cold load / warm swap / release) | active |
 
 ### examples/
 
